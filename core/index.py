@@ -20,7 +20,7 @@ from core.db import get_connection, upsert_document, get_by_path
 from core.discover import discover
 from core.extract import extract, word_count
 from core.infer import infer_project, infer_typology, infer_title
-from core.vectors import get_collection, upsert_documents
+from core.vectors import get_db, upsert_documents
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +55,7 @@ def run_index(
     """
     cfg.ensure_dirs()
     conn = get_connection(cfg.get_db_path())
-    collection = get_collection()
+    db = get_db()
 
     files = discover(index_roots)
     if not files:
@@ -101,7 +101,7 @@ def run_index(
             stats["indexed"] += 1
 
             if len(vector_batch) >= cfg.batch_size:
-                upsert_documents(vector_batch, collection)
+                upsert_documents(vector_batch, db)
                 vector_batch.clear()
 
         except Exception as e:
@@ -109,7 +109,7 @@ def run_index(
             stats["failed"] += 1
 
     if vector_batch:
-        upsert_documents(vector_batch, collection)
+        upsert_documents(vector_batch, db)
 
     conn.close()
     logger.info(

@@ -15,11 +15,9 @@ import logging
 import sqlite3
 from typing import Any
 
-import chromadb
-
 from config import cfg
 from core.db import fts_search, get_connection
-from core.vectors import vector_search, get_collection
+from core.vectors import vector_search, get_db
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +76,7 @@ def search(
     query: str,
     top_k: int | None = None,
     conn: sqlite3.Connection | None = None,
-    collection: chromadb.Collection | None = None,
+    db=None,
 ) -> list[dict[str, Any]]:
     """
     Hybrid search. Returns top_k results sorted by combined relevance.
@@ -87,11 +85,11 @@ def search(
     """
     k = top_k or cfg.top_k
     _conn = conn or get_connection(cfg.get_db_path())
-    _col = collection or get_collection()
+    _db   = db or get_db()
 
     fts_rows = fts_search(_conn, query, top_k=k * 2)
     fts_results = _normalise_bm25(fts_rows)
-    vec_results = vector_search(query, top_k=k * 2, collection=_col)
+    vec_results = vector_search(query, top_k=k * 2, db=_db)
 
     merged = _merge(fts_results, vec_results, cfg.fts_weight, cfg.vector_weight)
     return merged[:k]
