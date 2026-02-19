@@ -1,0 +1,12 @@
+# Normalize line endings for cross-platform consistency
+* text=auto
+
+# Windows batch scripts — keep CRLF
+*.bat text eol=crlf
+
+# Python + config — LF
+*.py text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.md text eol=lf
+*.txt text eol=lf

@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+
+# TIGA work directory (DB, vectors, logs — local only)
+tiga_work/db/
+tiga_work/vectors/
+tiga_work/*.log
+
+# Keep config template, not personal config
+tiga_work/config.yaml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude Code local settings
+.claude/
+
+# IDE
+.vscode/
+.idea/
+*.swp
