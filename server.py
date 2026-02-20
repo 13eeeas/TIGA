@@ -69,7 +69,8 @@ from typing import Any, Generator
 
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from config import cfg, ollama_available
@@ -339,6 +340,19 @@ async def lifespan(app: FastAPI):
 # ---------------------------------------------------------------------------
 
 app = FastAPI(title="TIGA Hunt", version="0.3.0", lifespan=lifespan)
+
+# Serve static assets (CSS, JS if ever split out)
+_static_dir = Path(__file__).parent / "static"
+if _static_dir.exists():
+    app.mount("/static", StaticFiles(directory=str(_static_dir)), name="static")
+
+
+@app.get("/", response_class=HTMLResponse, include_in_schema=False)
+async def serve_ui() -> HTMLResponse:
+    """Serve the main search UI."""
+    html_file = Path(__file__).parent / "static" / "index.html"
+    return HTMLResponse(html_file.read_text(encoding="utf-8"))
+
 
 app.add_middleware(
     CORSMiddleware,

@@ -356,19 +356,20 @@ def cmd_serve(_args: argparse.Namespace) -> None:
 
 
 def cmd_ui(_args: argparse.Namespace) -> None:
+    """Start the Streamlit admin panel (port = server_port + 1)."""
     import socket
     import subprocess
     from config import cfg
 
-    ui_port = cfg.server_port + 1
+    admin_port = cfg.server_port + 1
     try:
         local_ip = socket.gethostbyname(socket.gethostname())
     except Exception:
         local_ip = "127.0.0.1"
-    print(f"TIGA UI: http://{local_ip}:{ui_port}")
+    print(f"TIGA Admin: http://{local_ip}:{admin_port}")
     subprocess.run(
         [sys.executable, "-m", "streamlit", "run", "app.py",
-         "--server.port", str(ui_port),
+         "--server.port", str(admin_port),
          "--server.address", "0.0.0.0",
          "--server.headless", "true"],
         check=True,
