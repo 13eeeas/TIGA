@@ -212,7 +212,7 @@ def test_filters_applied_to_search(tmp_path: Path, conn) -> None:
 
     with patch("core.vectors.query_vector", return_value=[]):
         results = search(
-            "architecture",
+            "hospital",
             filters={"project_id": "2023_HOSP"},
             conn=conn,
             cfg_obj=cfg_obj,

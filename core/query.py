@@ -100,6 +100,8 @@ _STOPWORDS = frozenset({
     "such", "no", "not", "only", "same", "so", "than", "too", "very",
     "just", "also", "any", "if", "as", "i", "me", "my", "you", "your",
     "he", "she", "they", "their", "them", "we", "our", "us",
+    # Domain stopwords: near-zero IDF in an architecture firm's corpus
+    "architecture", "architectural", "building", "project", "find", "get",
 })
 
 
