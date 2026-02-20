@@ -62,8 +62,8 @@ ollama:
   timeout_seconds: 30
   gpu_layers: -1
   num_ctx: 4096
-
-batch_size: 32
+  embed_batch_size: 32
+  embed_batch_sleep_s: 0.1
 
 server:
   host: 0.0.0.0
@@ -116,11 +116,38 @@ einstein:
 
 
 # ---------------------------------------------------------------------------
+# Eval fixture template
+# ---------------------------------------------------------------------------
+
+_FIXTURE_TEMPLATE = """\
+# TIGA Hunt — eval fixture
+# Edit these entries to match your POC archive.
+# Run: python tiga.py eval
+#
+# expected_paths: suffix-match against indexed file_path (partial paths OK)
+# expected_project: optional label (not used in scoring yet)
+
+- query: "hospital brief 2019"
+  expected_paths:
+    - 2019_HOSP/brief.pdf
+  expected_project: "2019_HOSP"
+
+- query: "school competition submission"
+  expected_paths:
+    - Competitions/submission.pdf
+
+- query: "site analysis residential"
+  expected_paths:
+    - site_analysis.pdf
+"""
+
+
+# ---------------------------------------------------------------------------
 # Commands
 # ---------------------------------------------------------------------------
 
 def cmd_init(args: argparse.Namespace) -> None:
-    """Generate default config.yaml in work_dir without importing cfg."""
+    """Generate default config.yaml and eval fixture in work_dir."""
     import os
     from pathlib import Path
 
@@ -139,12 +166,22 @@ def cmd_init(args: argparse.Namespace) -> None:
 
     config_file.write_text(_CONFIG_TEMPLATE, encoding="utf-8")
     print(f"Created: {config_file}")
+
+    # Eval fixture (always written; non-destructive)
+    fixtures_dir = work_dir / "fixtures"
+    fixtures_dir.mkdir(parents=True, exist_ok=True)
+    fixture_file = fixtures_dir / "eval_queries.yaml"
+    if not fixture_file.exists():
+        fixture_file.write_text(_FIXTURE_TEMPLATE, encoding="utf-8")
+        print(f"Created: {fixture_file}")
+
     print("\nNext steps:")
     print("  1. Edit tiga_work/config.yaml — set your index_roots")
-    print("  2. Install Ollama from https://ollama.com")
-    print("  3. Run: ollama pull nomic-embed-text && ollama pull mistral")
-    print("  4. Run: python tiga.py index")
-    print("  5. Run: python tiga.py serve   (in one terminal)")
+    print("  2. Edit tiga_work/fixtures/eval_queries.yaml — add test queries")
+    print("  3. Install Ollama from https://ollama.com")
+    print("  4. Run: ollama pull nomic-embed-text && ollama pull mistral")
+    print("  5. Run: python tiga.py index")
+    print("  6. Run: python tiga.py serve   (in one terminal)")
     print("          python tiga.py ui      (in another)")
 
 
@@ -210,38 +247,57 @@ def cmd_embed(args: argparse.Namespace) -> None:
 
 
 def cmd_index(args: argparse.Namespace) -> None:
-    from core.index import run_index
+    from config import cfg
+    from core.db import get_connection
+    from core.index import run_full_pipeline
 
-    print("Starting incremental index…")
+    cfg.ensure_dirs()
+    conn = get_connection(cfg.get_db_path())
+    print("Starting incremental index (discover → extract → embed → FTS)…")
     t0 = time.perf_counter()
-    stats = run_index(force=False)
+    try:
+        stats = run_full_pipeline(conn, cfg_obj=cfg)
+    finally:
+        conn.close()
     elapsed = round(time.perf_counter() - t0, 1)
     print(
         f"\nDone in {elapsed}s — "
-        f"indexed: {stats['indexed']}, "
-        f"skipped: {stats['skipped']}, "
-        f"failed: {stats['failed']}"
+        f"discovered: {stats.get('discovered', 0)} new files | "
+        f"extracted: {stats.get('files_extracted', 0)} files "
+        f"({stats.get('chunks_new', 0)} chunks) | "
+        f"embedded: {stats.get('files_embedded', 0)} files, "
+        f"{stats.get('chunks_embedded', 0)} chunks "
+        f"({stats.get('chunks_skipped', 0)} skipped) | "
+        f"indexed: {stats.get('files_indexed', 0)} files"
     )
 
 
 def cmd_rebuild(args: argparse.Namespace) -> None:
-    from core.index import run_index
+    from config import cfg
+    from core.db import get_connection
+    from core.index import run_rebuild
 
-    print("Force re-indexing all files…")
+    cfg.ensure_dirs()
+    conn = get_connection(cfg.get_db_path())
+    print("Rebuilding index from scratch (FTS drop + LanceDB reset)…")
     t0 = time.perf_counter()
-    stats = run_index(force=True)
+    try:
+        stats = run_rebuild(conn, cfg_obj=cfg)
+    finally:
+        conn.close()
     elapsed = round(time.perf_counter() - t0, 1)
     print(
         f"\nRebuild complete in {elapsed}s — "
-        f"indexed: {stats['indexed']}, "
-        f"skipped: {stats['skipped']}, "
-        f"failed: {stats['failed']}"
+        f"embedded: {stats.get('files_embedded', 0)} files, "
+        f"{stats.get('chunks_embedded', 0)} chunks | "
+        f"indexed: {stats.get('files_indexed', 0)} files"
     )
 
 
 def cmd_query(args: argparse.Namespace) -> None:
     from core.query import search
     from core.compose import compose
+    from config import cfg
 
     query = " ".join(args.query)
     if not query:
@@ -258,10 +314,11 @@ def cmd_query(args: argparse.Namespace) -> None:
     print(f"\n--- {elapsed} ms | {len(results)} results ---")
     for i, r in enumerate(results, 1):
         print(
-            f"  [{i}] {r['file_name']}  "
-            f"project={r['project']}  "
-            f"typology={r['typology']}  "
-            f"score={r['combined_score']:.3f}"
+            f"  [{i}] {r.get('file_name', r.get('rel_path', ''))}  "
+            f"project={r.get('project_id', r.get('project', 'Unknown'))}  "
+            f"typology={r.get('typology', 'Unknown')}  "
+            f"score={r.get('final_score', r.get('combined_score', 0.0)):.3f}  "
+            f"cite={r.get('citation', '')}"
         )
 
 
@@ -280,7 +337,8 @@ def cmd_eval(args: argparse.Namespace) -> None:
     from core.eval import run_eval
 
     queries = args.queries if args.queries else None
-    run_eval(queries=queries, top_k=args.top_k)
+    code = run_eval(queries=queries, top_k=args.top_k)
+    sys.exit(code)
 
 
 def cmd_serve(_args: argparse.Namespace) -> None:

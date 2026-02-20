@@ -124,9 +124,11 @@ class Config:
         self.ollama_timeout: int = oll.get("timeout_seconds", 30)
         self.gpu_layers: int = oll.get("gpu_layers", -1)
         self.num_ctx: int = oll.get("num_ctx", 4096)
+        self.embed_batch_size: int = oll.get("embed_batch_size", data.get("batch_size", 32))
+        self.embed_batch_sleep_s: float = oll.get("embed_batch_sleep_s", 0.1)
 
-        # --- batch size for embeddings ---
-        self.batch_size: int = data.get("batch_size", 32)
+        # --- batch size for embeddings (legacy top-level key) ---
+        self.batch_size: int = self.embed_batch_size
 
         # --- Server ---
         srv = data.get("server", {})
@@ -165,6 +167,10 @@ class Config:
         self.top_k: int = ret.get("top_k_default", 5)
         self.fts_weight: float = ret.get("hybrid_weight_bm25", 0.4)
         self.vector_weight: float = ret.get("hybrid_weight_vector", 0.6)
+        # hybrid_alpha: 1.0 = pure vector, 0.0 = pure BM25 (mirrors vector_weight)
+        self.hybrid_alpha: float = ret.get(
+            "hybrid_alpha", ret.get("hybrid_weight_vector", 0.6)
+        )
 
         # --- OCR (opt-in only) ---
         ocr = data.get("ocr", {})

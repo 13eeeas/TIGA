@@ -2,29 +2,29 @@
 __pycache__/
 *.py[cod]
 *.pyo
-.venv/
-venv/
-env/
+.pytest_cache/
 *.egg-info/
 dist/
 build/
+.eggs/
 
-# TIGA work directory (DB, vectors, logs — local only)
-tiga_work/db/
-tiga_work/vectors/
-tiga_work/*.log
+# TIGA work directories (contain DB, vectors, logs — not source)
+tiga_work/
+tiga_work_tianmu/
+tiga_work_*/
 
-# Keep config template, not personal config
-tiga_work/config.yaml
+# iCloud conflict copies (should never exist, but just in case)
+*[0-9].py
+
+# Secrets / env
+.env
+*.env
 
 # OS
 .DS_Store
 Thumbs.db
-
-# Claude Code local settings
-.claude/
+desktop.ini
 
 # IDE
 .vscode/
 .idea/
-*.swp

@@ -1,55 +1,531 @@
 """
-core/extract.py — Text extraction from supported file types.
+core/extract.py — Text extraction and chunk pipeline.
 
-Returns (text, surrogate) tuple:
-  text      : extracted body text (may be empty)
-  surrogate : human-readable stand-in used for search when text is empty
+Two APIs
+--------
+extract_chunks(path) -> list[tuple[str, str]]
+    Low-level. Returns [(ref, text), ...]. No DB access. Pure extraction.
+    Stable refs (never change across re-runs):
+      PDF:    p{n}        (1-indexed page; split to p{n}a/b/c if page > MAX_PDF_CHARS)
+      PPTX:   s{n:02d}   (1-indexed slide)
+      DOCX:   sec{n:02d} (split on Heading 1/2/3; single sec01 if no headings found)
+      TXT/MD: sec{n:02d} (split on blank lines or # headings; max MAX_TXT_CHARS per section)
+    Final safety pass: any chunk > MAX_TOKENS gets split with a/b/c suffix.
 
-OCR is NOT called here. See core/ocr.py for opt-in OCR.
+run_extract(conn, file_id, path, lane, cfg_obj) -> dict
+    Full pipeline step:
+      1. Calls extract_chunks() for TEXT_EXTRACTABLE files.
+      2. Runs infer_project() + infer_typology() per file.
+      3. Persists chunks (idempotent — skips unchanged, updates changed).
+      4. Updates files row: project_id, typology, status=EXTRACTED.
+      5. Upserts into projects table.
+      6. Returns {"new": N, "updated": N, "unchanged": N, "skipped": N, "failed": N}.
+    METADATA_ONLY files: creates a single "meta" chunk with a path-based surrogate.
+    Never raises — wraps body in try/except.
+
+Legacy API (backward compat)
+-----------------------------
+    extract(path) -> (text, surrogate)
+    word_count(text) -> int
 """
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
+import re
+import sqlite3
 from pathlib import Path
+from typing import Any
+
+from config import cfg as _module_cfg, Config
+from core.db import (
+    upsert_chunk as _upsert_chunk,
+    upsert_project,
+    set_file_status,
+    log_event,
+)
+from core.infer import infer_project, infer_typology
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+
+MAX_PDF_CHARS = 6_000    # chars per PDF page before splitting with a/b/c suffix
+MAX_TXT_CHARS = 3_000    # chars per TXT/MD section before further splitting
+MAX_TOKENS    = 4_000    # token safety limit for all chunk types
+
 
 # ---------------------------------------------------------------------------
-# Extraction dispatch
+# Internal helpers
+# ---------------------------------------------------------------------------
+
+def _token_estimate(text: str) -> int:
+    """Approximate token count: words × 4/3."""
+    return len(text.split()) * 4 // 3
+
+
+def _split_text(text: str, max_chars: int) -> list[str]:
+    """
+    Split text into parts no larger than max_chars, breaking at whitespace
+    where possible. Returns at least one part even if text is empty.
+    """
+    text = text.strip()
+    if not text:
+        return [""]
+    if len(text) <= max_chars:
+        return [text]
+    parts: list[str] = []
+    while text:
+        if len(text) <= max_chars:
+            parts.append(text)
+            break
+        cut = text.rfind(" ", 0, max_chars)
+        if cut <= 0:
+            cut = max_chars
+        parts.append(text[:cut].rstrip())
+        text = text[cut:].lstrip()
+    return parts if parts else [text]
+
+
+def _apply_suffix(ref: str, parts: list[str]) -> list[tuple[str, str]]:
+    """Return [(ref, text)] for single part, or [(refa, …), (refb, …)] for multiple."""
+    if len(parts) == 1:
+        return [(ref, parts[0])]
+    return [(ref + chr(ord("a") + i), p) for i, p in enumerate(parts)]
+
+
+def _token_safe(pairs: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    """
+    Final safety pass: split any chunk exceeding MAX_TOKENS.
+    Appends a/b/c suffix to refs that need splitting.
+    """
+    result: list[tuple[str, str]] = []
+    max_chars = MAX_TOKENS * 5  # conservative: ~5 chars/token average
+    for ref, text in pairs:
+        if _token_estimate(text) <= MAX_TOKENS:
+            result.append((ref, text))
+        else:
+            parts = _split_text(text, max_chars)
+            result.extend(_apply_suffix(ref, parts))
+    return result
+
+
+def _make_chunk_id(file_id: str, ref: str) -> str:
+    return hashlib.sha256(f"{file_id}::{ref}".encode()).hexdigest()
+
+
+def _content_hash(text: str) -> str:
+    return hashlib.sha256(text.encode()).hexdigest()
+
+
+# ---------------------------------------------------------------------------
+# extract_chunks — low-level, per-format
+# ---------------------------------------------------------------------------
+
+def extract_chunks(path: Path) -> list[tuple[str, str]]:
+    """
+    Extract text chunks from a supported file.
+    Returns [(ref, text), ...] — stable refs, never raises.
+    Returns [] for unsupported or unreadable extensions.
+    """
+    ext = path.suffix.lower()
+    try:
+        if ext == ".pdf":
+            pairs = _chunks_pdf(path)
+        elif ext == ".docx":
+            pairs = _chunks_docx(path)
+        elif ext == ".doc":
+            pairs = _chunks_doc(path)
+        elif ext == ".pptx":
+            pairs = _chunks_pptx(path)
+        elif ext == ".ppt":
+            pairs = _chunks_ppt(path)
+        elif ext == ".xlsx":
+            pairs = _chunks_xlsx(path)
+        elif ext == ".xls":
+            pairs = _chunks_xls(path)
+        elif ext in (".txt", ".md"):
+            pairs = _chunks_txt(path)
+        else:
+            return []
+        return _token_safe(pairs)
+    except Exception as e:
+        logger.warning("extract_chunks failed for %s: %s", path.name, e)
+        return []
+
+
+def _chunks_pdf(path: Path) -> list[tuple[str, str]]:
+    import pypdf  # type: ignore
+
+    reader = pypdf.PdfReader(str(path), strict=False)
+    pairs: list[tuple[str, str]] = []
+    for page_num, page in enumerate(reader.pages, start=1):
+        try:
+            text = (page.extract_text() or "").strip()
+        except Exception:
+            text = ""
+        ref = f"p{page_num}"
+        if len(text) > MAX_PDF_CHARS:
+            parts = _split_text(text, MAX_PDF_CHARS)
+            pairs.extend(_apply_suffix(ref, parts))
+        else:
+            pairs.append((ref, text))
+    return pairs
+
+
+def _chunks_docx(path: Path) -> list[tuple[str, str]]:
+    from docx import Document  # type: ignore
+
+    doc = Document(str(path))
+    heading_styles = {"heading 1", "heading 2", "heading 3"}
+
+    sections: list[list[str]] = []
+    current: list[str] = []
+
+    for para in doc.paragraphs:
+        style_name = (para.style.name or "").lower()
+        if style_name in heading_styles:
+            if current:
+                sections.append(current)
+            current = [para.text] if para.text.strip() else []
+        else:
+            if para.text.strip():
+                current.append(para.text)
+
+    if current:
+        sections.append(current)
+
+    if not sections:
+        # No headings — one big chunk
+        all_text = "\n".join(
+            p.text for p in doc.paragraphs if p.text.strip()
+        )
+        return [("sec01", all_text.strip())]
+
+    pairs: list[tuple[str, str]] = []
+    for i, lines in enumerate(sections, start=1):
+        ref = f"sec{i:02d}"
+        text = "\n".join(lines).strip()
+        pairs.append((ref, text))
+    return pairs
+
+
+def _chunks_pptx(path: Path) -> list[tuple[str, str]]:
+    from pptx import Presentation  # type: ignore
+
+    prs = Presentation(str(path))
+    pairs: list[tuple[str, str]] = []
+    for slide_num, slide in enumerate(prs.slides, start=1):
+        ref = f"s{slide_num:02d}"
+        parts: list[str] = []
+        for shape in slide.shapes:
+            if shape.has_text_frame:
+                for para in shape.text_frame.paragraphs:
+                    line = para.text.strip()
+                    if line:
+                        parts.append(line)
+        text = "\n".join(parts).strip()
+        pairs.append((ref, text))
+    return pairs
+
+
+def _chunks_doc(path: Path) -> list[tuple[str, str]]:
+    """
+    Word 97-2003 (.doc) — try python-docx first (works if the file is
+    OOXML mislabelled as .doc); otherwise return [] for graceful fallback.
+    """
+    try:
+        from docx import Document  # type: ignore
+        doc = Document(str(path))
+        heading_styles = {"heading 1", "heading 2", "heading 3"}
+        sections: list[list[str]] = []
+        current: list[str] = []
+        for para in doc.paragraphs:
+            style_name = (para.style.name or "").lower()
+            if style_name in heading_styles:
+                if current:
+                    sections.append(current)
+                current = [para.text] if para.text.strip() else []
+            elif para.text.strip():
+                current.append(para.text)
+        if current:
+            sections.append(current)
+        if not sections:
+            all_text = "\n".join(p.text for p in doc.paragraphs if p.text.strip())
+            return [("sec01", all_text.strip())] if all_text.strip() else []
+        return [(f"sec{i:02d}", "\n".join(lines).strip())
+                for i, lines in enumerate(sections, start=1)]
+    except Exception:
+        return []   # True binary .doc — no pure-Python parser available
+
+
+def _chunks_ppt(path: Path) -> list[tuple[str, str]]:
+    """PowerPoint 97-2003 (.ppt) — no pure-Python parser; return empty."""
+    return []
+
+
+def _chunks_xlsx(path: Path) -> list[tuple[str, str]]:
+    """Excel 2007+ (.xlsx) — extract cell text per sheet via openpyxl."""
+    try:
+        import openpyxl  # type: ignore
+        wb = openpyxl.load_workbook(str(path), read_only=True, data_only=True)
+        pairs: list[tuple[str, str]] = []
+        for idx, sheet in enumerate(wb.worksheets, start=1):
+            lines: list[str] = []
+            for row in sheet.iter_rows(values_only=True):
+                cells = [str(v) for v in row if v is not None and str(v).strip()]
+                if cells:
+                    lines.append("\t".join(cells))
+            text = "\n".join(lines).strip()
+            if text:
+                pairs.append((f"sheet{idx:02d}", text))
+        wb.close()
+        return pairs
+    except Exception as e:
+        logger.warning("XLSX extraction failed for %s: %s", path.name, e)
+        return []
+
+
+def _chunks_xls(path: Path) -> list[tuple[str, str]]:
+    """Excel 97-2003 (.xls) — extract cell text per sheet via xlrd."""
+    try:
+        import xlrd  # type: ignore
+        wb = xlrd.open_workbook(str(path))
+        pairs: list[tuple[str, str]] = []
+        for idx in range(wb.nsheets):
+            sheet = wb.sheet_by_index(idx)
+            lines: list[str] = []
+            for row_idx in range(sheet.nrows):
+                cells = [
+                    str(sheet.cell_value(row_idx, col))
+                    for col in range(sheet.ncols)
+                    if str(sheet.cell_value(row_idx, col)).strip()
+                ]
+                if cells:
+                    lines.append("\t".join(cells))
+            text = "\n".join(lines).strip()
+            if text:
+                pairs.append((f"sheet{idx + 1:02d}", text))
+        return pairs
+    except Exception as e:
+        logger.warning("XLS extraction failed for %s: %s", path.name, e)
+        return []
+
+
+def _chunks_txt(path: Path) -> list[tuple[str, str]]:
+    text = path.read_text(encoding="utf-8", errors="replace")
+    lines = text.splitlines()
+
+    sections: list[list[str]] = []
+    current: list[str] = []
+
+    for line in lines:
+        # Split on # headings or blank lines
+        if line.startswith("#") or (not line.strip() and current):
+            if line.startswith("#"):
+                if current:
+                    sections.append(current)
+                current = [line]
+            else:
+                # blank line — end current section
+                sections.append(current)
+                current = []
+        else:
+            if line.strip():
+                current.append(line)
+
+    if current:
+        sections.append(current)
+
+    if not sections:
+        return [("sec01", text.strip())]
+
+    pairs: list[tuple[str, str]] = []
+    idx = 1
+    for lines_block in sections:
+        block_text = "\n".join(lines_block).strip()
+        if not block_text:
+            continue
+        ref = f"sec{idx:02d}"
+        if len(block_text) > MAX_TXT_CHARS:
+            parts = _split_text(block_text, MAX_TXT_CHARS)
+            pairs.extend(_apply_suffix(ref, parts))
+        else:
+            pairs.append((ref, block_text))
+        idx += 1
+
+    return pairs if pairs else [("sec01", text.strip())]
+
+
+# ---------------------------------------------------------------------------
+# run_extract — full pipeline step
+# ---------------------------------------------------------------------------
+
+def run_extract(
+    conn: sqlite3.Connection,
+    file_id: str,
+    path: Path,
+    lane: str,
+    cfg_obj: Config | None = None,
+) -> dict[str, int]:
+    """
+    Extract and persist chunks for one file.
+
+    Returns:
+        {"new": N, "updated": N, "unchanged": N, "skipped": N, "failed": N}
+
+    Never raises.
+    """
+    stats: dict[str, int] = {
+        "new": 0, "updated": 0, "unchanged": 0, "skipped": 0, "failed": 0
+    }
+
+    try:
+        _cfg = cfg_obj or _module_cfg
+
+        # --- Inference (always, regardless of lane) ---
+        project_id, proj_confidence, signals = infer_project(path, cfg_obj=_cfg)
+        typology = infer_typology(path, cfg_obj=_cfg)
+
+        # Persist inference results to files row
+        conn.execute(
+            """UPDATE files
+               SET project_id=?, project_confidence=?, typology=?, updated_at=datetime('now')
+               WHERE file_id=?""",
+            (project_id, proj_confidence, typology, file_id),
+        )
+        conn.commit()
+
+        # Upsert projects table
+        upsert_project(conn, {
+            "project_id":     project_id,
+            "typology_guess": typology,
+            "signals":        json.dumps(signals),
+        })
+
+        # --- METADATA_ONLY: create a surrogate meta chunk ---
+        if lane != "TEXT_EXTRACTABLE":
+            surrogate = _build_surrogate(path, "metadata only")
+            chunk_id = _make_chunk_id(file_id, "meta")
+            c_hash = _content_hash(surrogate)
+            existing = conn.execute(
+                "SELECT content_hash FROM chunks WHERE chunk_id=?", (chunk_id,)
+            ).fetchone()
+            if existing:
+                if existing["content_hash"] == c_hash:
+                    stats["unchanged"] += 1
+                else:
+                    _upsert_chunk(conn, {
+                        "chunk_id": chunk_id, "file_id": file_id,
+                        "ref_value": "meta", "text": surrogate,
+                        "token_estimate": _token_estimate(surrogate),
+                        "content_hash": c_hash, "embedded": 0,
+                    })
+                    stats["updated"] += 1
+            else:
+                _upsert_chunk(conn, {
+                    "chunk_id": chunk_id, "file_id": file_id,
+                    "ref_value": "meta", "text": surrogate,
+                    "token_estimate": _token_estimate(surrogate),
+                    "content_hash": c_hash,
+                })
+                stats["new"] += 1
+            set_file_status(conn, file_id, "EXTRACTED")
+            log_event(conn, "EXTRACTED", detail="metadata only", file_id=file_id)
+            return stats
+
+        # --- TEXT_EXTRACTABLE: extract chunks ---
+        chunk_pairs = extract_chunks(path)
+
+        if not chunk_pairs:
+            # Extraction returned nothing (e.g. scanned PDF with no text)
+            set_file_status(conn, file_id, "FAILED", "EXTRACT_EMPTY",
+                            "extract_chunks returned no chunks")
+            log_event(conn, "EXTRACT_FAILED", detail="no chunks produced", file_id=file_id)
+            stats["failed"] += 1
+            return stats
+
+        for ref, text in chunk_pairs:
+            chunk_id = _make_chunk_id(file_id, ref)
+            c_hash = _content_hash(text)
+            tok_est = _token_estimate(text)
+
+            existing = conn.execute(
+                "SELECT content_hash FROM chunks WHERE chunk_id=?", (chunk_id,)
+            ).fetchone()
+
+            if existing:
+                if existing["content_hash"] == c_hash:
+                    stats["unchanged"] += 1
+                else:
+                    _upsert_chunk(conn, {
+                        "chunk_id": chunk_id, "file_id": file_id,
+                        "ref_value": ref, "text": text,
+                        "token_estimate": tok_est,
+                        "content_hash": c_hash, "embedded": 0,
+                    })
+                    stats["updated"] += 1
+            else:
+                _upsert_chunk(conn, {
+                    "chunk_id": chunk_id, "file_id": file_id,
+                    "ref_value": ref, "text": text,
+                    "token_estimate": tok_est, "content_hash": c_hash,
+                })
+                stats["new"] += 1
+
+        set_file_status(conn, file_id, "EXTRACTED")
+        log_event(
+            conn, "EXTRACTED",
+            detail=f"{len(chunk_pairs)} chunks (new={stats['new']} updated={stats['updated']})",
+            file_id=file_id,
+        )
+
+    except Exception as e:
+        logger.exception("run_extract failed for file_id=%s path=%s: %s", file_id, path, e)
+        try:
+            set_file_status(conn, file_id, "FAILED", "EXTRACT_ERROR", str(e))
+            log_event(conn, "EXTRACT_FAILED", detail=str(e), file_id=file_id)
+        except Exception:
+            pass
+        stats["failed"] += 1
+
+    return stats
+
+
+# ---------------------------------------------------------------------------
+# Legacy API (backward compat)
 # ---------------------------------------------------------------------------
 
 def extract(path: Path) -> tuple[str, str]:
     """
-    Extract text from a file.
+    Extract all text from a file as a single string.
     Returns (text, surrogate). Neither will be None.
     Errors are caught and logged; returns ("", surrogate) on failure.
     """
     ext = path.suffix.lower()
-
     if ext == ".pdf":
         return _extract_pdf(path)
     elif ext in (".docx", ".doc"):
         return _extract_docx(path)
     elif ext in (".pptx", ".ppt"):
         return _extract_pptx(path)
+    elif ext in (".xlsx", ".xls"):
+        pairs = _chunks_xlsx(path) if ext == ".xlsx" else _chunks_xls(path)
+        text = "\n".join(t for _, t in pairs)
+        return text, _build_surrogate(path, f"{len(pairs)} sheet(s)")
     elif ext in (".txt", ".md"):
         return _extract_text(path)
     else:
-        # Unsupported — return surrogate only
-        surrogate = _build_surrogate(path, "no text extraction available")
-        return "", surrogate
+        return "", _build_surrogate(path, "no text extraction available")
 
-
-# ---------------------------------------------------------------------------
-# Format extractors
-# ---------------------------------------------------------------------------
 
 def _extract_pdf(path: Path) -> tuple[str, str]:
     try:
         import pypdf  # type: ignore
-
         reader = pypdf.PdfReader(str(path), strict=False)
         pages = []
         for page in reader.pages:
@@ -58,8 +534,7 @@ def _extract_pdf(path: Path) -> tuple[str, str]:
             except Exception:
                 pages.append("")
         text = "\n".join(pages).strip()
-        surrogate = _build_surrogate(path, f"{len(reader.pages)} pages")
-        return text, surrogate
+        return text, _build_surrogate(path, f"{len(reader.pages)} pages")
     except Exception as e:
         logger.warning("PDF extraction failed for %s: %s", path.name, e)
         return "", _build_surrogate(path, "PDF extraction failed")
@@ -68,12 +543,10 @@ def _extract_pdf(path: Path) -> tuple[str, str]:
 def _extract_docx(path: Path) -> tuple[str, str]:
     try:
         from docx import Document  # type: ignore
-
         doc = Document(str(path))
         paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
         text = "\n".join(paragraphs).strip()
-        surrogate = _build_surrogate(path, f"{len(paragraphs)} paragraphs")
-        return text, surrogate
+        return text, _build_surrogate(path, f"{len(paragraphs)} paragraphs")
     except Exception as e:
         logger.warning("DOCX extraction failed for %s: %s", path.name, e)
         return "", _build_surrogate(path, "DOCX extraction failed")
@@ -82,7 +555,6 @@ def _extract_docx(path: Path) -> tuple[str, str]:
 def _extract_pptx(path: Path) -> tuple[str, str]:
     try:
         from pptx import Presentation  # type: ignore
-
         prs = Presentation(str(path))
         slides_text: list[str] = []
         for slide in prs.slides:
@@ -96,8 +568,7 @@ def _extract_pptx(path: Path) -> tuple[str, str]:
             if parts:
                 slides_text.append(" ".join(parts))
         text = "\n".join(slides_text).strip()
-        surrogate = _build_surrogate(path, f"{len(prs.slides)} slides")
-        return text, surrogate
+        return text, _build_surrogate(path, f"{len(prs.slides)} slides")
     except Exception as e:
         logger.warning("PPTX extraction failed for %s: %s", path.name, e)
         return "", _build_surrogate(path, "PPTX extraction failed")
@@ -106,32 +577,18 @@ def _extract_pptx(path: Path) -> tuple[str, str]:
 def _extract_text(path: Path) -> tuple[str, str]:
     try:
         text = path.read_text(encoding="utf-8", errors="replace").strip()
-        surrogate = _build_surrogate(path, "plain text")
-        return text, surrogate
+        return text, _build_surrogate(path, "plain text")
     except Exception as e:
         logger.warning("Text extraction failed for %s: %s", path.name, e)
         return "", _build_surrogate(path, "text read failed")
 
 
-# ---------------------------------------------------------------------------
-# Surrogate builder
-# ---------------------------------------------------------------------------
-
 def _build_surrogate(path: Path, note: str) -> str:
-    """
-    Build a descriptive surrogate for files with no extractable text.
-    Used by FTS and vector indexing so the file is still discoverable.
-    """
     parts = list(path.parts)
-    # Include up to 4 path components for context
     context_parts = parts[-4:] if len(parts) >= 4 else parts
     breadcrumb = " > ".join(context_parts)
     return f"{path.stem} | {path.suffix.lstrip('.')} | {note} | {breadcrumb}"
 
-
-# ---------------------------------------------------------------------------
-# Word count
-# ---------------------------------------------------------------------------
 
 def word_count(text: str) -> int:
     return len(text.split()) if text else 0

@@ -1,50 +1,85 @@
 """
 server.py — TIGA Hunt FastAPI LAN server.
 
-Endpoints:
-  POST /query          — hybrid search + compose answer
-  GET  /health         — Ollama + DB liveness check
-  GET  /status         — index stats
-  POST /index          — trigger re-index (background task)
+Endpoints
+---------
+  POST /api/query                — hybrid search + compose answer
+  GET  /api/status               — index stats + Ollama availability
+  GET  /api/projects             — distinct project_ids + file counts
+  POST /api/session              — create new session, returns {session_id}
+  GET  /api/session/{session_id} — message history for session
+  GET  /health                   — liveness check {status, ollama}
+  POST /api/index                — trigger incremental re-index (background)
+
+CORS: allow all origins (LAN internal use only).
 """
 
 from __future__ import annotations
 
+import json
 import logging
+import socket
+import sqlite3
+import uuid
 from contextlib import asynccontextmanager
-from typing import Any
+from typing import Any, Generator
 
-from fastapi import BackgroundTasks, FastAPI, HTTPException
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from config import cfg
-from core.db import get_connection, get_stats
+from config import cfg, ollama_available
+from core.compose import ComposeResult, ResultView, compose_answer
+from core.db import create_session, get_connection, get_stats
 from core.index import run_index
 from core.query import search
-from core.compose import compose
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# App setup
+# DB dependency
+# ---------------------------------------------------------------------------
+
+def get_db() -> Generator[sqlite3.Connection, None, None]:
+    """FastAPI dependency: yields one SQLite connection per request."""
+    conn = get_connection(cfg.get_db_path())
+    try:
+        yield conn
+    finally:
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Lifespan
 # ---------------------------------------------------------------------------
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     cfg.ensure_dirs()
-    logger.info("TIGA Hunt server starting on %s:%s", cfg.server_host, cfg.server_port)
+    if not ollama_available(cfg.ollama_base_url):
+        logger.warning("Ollama not reachable at %s — vector lane will be disabled", cfg.ollama_base_url)
+    port = cfg.server_port
+    try:
+        local_ip = socket.gethostbyname(socket.gethostname())
+    except Exception:
+        local_ip = "127.0.0.1"
+    logger.info("TIGA Hunt server ready on port %s", port)
+    logger.info("LAN access: http://%s:%s", local_ip, port)
     yield
     logger.info("TIGA Hunt server shutting down")
 
 
-app = FastAPI(title="TIGA Hunt", version="0.1.0", lifespan=lifespan)
+# ---------------------------------------------------------------------------
+# App + CORS
+# ---------------------------------------------------------------------------
+
+app = FastAPI(title="TIGA Hunt", version="0.2.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],   # LAN only — no public exposure
+    allow_origins=["*"],    # LAN internal — no public exposure
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -57,23 +92,50 @@ app.add_middleware(
 class QueryRequest(BaseModel):
     query: str
     top_k: int = 5
-    history: list[dict[str, str]] = []
+    session_id: str | None = None
+    filters: dict[str, str] | None = None
 
 
-class SearchResult(BaseModel):
-    file_path: str
-    file_name: str
-    project: str
-    typology: str
-    title: str
-    combined_score: float
+class ResultItem(BaseModel):
+    title:       str
+    rel_path:    str
+    citation:    str
+    snippet:     str
+    project_id:  str
+    typology:    str
+    ext:         str
+    final_score: float
 
 
 class QueryResponse(BaseModel):
-    query: str
-    results: list[SearchResult]
-    answer: str
-    elapsed_ms: float
+    query:          str
+    session_id:     str
+    answer_summary: str
+    follow_ups:     list[str]
+    confidence:     float
+    results:        list[ResultItem]
+    latency_ms:     float
+
+
+class SessionResponse(BaseModel):
+    session_id: str
+
+
+class MessageItem(BaseModel):
+    role:      str
+    content:   str
+    citations: list[str] | None
+    ts:        str
+
+
+class SessionHistoryResponse(BaseModel):
+    session_id: str
+    messages:   list[MessageItem]
+
+
+class ProjectItem(BaseModel):
+    project_id: str
+    file_count:  int
 
 
 class IndexRequest(BaseModel):
@@ -86,96 +148,150 @@ class IndexRequest(BaseModel):
 
 @app.get("/health")
 async def health() -> dict[str, Any]:
-    import ollama as ollama_client
-    ollama_ok = False
-    try:
-        ollama_client.list()
-        ollama_ok = True
-    except Exception:
-        pass
+    """Liveness check. Used by Streamlit sidebar to show server status."""
+    ok = ollama_available(cfg.ollama_base_url)
+    return {"status": "ok" if ok else "degraded", "ollama": ok}
 
-    db_ok = False
-    try:
-        conn = get_connection(cfg.db_path)
-        conn.execute("SELECT 1")
-        conn.close()
-        db_ok = True
-    except Exception:
-        pass
 
-    status = "ok" if (ollama_ok and db_ok) else "degraded"
+@app.get("/api/status")
+async def api_status(conn: sqlite3.Connection = Depends(get_db)) -> dict[str, Any]:
+    """Index stats: file counts by status, chunk counts, Ollama flag, last indexed."""
+    stats = get_stats(conn)
+    embedded = conn.execute(
+        "SELECT COUNT(*) FROM chunks WHERE embedded=1"
+    ).fetchone()[0]
+    last_idx = conn.execute(
+        "SELECT MAX(updated_at) FROM files WHERE status='INDEXED'"
+    ).fetchone()[0]
     return {
-        "status": status,
-        "ollama": ollama_ok,
-        "db": db_ok,
-        "chat_model": cfg.chat_model,
-        "embed_model": cfg.embed_model,
+        "files_discovered": stats.get("DISCOVERED", 0),
+        "files_extracted":  stats.get("EXTRACTED",  0),
+        "files_embedded":   stats.get("EMBEDDED",   0),
+        "files_indexed":    stats.get("INDEXED",    0),
+        "files_skipped":    stats.get("SKIPPED",    0),
+        "chunks_total":     stats.get("total_chunks", 0),
+        "embedded_chunks":  embedded,
+        "ollama_available": ollama_available(cfg.ollama_base_url),
+        "last_indexed_at":  last_idx,
     }
 
 
-@app.get("/status")
-async def status() -> dict[str, Any]:
-    try:
-        conn = get_connection(cfg.db_path)
-        stats = get_stats(conn)
-        conn.close()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    return {
-        "scan_dirs": [str(d) for d in cfg.scan_dirs],
-        **stats,
-    }
-
-
-@app.post("/query", response_model=QueryResponse)
-async def query_endpoint(req: QueryRequest) -> QueryResponse:
-    import time
-    t0 = time.perf_counter()
-
+@app.post("/api/query", response_model=QueryResponse)
+async def api_query(
+    req: QueryRequest,
+    conn: sqlite3.Connection = Depends(get_db),
+) -> QueryResponse:
+    """Hybrid BM25 + vector search, then Ollama-compose answer."""
     if not req.query.strip():
         raise HTTPException(status_code=400, detail="Query cannot be empty.")
 
-    results = search(req.query, top_k=req.top_k)
-    answer = compose(req.query, results, history=req.history)
+    session_id = req.session_id or str(uuid.uuid4())
 
-    elapsed_ms = round((time.perf_counter() - t0) * 1000, 1)
+    sr = search(req.query, top_k=req.top_k, filters=req.filters, conn=conn)
+    cr = compose_answer(req.query, list(sr), session_id=session_id, conn=conn)
 
     return QueryResponse(
-        query=req.query,
-        results=[
-            SearchResult(
-                file_path=r["file_path"],
-                file_name=r["file_name"],
-                project=r["project"],
-                typology=r["typology"],
-                title=r.get("title", ""),
-                combined_score=r["combined_score"],
+        query          = req.query,
+        session_id     = session_id,
+        answer_summary = cr.answer_summary,
+        follow_ups     = cr.follow_ups,
+        confidence     = cr.confidence,
+        results        = [
+            ResultItem(
+                title       = v.title,
+                rel_path    = v.rel_path,
+                citation    = v.citation,
+                snippet     = v.snippet,
+                project_id  = v.project_id,
+                typology    = v.typology,
+                ext         = v.ext,
+                final_score = v.final_score,
             )
-            for r in results
+            for v in cr.results
         ],
-        answer=answer,
-        elapsed_ms=elapsed_ms,
+        latency_ms = cr.latency_ms,
     )
 
 
-_indexing_in_progress = False
+@app.get("/api/projects")
+async def api_projects(
+    conn: sqlite3.Connection = Depends(get_db),
+) -> list[dict[str, Any]]:
+    """Distinct project_ids with file counts, sorted by file_count DESC."""
+    rows = conn.execute(
+        "SELECT COALESCE(project_id, 'Unknown') AS project_id, "
+        "COUNT(*) AS file_count "
+        "FROM files GROUP BY project_id ORDER BY file_count DESC"
+    ).fetchall()
+    return [{"project_id": r["project_id"], "file_count": r["file_count"]} for r in rows]
 
 
-@app.post("/index")
-async def index_endpoint(
-    req: IndexRequest, background_tasks: BackgroundTasks
+@app.post("/api/session", response_model=SessionResponse)
+async def api_create_session(
+    conn: sqlite3.Connection = Depends(get_db),
+) -> SessionResponse:
+    """Create a new conversation session. Returns {session_id}."""
+    session_id = str(uuid.uuid4())
+    create_session(conn, session_id)
+    return SessionResponse(session_id=session_id)
+
+
+@app.get("/api/session/{session_id}", response_model=SessionHistoryResponse)
+async def api_get_session(
+    session_id: str,
+    conn: sqlite3.Connection = Depends(get_db),
+) -> SessionHistoryResponse:
+    """Return full message history for a session."""
+    rows = conn.execute(
+        "SELECT role, content, citations, ts FROM messages "
+        "WHERE session_id=? ORDER BY message_id",
+        (session_id,),
+    ).fetchall()
+    messages = [
+        MessageItem(
+            role      = r["role"],
+            content   = r["content"],
+            citations = json.loads(r["citations"]) if r["citations"] else None,
+            ts        = r["ts"],
+        )
+        for r in rows
+    ]
+    return SessionHistoryResponse(session_id=session_id, messages=messages)
+
+
+# ---------------------------------------------------------------------------
+# Background index trigger
+# ---------------------------------------------------------------------------
+
+_indexing = False
+
+
+@app.post("/api/index")
+async def api_index(
+    req: IndexRequest,
+    background_tasks: BackgroundTasks,
+    conn: sqlite3.Connection = Depends(get_db),
 ) -> dict[str, str]:
-    global _indexing_in_progress
-    if _indexing_in_progress:
-        return {"status": "already running"}
+    """Trigger incremental (or forced) re-index in background."""
+    global _indexing
+    if _indexing:
+        return {"status": "already_running"}
 
-    def _run():
-        global _indexing_in_progress
-        _indexing_in_progress = True
+    def _run() -> None:
+        global _indexing
+        _indexing = True
         try:
-            run_index(force=req.force)
+            _conn = get_connection(cfg.get_db_path())
+            try:
+                if req.force:
+                    from core.index import run_rebuild
+                    run_rebuild(_conn, cfg_obj=cfg)
+                else:
+                    run_index(_conn, cfg_obj=cfg)
+            finally:
+                _conn.close()
         finally:
-            _indexing_in_progress = False
+            _indexing = False
 
     background_tasks.add_task(_run)
     return {"status": "started"}
@@ -191,5 +307,6 @@ if __name__ == "__main__":
         "server:app",
         host=cfg.server_host,
         port=cfg.server_port,
+        workers=cfg.server_workers,
         reload=False,
     )

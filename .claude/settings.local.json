@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git init:*)",
+      "Bash(git remote add:*)",
+      "Bash(powershell -Command \"Rename-Item -Path ''C:\\\\Users\\\\shawnlam\\\\iCloudDrive\\\\TIGA Hunt'' -NewName ''TIGA''\")",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(cmd /c setup.bat:*)",
+      "Bash(python -m venv:*)",
+      "Bash(.venv/Scripts/python.exe -m pip install:*)",
+      "Bash(.venv/Scripts/pip.exe install:*)",
+      "Bash(.venv/Scripts/pytest.exe tests/test_config.py -v)",
+      "Bash(ollama pull:*)",
+      "Bash(ollama list:*)",
+      "Bash(.venv/Scripts/python.exe:*)",
+      "Bash(powershell -Command:*)",
+      "Bash(schtasks:*)",
+      "Bash(cmd /c start_at_10pm.bat)",
+      "Bash(cmd /c \"start \"\"TIGA Overnight Index\"\" \"\"C:\\\\Users\\\\shawnlam\\\\iCloudDrive\\\\TIGA Hunt\\\\start_at_10pm.bat\"\"\")",
+      "Bash(py:*)",
+      "Bash(where python3*)",
+      "Bash(python:*)",
+      "Bash(source:*)",
+      "Bash(tasklist:*)",
+      "Bash(wmic process where \"name=''python.exe''\" get ProcessId,CommandLine)",
+      "Bash(wmic:*)",
+      "Bash(taskkill:*)",
+      "Bash(curl:*)"
+    ]
+  }
+}
