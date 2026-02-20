@@ -115,13 +115,13 @@ def test_run_embed_file_advances_to_embedded(tmp_path: Path, conn) -> None:
 
 def test_run_embed_chunk_error_skips_not_fails_file(tmp_path: Path, conn) -> None:
     """
-    upsert_chunk returning False → chunk stays embedded=0,
+    embed_texts_batched returning [None] → chunk stays embedded=0,
     file stays EXTRACTED (not all chunks done).
     """
     cfg_obj = _cfg(tmp_path)
     file_id, chunk_id = _seed_extracted_file(conn, tmp_path)
 
-    with patch("core.vectors.upsert_chunk", return_value=False):
+    with patch("core.index._vectors.embed_texts_batched", return_value=[None]):
         stats = run_embed(conn, cfg_obj)
 
     row = conn.execute(
@@ -140,7 +140,7 @@ def test_run_embed_chunk_error_skips_not_fails_file(tmp_path: Path, conn) -> Non
 
 
 def test_run_embed_skips_already_embedded_chunks(tmp_path: Path, conn) -> None:
-    """Chunk already embedded=1 → upsert_chunk never called, file→EMBEDDED."""
+    """Chunk already embedded=1 → no re-embed requested, file→EMBEDDED."""
     cfg_obj = _cfg(tmp_path)
     file_id, chunk_id = _seed_extracted_file(conn, tmp_path)
 
@@ -148,9 +148,10 @@ def test_run_embed_skips_already_embedded_chunks(tmp_path: Path, conn) -> None:
     conn.execute("UPDATE chunks SET embedded=1 WHERE chunk_id=?", (chunk_id,))
     conn.commit()
 
-    with patch("core.vectors.upsert_chunk", return_value=True) as mock_upsert:
+    # embed_texts_batched must not be called (no pending chunks to embed)
+    with patch("core.index._vectors.embed_texts_batched") as mock_batched:
         stats = run_embed(conn, cfg_obj)
-        mock_upsert.assert_not_called()
+        mock_batched.assert_not_called()
 
     assert stats["chunks_embedded"] == 0
     # File should advance (all chunks are embedded=1, remaining=0)

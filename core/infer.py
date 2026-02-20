@@ -25,7 +25,6 @@ from __future__ import annotations
 
 import logging
 import re
-from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -43,15 +42,17 @@ _MAX_WALK_DEPTH = 12   # safety limit for ancestor walk
 # tiga_project.yaml override
 # ---------------------------------------------------------------------------
 
-@lru_cache(maxsize=4096)
-def _find_yaml_for_dir(dir_path: Path, roots_tuple: tuple) -> tuple | None:
+def _find_project_yaml(
+    path: Path,
+    cfg_obj: Config,
+) -> dict[str, Any] | None:
     """
-    Cached inner lookup: walk up from dir_path looking for tiga_project.yaml.
-    Keyed on (dir_path, roots_tuple) — same directory always returns same result.
-    Returns tuple of dict items (hashable) or None.
+    Walk up from path.parent looking for tiga_project.yaml.
+    Stop when we reach (or pass) an index_root boundary or hit _MAX_WALK_DEPTH.
+    Returns parsed dict or None.
     """
-    roots = set(roots_tuple)
-    check = dir_path
+    roots = {r.resolve() for r in cfg_obj.index_roots}
+    check = path.parent.resolve()
 
     for _ in range(_MAX_WALK_DEPTH):
         yaml_file = check / _OVERRIDE_FILENAME
@@ -60,7 +61,7 @@ def _find_yaml_for_dir(dir_path: Path, roots_tuple: tuple) -> tuple | None:
                 with yaml_file.open("r", encoding="utf-8") as f:
                     data = yaml.safe_load(f)
                 if isinstance(data, dict) and "project_id" in data:
-                    return tuple(sorted(data.items()))
+                    return data
             except Exception:
                 pass   # corrupt YAML — keep walking
 
@@ -72,21 +73,6 @@ def _find_yaml_for_dir(dir_path: Path, roots_tuple: tuple) -> tuple | None:
         check = parent
 
     return None
-
-
-def _find_project_yaml(
-    path: Path,
-    cfg_obj: Config,
-) -> dict[str, Any] | None:
-    """
-    Walk up from path.parent looking for tiga_project.yaml.
-    Stop when we reach (or pass) an index_root boundary or hit _MAX_WALK_DEPTH.
-    Returns parsed dict or None.
-    Results are cached per directory to avoid repeated NAS stat calls.
-    """
-    roots_tuple = tuple(r.resolve() for r in cfg_obj.index_roots)
-    result = _find_yaml_for_dir(path.parent.resolve(), roots_tuple)
-    return dict(result) if result is not None else None
 
 
 # ---------------------------------------------------------------------------
@@ -107,13 +93,10 @@ def _build_tokens(path: Path) -> list[str]:
 # Sibling frequency heuristic
 # ---------------------------------------------------------------------------
 
-@lru_cache(maxsize=256)
 def _sibling_score(project_folder: str, root_dir: Path) -> float:
     """
     Check whether >50% of peer directories in root_dir share the same
     top token as project_folder. Returns 0.15 if yes, else 0.0.
-    Cached per (project_folder, root_dir) — the NAS iterdir() is called once
-    per unique root, not once per file.
     """
     top_token = re.split(r"[-_.\s]+", project_folder)[0].lower()
     if not top_token:

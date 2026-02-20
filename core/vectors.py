@@ -72,28 +72,64 @@ def embed_text(text: str, cfg: Config | None = None) -> list[float]:
         raise EmbedError(str(exc)) from exc
 
 
+def embed_texts_batch(
+    texts: list[str],
+    cfg: Config | None = None,
+) -> list[list[float] | None]:
+    """
+    Batch-embed texts using Ollama /api/embed (array input, single request).
+    Much faster than calling embed_text per item.
+    Returns None for any item that failed.
+    """
+    if not texts:
+        return []
+    _cfg = cfg or _module_cfg
+    url = _cfg.ollama_base_url.rstrip("/") + "/api/embed"
+    payload = json.dumps({"model": _cfg.embed_model, "input": texts}).encode()
+    req = urllib.request.Request(
+        url, data=payload, headers={"Content-Type": "application/json"}
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=max(_cfg.ollama_timeout, 120)) as resp:
+            data = json.loads(resp.read())
+            embeddings = data.get("embeddings", [])
+            if len(embeddings) != len(texts):
+                raise EmbedError(f"Expected {len(texts)} embeddings, got {len(embeddings)}")
+            return [list(e) for e in embeddings]
+    except EmbedError:
+        raise
+    except Exception as exc:
+        raise EmbedError(str(exc)) from exc
+
+
 def embed_texts_batched(
     texts: list[str],
     cfg: Config | None = None,
 ) -> list[list[float] | None]:
     """
-    Embed a list of texts in GPU-friendly batches.
+    Embed a list of texts in batches using the fast batch API.
+    Falls back to per-item embed_text on batch failure.
     Sleeps cfg.embed_batch_sleep_s between batches.
     Returns None for any text that failed to embed.
     """
     _cfg = cfg or _module_cfg
     results: list[list[float] | None] = []
-    batch_size = _cfg.embed_batch_size
+    batch_size = max(_cfg.embed_batch_size, 64)  # at least 64 per batch
     sleep_s = _cfg.embed_batch_sleep_s
 
     for i in range(0, len(texts), batch_size):
         batch = texts[i : i + batch_size]
-        for text in batch:
-            try:
-                results.append(embed_text(text, _cfg))
-            except EmbedError as e:
-                logger.warning("Embed failed: %s", e)
-                results.append(None)
+        try:
+            batch_results = embed_texts_batch(batch, _cfg)
+            results.extend(batch_results)
+        except EmbedError as e:
+            logger.warning("Batch embed failed, falling back to per-item: %s", e)
+            for text in batch:
+                try:
+                    results.append(embed_text(text, _cfg))
+                except EmbedError as e2:
+                    logger.warning("Embed failed: %s", e2)
+                    results.append(None)
         if i + batch_size < len(texts):
             time.sleep(sleep_s)
 

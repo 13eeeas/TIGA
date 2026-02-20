@@ -111,7 +111,9 @@ class TestEmbedTextsBatched:
                 raise EmbedError("gpu oom")
             return _fake_embedding()
 
-        with patch("core.vectors.embed_text", side_effect=flaky_embed):
+        # Force fallback to per-item path by making the batch call fail
+        with patch("core.vectors.embed_texts_batch", side_effect=EmbedError("batch fail")), \
+             patch("core.vectors.embed_text", side_effect=flaky_embed):
             results = embed_texts_batched(["a", "b", "c", "d"], cfg)
 
         assert len(results) == 4
@@ -125,10 +127,13 @@ class TestEmbedTextsBatched:
         from core.vectors import embed_texts_batched
 
         sleep_calls: list[float] = []
+        # batch_size = max(cfg.embed_batch_size, 64); use +1 to span two batches
+        batch_size = max(cfg.embed_batch_size, 64)
 
-        with patch("core.vectors.embed_text", return_value=_fake_embedding()), \
+        with patch("core.vectors.embed_texts_batch",
+                   return_value=[_fake_embedding()] * batch_size), \
              patch("core.vectors.time.sleep", side_effect=sleep_calls.append):
-            embed_texts_batched(["a"] * (cfg.embed_batch_size + 1), cfg)
+            embed_texts_batched(["a"] * (batch_size + 1), cfg)
 
         assert len(sleep_calls) == 1
         assert sleep_calls[0] == pytest.approx(cfg.embed_batch_sleep_s)

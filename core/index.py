@@ -137,7 +137,11 @@ def run_embed(
     cfg_obj: Config | None = None,
 ) -> dict[str, int]:
     """
-    Embed all un-embedded chunks of EXTRACTED files.
+    Embed all un-embedded chunks of EXTRACTED files using batch API.
+
+    Collects all pending chunks across all EXTRACTED files, sends them in
+    batches to Ollama /api/embed (much faster than per-chunk calls), then
+    bulk-upserts to LanceDB and updates SQLite status.
 
     Returns:
         {"files_embedded": N, "chunks_embedded": N, "chunks_skipped": N}
@@ -149,55 +153,105 @@ def run_embed(
         "chunks_skipped": 0,
     }
 
-    extracted = conn.execute(
-        """SELECT file_id, file_path, extension,
-                  COALESCE(project_id, 'Unknown') AS project_id,
-                  COALESCE(typology, 'Unknown')   AS typology
-           FROM files WHERE status = 'EXTRACTED'"""
+    # Collect all pending chunks from all EXTRACTED files in one query
+    pending_rows = conn.execute(
+        """SELECT c.chunk_id, c.ref_value, c.text,
+                  f.file_id, f.file_path, f.extension,
+                  COALESCE(f.project_id, 'Unknown') AS project_id,
+                  COALESCE(f.typology,   'Unknown') AS typology
+           FROM chunks c
+           JOIN files  f ON f.file_id = c.file_id
+           WHERE f.status = 'EXTRACTED' AND c.embedded = 0"""
     ).fetchall()
 
-    for file_row in extracted:
-        file_id = file_row["file_id"]
+    if not pending_rows:
+        logger.info("run_embed: no pending chunks to embed")
+        # Still advance any EXTRACTED files whose chunks are all already embedded
+        for frow in conn.execute(
+            "SELECT file_id FROM files WHERE status='EXTRACTED'"
+        ).fetchall():
+            remaining = conn.execute(
+                "SELECT COUNT(*) FROM chunks WHERE file_id=? AND embedded=0",
+                (frow["file_id"],),
+            ).fetchone()[0]
+            if remaining == 0:
+                set_file_status(conn, frow["file_id"], "EMBEDDED")
+                log_event(conn, "EMBEDDED", file_id=frow["file_id"])
+                stats["files_embedded"] += 1
+        return stats
 
-        pending = conn.execute(
-            "SELECT chunk_id, ref_value, text FROM chunks "
-            "WHERE file_id = ? AND embedded = 0",
-            (file_id,),
-        ).fetchall()
+    logger.info("run_embed: embedding %d pending chunks in batches", len(pending_rows))
 
-        rel_path = _compute_rel_path(file_row["file_path"], _cfg)
+    # Batch embed all texts
+    texts = [row["text"] for row in pending_rows]
+    embeddings = _vectors.embed_texts_batched(texts, _cfg)
 
-        for chunk in pending:
-            success = _vectors.upsert_chunk(
-                chunk_id=chunk["chunk_id"],
-                text=chunk["text"],
-                metadata={
-                    "file_id":    file_id,
-                    "ref_value":  chunk["ref_value"],
-                    "rel_path":   rel_path,
-                    "project_id": file_row["project_id"],
-                    "typology":   file_row["typology"],
-                    "ext":        file_row["extension"] or "",
-                    "root_id":    "",
-                },
-                cfg=_cfg,
-            )
-            if success:
-                set_chunk_embedded(conn, chunk["chunk_id"], 1)
-                stats["chunks_embedded"] += 1
-            else:
-                logger.warning(
-                    "Chunk embed failed — skipping chunk %s (file %s)",
-                    chunk["chunk_id"][:12], file_id[:12],
+    # Open LanceDB once for bulk upsert
+    import lancedb as _lancedb
+    db = _lancedb.connect(str(_cfg.get_vector_dir()))
+    table = _vectors._get_chunk_table(db)
+
+    lancedb_rows: list[dict] = []
+    succeeded_chunk_ids: list[str] = []
+    failed_chunk_ids: list[str] = []
+
+    for row, vec in zip(pending_rows, embeddings):
+        rel_path = _compute_rel_path(row["file_path"], _cfg)
+        if vec is None:
+            failed_chunk_ids.append(row["chunk_id"])
+            continue
+        lancedb_rows.append({
+            "chunk_id":   row["chunk_id"],
+            "file_id":    row["file_id"],
+            "ref_value":  row["ref_value"],
+            "rel_path":   rel_path,
+            "project_id": row["project_id"],
+            "typology":   row["typology"],
+            "ext":        row["extension"] or "",
+            "root_id":    "",
+            "vector":     [float(v) for v in vec],
+        })
+        succeeded_chunk_ids.append(row["chunk_id"])
+
+    # Bulk upsert to LanceDB in batches of 2000 to avoid memory issues
+    _LANCE_BATCH = 2000
+    if lancedb_rows:
+        for batch_start in range(0, len(lancedb_rows), _LANCE_BATCH):
+            batch = lancedb_rows[batch_start : batch_start + _LANCE_BATCH]
+            try:
+                (
+                    table.merge_insert("chunk_id")
+                    .when_matched_update_all()
+                    .when_not_matched_insert_all()
+                    .execute(batch)
                 )
-                stats["chunks_skipped"] += 1
+                stats["chunks_embedded"] += len(batch)
+            except Exception as e:
+                logger.error(
+                    "LanceDB batch upsert failed (batch %d-%d): %s — skipping batch",
+                    batch_start, batch_start + len(batch), e,
+                )
+                for row_dict in batch:
+                    failed_chunk_ids.append(row_dict["chunk_id"])
+                    succeeded_chunk_ids.remove(row_dict["chunk_id"])
 
-        # Advance file only when ALL chunks are embedded
+    stats["chunks_skipped"] += len(failed_chunk_ids)
+
+    # Bulk update SQLite: mark embedded chunks
+    if succeeded_chunk_ids:
+        conn.executemany(
+            "UPDATE chunks SET embedded = 1 WHERE chunk_id = ?",
+            [(cid,) for cid in succeeded_chunk_ids],
+        )
+        conn.commit()
+
+    # Advance file status for files where ALL chunks are now embedded
+    file_ids_seen = {row["file_id"] for row in pending_rows}
+    for file_id in file_ids_seen:
         remaining = conn.execute(
             "SELECT COUNT(*) FROM chunks WHERE file_id = ? AND embedded = 0",
             (file_id,),
         ).fetchone()[0]
-
         if remaining == 0:
             set_file_status(conn, file_id, "EMBEDDED")
             log_event(conn, "EMBEDDED", file_id=file_id)
