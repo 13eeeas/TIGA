@@ -293,7 +293,8 @@ def run_full_pipeline(
         "SELECT file_id, file_path, lane FROM files WHERE status = 'DISCOVERED'"
     ).fetchall()
 
-    for row in discovered:
+    total_discovered = len(discovered)
+    for idx, row in enumerate(discovered, start=1):
         path = _Path(row["file_path"])
         lane = row["lane"] or "METADATA_ONLY"
         result = run_extract(conn, row["file_id"], path, lane, _cfg)
@@ -302,6 +303,11 @@ def run_full_pipeline(
             e_stats["chunks_new"] += result.get("new", 0)
         else:
             e_stats["files_extract_failed"] += 1
+        if idx % 500 == 0:
+            logger.info(
+                "run_full_pipeline: extract progress %d/%d  chunks_new=%d",
+                idx, total_discovered, e_stats["chunks_new"],
+            )
 
     # ── Phases 2 + 3: embed + FTS ────────────────────────────────────────────
     logger.info("run_full_pipeline: phases 2+3 — embed + FTS")

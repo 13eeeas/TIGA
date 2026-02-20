@@ -24,8 +24,17 @@ sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
-WORK_DIR = HERE / "tiga_work_tianmu"
+# Store work dir outside iCloudDrive to avoid cloud-sync overhead on DB writes.
+WORK_DIR = Path(os.environ.get("LOCALAPPDATA", HERE)) / "tiga_work_tianmu"
 WORK_DIR.mkdir(parents=True, exist_ok=True)
+
+# Ensure config.yaml exists in WORK_DIR before imports (config.py loads it on import).
+_config_src = HERE / "tiga_work_tianmu" / "config.yaml"
+_config_dst = WORK_DIR / "config.yaml"
+if not _config_dst.exists() and _config_src.exists():
+    import shutil as _shutil
+    _shutil.copy2(str(_config_src), str(_config_dst))
+
 os.environ["TIGA_WORK_DIR"] = str(WORK_DIR)
 
 # ── logging ──────────────────────────────────────────────────────────────────

@@ -88,11 +88,32 @@ class SearchResult(TypedDict):
 # Internal helpers
 # ---------------------------------------------------------------------------
 
+_STOPWORDS = frozenset({
+    "a", "an", "the", "and", "or", "but", "is", "are", "was", "were",
+    "be", "been", "being", "have", "has", "had", "do", "does", "did",
+    "will", "would", "could", "should", "may", "might", "shall", "can",
+    "for", "to", "of", "in", "on", "at", "by", "from", "with", "into",
+    "through", "during", "before", "after", "above", "below", "between",
+    "out", "up", "down", "about", "it", "its", "this", "that", "these",
+    "those", "what", "which", "who", "whom", "when", "where", "why", "how",
+    "all", "each", "every", "both", "few", "more", "most", "other", "some",
+    "such", "no", "not", "only", "same", "so", "than", "too", "very",
+    "just", "also", "any", "if", "as", "i", "me", "my", "you", "your",
+    "he", "she", "they", "their", "them", "we", "our", "us",
+})
+
+
 def _fts_escape(query: str) -> str:
-    """Remove FTS5 operator characters that would cause syntax errors."""
+    """
+    Sanitise query for FTS5 MATCH syntax.
+    Strip stopwords, then join meaningful tokens with OR so that documents
+    matching ANY content word are returned (BM25 ranking surfaces best matches).
+    """
     cleaned = re.sub(r'[^\w\s]', ' ', query)
-    cleaned = " ".join(cleaned.split())
-    return cleaned or '""'
+    tokens = [t for t in cleaned.split() if t.lower() not in _STOPWORDS and len(t) > 1]
+    if not tokens:
+        return '""'
+    return " OR ".join(tokens)
 
 
 def _normalise_bm25(scores: list[float]) -> list[float]:

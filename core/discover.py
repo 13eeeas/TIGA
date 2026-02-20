@@ -44,10 +44,17 @@ _MAX_WIN_PATH = 248
 # ---------------------------------------------------------------------------
 
 def _win_safe(path: Path) -> Path:
-    """Apply \\?\\ prefix on Windows for paths exceeding MAX_WIN_PATH."""
+    """Apply \\?\\ prefix on Windows for paths exceeding MAX_WIN_PATH.
+
+    UNC paths (\\\\server\\share\\...) must use \\\\?\\\\UNC\\\\server\\\\share\\\\...
+    Local paths use \\?\\C:\\...
+    """
     s = str(path.resolve())
     if len(s) > _MAX_WIN_PATH and not s.startswith("\\\\?\\"):
-        s = "\\\\?\\" + s
+        if s.startswith("\\\\"):  # UNC path: \\server\share\...
+            s = "\\\\?\\UNC\\" + s[2:]
+        else:
+            s = "\\\\?\\" + s
     return Path(s)
 
 
