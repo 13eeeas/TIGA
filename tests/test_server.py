@@ -105,7 +105,7 @@ def test_query_endpoint_returns_answer_payload(client) -> None:
     assert resp.status_code == 200
     data = resp.json()
     assert data["answer_summary"] == "Hospital brief covers design requirements."
-    assert len(data["follow_ups"]) == 3
+    assert len(data["follow_up_prompts"]) == 3
     assert "confidence" in data
     assert "session_id" in data
     assert "latency_ms" in data

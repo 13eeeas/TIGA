@@ -116,6 +116,25 @@ CREATE TABLE IF NOT EXISTS events (
     ts         TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS feedback (
+    feedback_id   INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id    TEXT,
+    query         TEXT NOT NULL,
+    result_id     TEXT,
+    rating        INTEGER CHECK(rating IN (1, -1)),
+    rank_position INTEGER,
+    comment       TEXT,
+    ts            TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS audit_log (
+    audit_id  INTEGER PRIMARY KEY AUTOINCREMENT,
+    actor     TEXT NOT NULL DEFAULT 'admin',
+    action    TEXT NOT NULL,
+    detail    TEXT,
+    ts        TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
     text,
     chunk_id UNINDEXED,

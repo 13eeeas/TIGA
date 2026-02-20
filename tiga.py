@@ -356,13 +356,19 @@ def cmd_serve(_args: argparse.Namespace) -> None:
 
 
 def cmd_ui(_args: argparse.Namespace) -> None:
+    import socket
     import subprocess
     from config import cfg
 
-    print(f"Starting TIGA Hunt UI at http://0.0.0.0:{cfg.ui_port}")
+    ui_port = cfg.server_port + 1
+    try:
+        local_ip = socket.gethostbyname(socket.gethostname())
+    except Exception:
+        local_ip = "127.0.0.1"
+    print(f"TIGA UI: http://{local_ip}:{ui_port}")
     subprocess.run(
         [sys.executable, "-m", "streamlit", "run", "app.py",
-         "--server.port", str(cfg.ui_port),
+         "--server.port", str(ui_port),
          "--server.address", "0.0.0.0",
          "--server.headless", "true"],
         check=True,
