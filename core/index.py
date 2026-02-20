@@ -41,6 +41,7 @@ STATUS FLOW
 from __future__ import annotations
 
 import logging
+import re
 import sqlite3
 from pathlib import Path
 
@@ -53,6 +54,14 @@ from core.db import (
 import core.vectors as _vectors
 
 logger = logging.getLogger(__name__)
+
+# Control chars that cause Ollama HTTP 400: keep tab(9), LF(10), CR(13)
+_CTRL_RE = re.compile(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]')
+
+
+def _sanitize(text: str) -> str:
+    """Replace null bytes and control characters with a space."""
+    return _CTRL_RE.sub(' ', text)
 
 
 # ---------------------------------------------------------------------------
@@ -180,11 +189,22 @@ def run_embed(
                 stats["files_embedded"] += 1
         return stats
 
-    logger.info("run_embed: embedding %d pending chunks in batches", len(pending_rows))
+    # Separate empty-text chunks — Ollama rejects them (HTTP 400), mark done without vector
+    embeddable = [row for row in pending_rows if row["text"] and row["text"].strip()]
+    empty_chunk_ids = [row["chunk_id"] for row in pending_rows if not (row["text"] and row["text"].strip())]
+    if empty_chunk_ids:
+        logger.info("run_embed: skipping %d empty-text chunks (marking embedded=1)", len(empty_chunk_ids))
+        conn.executemany(
+            "UPDATE chunks SET embedded = 1 WHERE chunk_id = ?",
+            [(cid,) for cid in empty_chunk_ids],
+        )
+        conn.commit()
 
-    # Batch embed all texts
-    texts = [row["text"] for row in pending_rows]
-    embeddings = _vectors.embed_texts_batched(texts, _cfg)
+    logger.info("run_embed: embedding %d pending chunks in batches", len(embeddable))
+
+    # Batch embed all texts (sanitize control chars that cause Ollama HTTP 400)
+    texts = [_sanitize(row["text"]) for row in embeddable]
+    embeddings = _vectors.embed_texts_batched(texts, _cfg) if texts else []
 
     # Open LanceDB once for bulk upsert
     import lancedb as _lancedb
@@ -195,7 +215,7 @@ def run_embed(
     succeeded_chunk_ids: list[str] = []
     failed_chunk_ids: list[str] = []
 
-    for row, vec in zip(pending_rows, embeddings):
+    for row, vec in zip(embeddable, embeddings):
         rel_path = _compute_rel_path(row["file_path"], _cfg)
         if vec is None:
             failed_chunk_ids.append(row["chunk_id"])
@@ -213,8 +233,8 @@ def run_embed(
         })
         succeeded_chunk_ids.append(row["chunk_id"])
 
-    # Bulk upsert to LanceDB in batches of 2000 to avoid memory issues
-    _LANCE_BATCH = 2000
+    # Bulk upsert to LanceDB in small batches to avoid Arrow spill/OOM errors
+    _LANCE_BATCH = 200
     if lancedb_rows:
         for batch_start in range(0, len(lancedb_rows), _LANCE_BATCH):
             batch = lancedb_rows[batch_start : batch_start + _LANCE_BATCH]
