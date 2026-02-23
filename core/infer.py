@@ -140,7 +140,12 @@ def infer_project(
         if override:
             return (override["project_id"], 1.0, ["manual_override"])
 
-        # --- Identify project folder (first subdir under any index_root) ---
+        # --- Identify project folder ---
+        # Strategy: if the index_root name itself matches a project pattern
+        # (i.e. index_roots are project-level dirs like "186 - Tianmu"), use
+        # root.name as the project folder — not rel.parts[0] (which would be
+        # a subfolder like "200 Drawings").  Otherwise fall back to rel.parts[0]
+        # for archive-level roots (where each subdir IS a project).
         resolved = path.resolve()
         project_folder: str | None = None
         root_dir: Path | None = None
@@ -149,7 +154,24 @@ def infer_project(
             try:
                 rel = resolved.relative_to(root.resolve())
                 root_dir = root.resolve()
-                project_folder = rel.parts[0] if rel.parts else (root.name or "Unknown")
+
+                # Check if root itself matches any project pattern → root IS the project
+                root_is_project = False
+                if _cfg.project_inference_enable:
+                    for pat in _cfg.project_patterns:
+                        try:
+                            if re.search(pat["regex"], root.name, re.IGNORECASE):
+                                root_is_project = True
+                                break
+                        except (re.error, KeyError, TypeError):
+                            pass
+
+                if root_is_project:
+                    project_folder = root.name          # e.g. "186 - Tianmu"
+                elif rel.parts:
+                    project_folder = rel.parts[0]       # archive-level root
+                else:
+                    project_folder = root.name or "Unknown"
                 break
             except ValueError:
                 continue
