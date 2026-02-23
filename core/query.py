@@ -184,13 +184,40 @@ def _make_citation(
 # BM25 lane
 # ---------------------------------------------------------------------------
 
+def _build_boosted_query(query: str, expanded_terms: list[str]) -> str:
+    """
+    Build a BM25 query string that includes synonym expansion terms.
+    The original query tokens are included first (higher weight via OR ordering).
+    Expanded synonym terms are appended. Result is capped to avoid FTS5 limits.
+    """
+    base_tokens = [t for t in re.sub(r'[^\w\s]', ' ', query).split()
+                   if t.lower() not in _STOPWORDS and len(t) > 1]
+    # Add expanded terms (deduplicated against base tokens)
+    base_set = {t.lower() for t in base_tokens}
+    extra: list[str] = []
+    for term in expanded_terms:
+        for word in re.sub(r'[^\w\s]', ' ', term).split():
+            w = word.lower()
+            if w not in base_set and w not in _STOPWORDS and len(w) > 2:
+                base_set.add(w)
+                extra.append(word)
+
+    all_tokens = base_tokens + extra
+    if not all_tokens:
+        return '""'
+    # Cap at 40 tokens to keep FTS5 happy
+    all_tokens = all_tokens[:40]
+    return " OR ".join(all_tokens)
+
+
 def _run_bm25(
     query: str,
     limit: int,
     filters: dict[str, str] | None,
     conn: sqlite3.Connection,
+    expanded_terms: list[str] | None = None,
 ) -> list[dict[str, Any]]:
-    safe_q = _fts_escape(query)
+    safe_q = _build_boosted_query(query, expanded_terms or []) if expanded_terms else _fts_escape(query)
     params: list[Any] = [safe_q]
 
     filter_clauses: list[str] = []
@@ -277,6 +304,7 @@ def search(
     session_id: str | None = None,
     cfg_obj: Config | None = None,
     conn: sqlite3.Connection | None = None,
+    expanded_terms: list[str] | None = None,
 ) -> list[SearchResult]:
     """
     Hybrid BM25 + vector search. Returns validated-citation results only.
@@ -299,7 +327,8 @@ def search(
     _conn = conn or get_connection(_cfg.get_db_path())
 
     try:
-        return _search_impl(query, _top_k, offset, filters, session_id, _cfg, _conn)
+        return _search_impl(query, _top_k, offset, filters, session_id, _cfg, _conn,
+                            expanded_terms=expanded_terms)
     finally:
         if _own_conn:
             _conn.close()
@@ -313,6 +342,7 @@ def _search_impl(
     session_id: str | None,
     _cfg: Config,
     conn: sqlite3.Connection,
+    expanded_terms: list[str] | None = None,
 ) -> list[SearchResult]:
 
     alpha = _cfg.hybrid_alpha
@@ -320,8 +350,9 @@ def _search_impl(
     db_path = str(_cfg.get_db_path())
     root_paths = [str(r) for r in roots]
 
-    # ── Step 1: BM25 ─────────────────────────────────────────────────────────
-    bm25_rows = _run_bm25(query, top_k * 3, filters, conn)
+    # ── Step 1: BM25 (with synonym boosting) ─────────────────────────────────
+    bm25_rows = _run_bm25(query, top_k * 3, filters, conn,
+                          expanded_terms=expanded_terms)
     bm25_map: dict[str, dict[str, Any]] = {}
     if bm25_rows:
         raw_scores = [r["bm25_raw"] for r in bm25_rows]
@@ -330,8 +361,15 @@ def _search_impl(
             row["bm25_score"] = ns
             bm25_map[row["chunk_id"]] = row
 
-    # ── Step 2: Vector ────────────────────────────────────────────────────────
-    vec_scores = _run_vector(query, top_k * 3, filters, _cfg)
+    # ── Step 2: Vector (with synonym expansion appended) ─────────────────────
+    # Append expanded terms to the query string (cap at 50 words to avoid
+    # embedding degradation as per Chunk 7 spec)
+    vector_query = query
+    if expanded_terms:
+        extra_words = " ".join(expanded_terms[:30])  # keep manageable
+        combined = f"{query} {extra_words}"
+        vector_query = " ".join(combined.split()[:50])
+    vec_scores = _run_vector(vector_query, top_k * 3, filters, _cfg)
 
     # ── Step 3: Merge ─────────────────────────────────────────────────────────
     all_ids = set(bm25_map) | set(vec_scores)
@@ -423,6 +461,260 @@ def _search_impl(
             logger.warning("Session save failed: %s", e)
 
     return results
+
+
+# ---------------------------------------------------------------------------
+# Structured / File-locator / Cross-project executors (Chunk 3)
+# ---------------------------------------------------------------------------
+
+def execute_structured_query(
+    route,   # RouteResult
+    conn: sqlite3.Connection | None = None,
+    cfg_obj: Config | None = None,
+) -> dict[str, Any]:
+    """
+    Query the project_cards table using route.filters.
+    Returns a structured answer dict — no LLM synthesis.
+    """
+    _cfg = cfg_obj or _module_cfg
+    _own = conn is None
+    _conn = conn or get_connection(_cfg.get_db_path())
+    try:
+        from core.project_card import get_project_card, list_project_cards
+
+        filters = route.filters or {}
+        project_code = route.project_code or filters.get("project_code")
+
+        if project_code:
+            card = get_project_card(project_code, conn=_conn)
+            if card:
+                answer = _format_card_answer(card)
+                return {
+                    "answer_text": answer,
+                    "data": card,
+                    "mode": "structured",
+                    "sources": ["project_cards_db"],
+                    "confidence": _card_confidence(card),
+                }
+            return {
+                "answer_text": f"No project card found for '{project_code}'. "
+                               f"Try: python tiga.py card {project_code}",
+                "data": None,
+                "mode": "structured",
+                "sources": [],
+                "confidence": 0.0,
+            }
+        else:
+            # Filter query — return matching projects
+            card_filters = {k: v for k, v in filters.items()
+                            if k in ("typology", "stage", "gfa_min", "gfa_max", "location")}
+            cards = list_project_cards(card_filters, conn=_conn)
+            if not cards:
+                return {
+                    "answer_text": "No projects found matching those criteria.",
+                    "data": {"projects": []},
+                    "mode": "structured",
+                    "sources": ["project_cards_db"],
+                    "confidence": 0.3,
+                }
+            summary = f"Found {len(cards)} project(s):\n"
+            for c in cards[:10]:
+                summary += f"  • {c.get('project_code','')} — {c.get('name', 'unnamed')} "
+                summary += f"({c.get('typology_primary','?')}, {c.get('stage','?')})\n"
+            return {
+                "answer_text": summary.strip(),
+                "data": {"projects": cards},
+                "mode": "structured",
+                "sources": ["project_cards_db"],
+                "confidence": 0.9,
+            }
+    finally:
+        if _own:
+            _conn.close()
+
+
+def _format_card_answer(card: dict[str, Any]) -> str:
+    """Format a project card as a readable answer string."""
+    lines: list[str] = []
+    code = card.get("project_code", "")
+    name = card.get("name") or "(name not set)"
+    lines.append(f"**{code} — {name}**")
+    if card.get("location"):
+        lines.append(f"Location: {card['location']}")
+    if card.get("typology_primary"):
+        t = card["typology_primary"]
+        if card.get("typology_secondary"):
+            t += f" / {card['typology_secondary']}"
+        lines.append(f"Typology: {t}")
+    if card.get("stage"):
+        lines.append(f"Stage: {card['stage']}")
+    if card.get("client"):
+        lines.append(f"Client: {card['client']}")
+    if card.get("gfa_sqm"):
+        lines.append(f"GFA: {card['gfa_sqm']:,.0f} sqm")
+    if card.get("site_area_sqm"):
+        lines.append(f"Site area: {card['site_area_sqm']:,.0f} sqm")
+    if card.get("storeys_above"):
+        storeys = str(card["storeys_above"])
+        if card.get("storeys_below"):
+            storeys += f" above / {card['storeys_below']} below grade"
+        lines.append(f"Storeys: {storeys}")
+    if card.get("units"):
+        lines.append(f"Units: {card['units']}")
+    if card.get("architect"):
+        lines.append(f"Lead architect: {card['architect']}")
+    if card.get("pm_job_captain"):
+        lines.append(f"PM / Job captain: {card['pm_job_captain']}")
+    if card.get("concept_summary"):
+        lines.append(f"\nConcept: {card['concept_summary'][:300]}")
+    return "\n".join(lines)
+
+
+def _card_confidence(card: dict[str, Any]) -> float:
+    """Compute confidence for a structured answer based on data_sources."""
+    ds = card.get("data_sources") or {}
+    if not ds:
+        return 0.3
+    sources = [v.get("source", "inferred") for v in ds.values() if isinstance(v, dict)]
+    if not sources:
+        return 0.3
+    if all(s == "manual" for s in sources):
+        return 1.0
+    if any(s == "manual" for s in sources):
+        return 0.85
+    if any(s == "woha_web" for s in sources):
+        return 0.75
+    # All inferred
+    return 0.55
+
+
+def execute_file_locator_query(
+    route,   # RouteResult
+    conn: sqlite3.Connection | None = None,
+    cfg_obj: Config | None = None,
+) -> dict[str, Any]:
+    """
+    Query the files table using route.filters.
+    Returns file paths — no LLM synthesis.
+    """
+    _cfg = cfg_obj or _module_cfg
+    _own = conn is None
+    _conn = conn or get_connection(_cfg.get_db_path())
+    try:
+        filters = route.filters or {}
+        clauses: list[str] = ["status = 'INDEXED'"]
+        params: list[Any] = []
+
+        project_code = route.project_code or filters.get("project_code")
+        if project_code:
+            # Match against project_code column OR project_id column
+            clauses.append("(project_code = ? OR project_id LIKE ?)")
+            params.extend([project_code, f"%{project_code}%"])
+        if "content_type" in filters:
+            clauses.append("content_type = ?")
+            params.append(filters["content_type"])
+        if "folder_stage" in filters:
+            clauses.append("folder_stage = ?")
+            params.append(filters["folder_stage"])
+        if "is_issued" in filters:
+            clauses.append("is_issued = ?")
+            params.append(int(filters["is_issued"]))
+        if "is_superseded" in filters:
+            clauses.append("is_superseded = ?")
+            params.append(int(filters["is_superseded"]))
+        if "is_latest" in filters:
+            clauses.append("is_latest = ?")
+            params.append(int(filters["is_latest"]))
+        if "date_from" in filters:
+            clauses.append("(file_date >= ? OR file_date IS NULL)")
+            params.append(filters["date_from"])
+        if "date_to" in filters:
+            clauses.append("(file_date <= ? OR file_date IS NULL)")
+            params.append(filters["date_to"])
+
+        where = "WHERE " + " AND ".join(clauses)
+        rows = _conn.execute(
+            f"""SELECT file_id, file_path, file_name, extension,
+                       project_code, project_id, folder_stage, discipline,
+                       doc_type, revision, file_date, content_type,
+                       is_issued, is_superseded, is_latest, updated_at
+                FROM files {where}
+                ORDER BY is_latest DESC, file_date DESC, revision DESC
+                LIMIT 30""",
+            params,
+        ).fetchall()
+
+        if not rows:
+            conf = 0.0
+            answer = "No files found matching those criteria."
+        else:
+            conf = 1.0 if len(filters) >= 2 else 0.7
+            answer = f"Found {len(rows)} file(s)"
+            specific = filters.get("content_type") or filters.get("folder_stage")
+            if specific:
+                answer += f" matching {specific}"
+            answer += "."
+
+        files = [dict(r) for r in rows]
+        return {
+            "answer_text": answer,
+            "files": files,
+            "mode": "file_locator",
+            "sources": [f["file_path"] for f in files[:5]],
+            "confidence": conf,
+        }
+    finally:
+        if _own:
+            _conn.close()
+
+
+def execute_cross_project_query(
+    route,   # RouteResult
+    conn: sqlite3.Connection | None = None,
+    cfg_obj: Config | None = None,
+) -> dict[str, Any]:
+    """
+    Query across multiple projects using project_cards table filters,
+    then optionally run semantic search per matching project.
+    """
+    _cfg = cfg_obj or _module_cfg
+    _own = conn is None
+    _conn = conn or get_connection(_cfg.get_db_path())
+    try:
+        from core.project_card import list_project_cards
+
+        filters = route.filters or {}
+        card_filters = {k: v for k, v in filters.items()
+                        if k in ("typology", "stage", "gfa_min", "gfa_max", "location")}
+        cards = list_project_cards(card_filters, conn=_conn)
+
+        if not cards:
+            return {
+                "answer_text": "No projects found matching those criteria.",
+                "projects_matched": [],
+                "results_per_project": {},
+                "mode": "cross_project",
+                "sources": [],
+                "confidence": 0.3,
+            }
+
+        answer = f"Found {len(cards)} project(s) matching criteria:\n"
+        for c in cards[:15]:
+            answer += (f"  • {c.get('project_code', '')} — "
+                       f"{c.get('name', 'unnamed')} "
+                       f"({c.get('typology_primary', '?')})\n")
+
+        return {
+            "answer_text": answer.strip(),
+            "projects_matched": [c.get("project_code") for c in cards],
+            "results_per_project": {c.get("project_code"): c for c in cards},
+            "mode": "cross_project",
+            "sources": ["project_cards_db"],
+            "confidence": 0.85 if cards else 0.3,
+        }
+    finally:
+        if _own:
+            _conn.close()
 
 
 # ---------------------------------------------------------------------------

@@ -77,7 +77,11 @@ from config import cfg, ollama_available
 from core.compose import ComposeResult, ResultView, compose_answer
 from core.db import create_session, get_connection, get_stats
 from core.index import run_index
-from core.query import search
+from core.query import (
+    search, execute_structured_query,
+    execute_file_locator_query, execute_cross_project_query,
+)
+from core.router import get_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -386,13 +390,19 @@ class ResultItem(BaseModel):
 
 
 class QueryResponse(BaseModel):
-    query:              str
-    session_id:         str
-    answer_summary:     str
-    follow_up_prompts:  list[str]
-    confidence:         float
-    results:            list[ResultItem]
-    latency_ms:         float
+    query:               str
+    session_id:          str
+    answer_summary:      str
+    follow_up_prompts:   list[str]
+    confidence:          float
+    confidence_label:    str
+    mode:                str          # structured | file_locator | semantic | cross_project
+    results:             list[ResultItem]
+    files:               list[dict] | None = None   # for file_locator mode
+    data:                dict | None = None          # for structured mode
+    fallback_suggestion: str | None = None
+    index_stats:         dict | None = None
+    latency_ms:          float
 
 
 class SessionResponse(BaseModel):
@@ -532,6 +542,39 @@ async def api_status(conn: sqlite3.Connection = Depends(get_db)) -> dict[str, An
     except Exception:
         disk_free_gb = disk_used_gb = 0.0
 
+    # Health summary (Chunk 13)
+    try:
+        from core.index import check_index_staleness
+        staleness = check_index_staleness(conn, cfg_obj=cfg)
+        staleness_score = staleness.staleness_score
+        files_missing = staleness.files_missing
+        if staleness_score < 0.2:
+            overall_health = "good"
+        elif staleness_score < 0.5:
+            overall_health = "degraded"
+        else:
+            overall_health = "stale"
+    except Exception:
+        staleness_score = 0.0
+        files_missing = 0
+        overall_health = "unknown"
+
+    # Per-project health
+    project_health: list[dict] = []
+    try:
+        p_rows = conn.execute(
+            "SELECT project_code, COUNT(*) AS n FROM files "
+            "WHERE status = 'INDEXED' AND project_code IS NOT NULL "
+            "GROUP BY project_code"
+        ).fetchall()
+        for pr in p_rows[:20]:  # cap at 20
+            project_health.append({
+                "project_code": pr["project_code"],
+                "files_indexed": pr["n"],
+            })
+    except Exception:
+        pass
+
     return {
         "files_discovered": stats.get("DISCOVERED", 0),
         "files_extracted":  stats.get("EXTRACTED",  0),
@@ -551,7 +594,121 @@ async def api_status(conn: sqlite3.Connection = Depends(get_db)) -> dict[str, An
         "by_directory":     by_dir,
         "disk_free_gb":     disk_free_gb,
         "disk_used_gb":     disk_used_gb,
+        # Chunk 13 — health
+        "overall_health":   overall_health,
+        "staleness_score":  staleness_score,
+        "files_missing":    files_missing,
+        "projects":         project_health,
     }
+
+
+def _aggregate_dirs(views: list) -> list:
+    """Add folder pseudo-results when 2+ files from the same directory match."""
+    from collections import defaultdict
+
+    dir_groups: dict[str, list] = defaultdict(list)
+    for v in views:
+        # Normalise separators so we group correctly on Windows too
+        parts = v.rel_path.replace("\\", "/").split("/")
+        if len(parts) > 1:
+            parent = "/".join(parts[:-1])
+            dir_groups[parent].append(v)
+
+    dir_views = []
+    for dir_path, members in dir_groups.items():
+        if len(members) < 2:
+            continue
+        top_score = max(m.final_score for m in members)
+        dir_name  = dir_path.split("/")[-1] or dir_path
+        names     = ", ".join((m.title or m.rel_path.split("/")[-1]) for m in members[:3])
+        if len(members) > 3:
+            names += f" +{len(members) - 3} more"
+        dir_views.append(ResultView(
+            title       = dir_name + "/",
+            rel_path    = dir_path,
+            citation    = dir_path,
+            snippet     = f"Folder with {len(members)} matching files — {names}",
+            project_id  = members[0].project_id,
+            typology    = members[0].typology,
+            ext         = "dir",
+            final_score = top_score * 0.95,   # just below top individual file
+        ))
+    return dir_views
+
+
+def _confidence_label(conf: float) -> str:
+    if conf >= 0.8:
+        return "High"
+    if conf >= 0.55:
+        return "Medium"
+    if conf > 0.0:
+        return "Low"
+    return "Not Found"
+
+
+def _get_fallback_suggestion(mode: str, filters: dict, project_code: str | None) -> str | None:
+    """Return a manual fallback path hint when confidence is low or no results."""
+    root_path = ""
+    if project_code:
+        try:
+            from core.project_card import get_project_card
+            card = get_project_card(project_code)
+            root_path = (card or {}).get("root_path", "") or ""
+        except Exception:
+            pass
+    root_hint = f"\\\\server\\{project_code}" if not root_path else root_path
+
+    ct = filters.get("content_type", "")
+    if ct in ("BIM", "CAD"):
+        return f"Try checking the {ct} folder under: {root_hint}"
+    if ct in ("Render Scene", "Image"):
+        return f"Try checking: {root_hint}\\Images  or  {root_hint}\\Presentations"
+    if ct == "Minutes":
+        return f"Meeting minutes are usually in: {root_hint}\\Documents\\Minutes"
+    if ct == "Transmittal":
+        return f"Transmittals are usually in: {root_hint}\\Outgoing"
+    if mode == "file_locator":
+        return (
+            f"No files matched in the index. The index may be stale — "
+            f"run 'python tiga.py index' to update. "
+            f"Try checking: {root_hint} directly."
+        )
+    if mode == "semantic":
+        return (
+            f"Result confidence is low. Consider searching with different terms "
+            f"or browsing: {root_hint} directly."
+        )
+    return None
+
+
+def _log_query(
+    query: str,
+    project_code: str | None,
+    mode: str,
+    confidence: float,
+    result_count: int,
+    duration_ms: float,
+) -> None:
+    """Log query to tiga_work/logs/queries.log (and low_confidence.log if needed)."""
+    try:
+        log_dir = cfg.work_dir / "logs"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        entry = json.dumps({
+            "timestamp": datetime.now().isoformat(),
+            "query": query,
+            "project_code": project_code,
+            "mode": mode,
+            "confidence": round(confidence, 3),
+            "result_count": result_count,
+            "duration_ms": round(duration_ms, 1),
+        }, ensure_ascii=False)
+        with open(log_dir / "queries.log", "a", encoding="utf-8") as f:
+            f.write(entry + "\n")
+        if confidence < 0.6:
+            with open(log_dir / "low_confidence.log", "a", encoding="utf-8") as f:
+                f.write(entry + "\n")
+    except Exception as e:
+        logger.debug("Query log write failed: %s", e)
 
 
 @app.post("/api/query", response_model=QueryResponse)
@@ -562,19 +719,104 @@ async def api_query(
     if not req.query.strip():
         raise HTTPException(status_code=400, detail="Query cannot be empty.")
 
+    t_start = time.perf_counter()
     session_id = req.session_id or str(uuid.uuid4())
-    sr = search(req.query, top_k=req.top_k + req.offset, filters=req.filters, conn=conn)
-    cr = compose_answer(req.query, list(sr), session_id=session_id, conn=conn)
 
-    results_page = cr.results[req.offset : req.offset + req.top_k]
+    # ── Route the query ───────────────────────────────────────────────────────
+    router = get_router()
+    router.load_project_codes(conn)
+    project_code_hint = (req.filters or {}).get("project_id") or (req.filters or {}).get("project_code")
+    route = router.classify(req.query, project_code=project_code_hint)
+
+    mode = route.mode
+    confidence = 0.5
+    files_result: list[dict] | None = None
+    data_result: dict | None = None
+    answer_summary = ""
+    follow_up_prompts: list[str] = []
+    results_page: list[ResultView] = []
+    fallback_suggestion: str | None = None
+
+    # ── Dispatch to appropriate executor ────────────────────────────────────
+    if mode == "structured":
+        exec_result = execute_structured_query(route, conn=conn)
+        answer_summary = exec_result["answer_text"]
+        data_result = exec_result.get("data")
+        confidence = exec_result.get("confidence", 0.7)
+        follow_up_prompts = []
+
+    elif mode == "file_locator":
+        exec_result = execute_file_locator_query(route, conn=conn)
+        answer_summary = exec_result["answer_text"]
+        files_result = exec_result.get("files", [])
+        confidence = exec_result.get("confidence", 0.7)
+        follow_up_prompts = []
+
+    elif mode == "cross_project":
+        exec_result = execute_cross_project_query(route, conn=conn)
+        answer_summary = exec_result["answer_text"]
+        data_result = exec_result.get("results_per_project")
+        confidence = exec_result.get("confidence", 0.7)
+        follow_up_prompts = []
+
+    else:
+        # semantic — use existing hybrid RAG pipeline with synonym boosting
+        pool_k = max((req.top_k + req.offset) * 3, 20)
+        search_filters = req.filters or {}
+        if route.project_code:
+            search_filters = {**search_filters, "project_id": route.project_code}
+        # Pass expanded_terms for BM25/vector boosting (Chunk 7)
+        _expanded_terms = (
+            route.expanded_query.expanded_terms
+            if route.expanded_query and route.expanded_query.expanded_terms
+            else None
+        )
+        sr = search(req.query, top_k=pool_k, filters=search_filters or None, conn=conn,
+                    expanded_terms=_expanded_terms)
+        cr = compose_answer(req.query, list(sr), session_id=session_id, conn=conn)
+        answer_summary = cr.answer_summary
+        follow_up_prompts = cr.follow_ups
+        confidence = cr.confidence
+
+        # Mix in directory pseudo-results, re-sort by score
+        dir_results = _aggregate_dirs(cr.results)
+        mixed = sorted(cr.results + dir_results, key=lambda x: x.final_score, reverse=True)
+        results_page = mixed[req.offset : req.offset + req.top_k]
+
+    # ── Fallback suggestion for low confidence ───────────────────────────────
+    if confidence < 0.6 or (mode == "file_locator" and not files_result):
+        fallback_suggestion = _get_fallback_suggestion(
+            mode, route.filters, route.project_code
+        )
+
+    # ── Index stats ───────────────────────────────────────────────────────────
+    try:
+        idx_stats_row = conn.execute(
+            "SELECT COUNT(*) AS cnt, MAX(updated_at) AS last_at FROM files WHERE status='INDEXED'"
+        ).fetchone()
+        index_stats = {
+            "project_code": route.project_code,
+            "last_indexed": idx_stats_row["last_at"],
+            "file_count": idx_stats_row["cnt"],
+        }
+    except Exception:
+        index_stats = None
+
+    duration_ms = (time.perf_counter() - t_start) * 1000
+
+    # ── Log query ────────────────────────────────────────────────────────────
+    result_count = len(results_page) + (len(files_result) if files_result else 0)
+    _log_query(req.query, route.project_code, mode, confidence, result_count, duration_ms)
 
     return QueryResponse(
-        query             = req.query,
-        session_id        = session_id,
-        answer_summary    = cr.answer_summary,
-        follow_up_prompts = cr.follow_ups,
-        confidence        = cr.confidence,
-        results           = [
+        query              = req.query,
+        session_id         = session_id,
+        answer_summary     = answer_summary,
+        follow_up_prompts  = follow_up_prompts,
+        confidence         = confidence,
+        confidence_label   = _confidence_label(confidence),
+        mode               = mode,
+        results            = [
             ResultItem(
                 title       = v.title,
                 rel_path    = v.rel_path,
@@ -587,7 +829,11 @@ async def api_query(
             )
             for v in results_page
         ],
-        latency_ms = cr.latency_ms,
+        files              = files_result,
+        data               = data_result,
+        fallback_suggestion = fallback_suggestion,
+        index_stats        = index_stats,
+        latency_ms         = round(duration_ms, 1),
     )
 
 
@@ -601,6 +847,42 @@ async def api_projects(
         "FROM files GROUP BY project_id ORDER BY file_count DESC"
     ).fetchall()
     return [{"project_id": r["project_id"], "file_count": r["file_count"]} for r in rows]
+
+
+@app.get("/api/project/{code}")
+async def api_get_project(
+    code: str,
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict[str, Any]:
+    """Return full project data card for a given project code."""
+    from core.project_card import get_project_card
+    card = get_project_card(code, conn=conn)
+    if card is None:
+        raise HTTPException(status_code=404, detail=f"Project '{code}' not found")
+    return card
+
+
+class CorrectRequest(BaseModel):
+    project_code: str
+    field: str
+    correct_value: Any
+    wrong_value: Any = None
+    source_path: str | None = None
+
+
+@app.post("/api/correct")
+async def api_correct(req: CorrectRequest) -> dict[str, Any]:
+    """Submit a manual field correction for a project."""
+    from core.corrections import save_correction
+    _audit("Correction submitted", f"{req.project_code}.{req.field} → {req.correct_value!r}")
+    save_correction(
+        project_code=req.project_code,
+        field=req.field,
+        correct_value=req.correct_value,
+        wrong_value=req.wrong_value,
+        source_path=req.source_path,
+    )
+    return {"status": "saved", "project_code": req.project_code, "field": req.field}
 
 
 @app.post("/api/session", response_model=SessionResponse)

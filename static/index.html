@@ -116,8 +116,9 @@ body{font-family:'Source Serif 4',Georgia,serif;background:var(--page-bg);color:
 @keyframes ringPulse{0%{opacity:.7;transform:scale(.75)}100%{opacity:0;transform:scale(1.6)}}
 
 /* ── HERO ── */
-.hero{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0 24px 100px;max-width:700px;width:100%;gap:30px;transition:padding-bottom .4s}
-.hero-title{font-family:'Lora',Georgia,serif;font-size:clamp(28px,4.5vw,42px);font-weight:400;text-align:center;letter-spacing:-.01em;line-height:1.25;color:var(--ink);animation:fadeUp .5s ease both;transition:color .35s}
+.hero{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0 24px 100px;max-width:700px;width:100%;gap:16px;transition:padding-bottom .4s}
+.hero-title{font-family:'Lora',Georgia,serif;font-size:clamp(28px,4.5vw,42px);font-weight:400;text-align:center;letter-spacing:-.01em;line-height:1.3;color:var(--ink);animation:fadeUp .5s ease both;transition:color .35s}
+.title-accent{font-style:italic;color:var(--coral);font-weight:400}
 @keyframes fadeUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
 
 /* ── SEARCH BOX ── */
@@ -133,6 +134,17 @@ body{font-family:'Source Serif 4',Georgia,serif;background:var(--page-bg);color:
 [data-theme="dark"] .search-btn svg{stroke:#0F0E0C}
 @media(prefers-color-scheme:dark){:root:not([data-theme="light"]):not([data-theme="dark"]) .search-btn svg{stroke:#0F0E0C}}
 
+/* ── SEARCH PROGRESS BAR ── */
+.search-progress{width:100%;height:3px;border-radius:2px;background:var(--ink-12);overflow:hidden;opacity:0;transition:opacity .25s;margin-top:7px}
+.search-progress.active{opacity:1}
+.search-progress-bar{height:100%;width:100%;background:linear-gradient(90deg,transparent 0%,var(--coral) 30%,#e8825a 50%,var(--coral) 70%,transparent 100%);background-size:300% 100%;animation:progressShimmer 1.6s ease-in-out infinite;border-radius:2px}
+@keyframes progressShimmer{0%{background-position:100% 0}100%{background-position:-200% 0}}
+
+/* ── HINT PILLS ── */
+.hint-pills{display:flex;flex-wrap:wrap;gap:7px;justify-content:center;padding:4px 0;width:100%;max-width:580px;animation:fadeUp .5s .28s ease both;opacity:0}
+.hint-pill{background:transparent;border:1px dashed var(--ink-12);border-radius:100px;padding:5px 14px;font-family:'Source Serif 4',Georgia,serif;font-size:12px;font-weight:300;color:var(--ink-60);cursor:pointer;transition:all .2s}
+.hint-pill:hover{border-style:solid;border-color:rgba(201,100,66,.45);color:var(--coral);background:var(--coral-glow)}
+
 /* ── RESULTS ── */
 .results-section{width:100%;max-width:700px;padding:0 24px 80px;display:none;flex-direction:column;gap:14px}
 .results-section.visible{display:flex}
@@ -141,6 +153,7 @@ body{font-family:'Source Serif 4',Georgia,serif;background:var(--page-bg);color:
 .results-list{display:flex;flex-direction:column;gap:6px}
 .result-item{background:var(--glass-bg);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border:1px solid var(--glass-border);border-bottom-color:var(--glass-border-lo);border-radius:14px;padding:13px 16px;display:flex;align-items:center;gap:13px;cursor:pointer;box-shadow:var(--glass-shadow),inset 0 1px 0 var(--glass-inner);transition:box-shadow .2s,border-color .2s,transform .15s,background .35s}
 .result-item:hover{border-color:rgba(201,100,66,.35);box-shadow:0 10px 36px var(--coral-glow),0 2px 8px rgba(0,0,0,.08),inset 0 1.5px 0 var(--glass-inner);transform:translateY(-1.5px)}
+.result-item.is-dir{border-left:3px solid var(--coral);background:rgba(201,100,66,0.04)}
 .file-icon{width:38px;height:38px;border-radius:9px;background:var(--glass-inner);border:1px solid var(--glass-border);box-shadow:inset 0 1px 0 var(--glass-border),0 1px 4px rgba(0,0,0,.06);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
 .file-info{flex:1;min-width:0}
 .file-name{font-size:14px;font-weight:400;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:color .35s}
@@ -160,6 +173,14 @@ body{font-family:'Source Serif 4',Georgia,serif;background:var(--page-bg);color:
 /* ── SHOW MORE ── */
 .show-more-btn{align-self:center;background:var(--glass-bg);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border:1px solid var(--glass-border);border-radius:100px;padding:10px 26px;font-family:'Source Serif 4',Georgia,serif;font-size:13px;font-weight:300;color:var(--ink-60);cursor:pointer;box-shadow:var(--glass-shadow),inset 0 1px 0 var(--glass-inner);transition:all .2s}
 .show-more-btn:hover{border-color:rgba(201,100,66,.4);color:var(--coral)}
+
+/* ── SHOW MORE LOADING DOTS ── */
+.show-more-dots{display:none;align-self:center;gap:6px;padding:12px 0}
+.show-more-dots.active{display:flex}
+.show-more-dot{width:7px;height:7px;border-radius:50%;background:var(--coral);opacity:.35;animation:dotBounce .9s ease-in-out infinite}
+.show-more-dot:nth-child(2){animation-delay:.15s}
+.show-more-dot:nth-child(3){animation-delay:.3s}
+@keyframes dotBounce{0%,60%,100%{transform:translateY(0);opacity:.35}30%{transform:translateY(-7px);opacity:1}}
 
 /* ── MODAL ── */
 .modal-overlay{position:fixed;inset:0;background:var(--overlay-bg);backdrop-filter:blur(24px) saturate(1.5);-webkit-backdrop-filter:blur(24px) saturate(1.5);z-index:100;display:flex;align-items:center;justify-content:center;padding:24px;opacity:0;pointer-events:none;transition:opacity .22s}
@@ -293,7 +314,8 @@ body{font-family:'Source Serif 4',Georgia,serif;background:var(--page-bg);color:
 
   <!-- ── HERO ── -->
   <main class="hero" id="hero">
-    <h1 class="hero-title">Search your archive,<br>the way you remember it</h1>
+    <h1 class="hero-title">Search the archive,<br><span class="title-accent">the way you remember it</span></h1>
+
     <div class="search-wrap">
       <div class="search-box">
         <svg class="search-icon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
@@ -308,6 +330,20 @@ body{font-family:'Source Serif 4',Georgia,serif;background:var(--page-bg);color:
           </svg>
         </button>
       </div>
+      <!-- Progress bar — shown while searching -->
+      <div class="search-progress" id="searchProgress">
+        <div class="search-progress-bar"></div>
+      </div>
+    </div>
+
+    <!-- Hint pills — hidden after first search -->
+    <div class="hint-pills" id="hintPills">
+      <button class="hint-pill" onclick="useHint(this)">facade glazing details</button>
+      <button class="hint-pill" onclick="useHint(this)">client meeting minutes</button>
+      <button class="hint-pill" onclick="useHint(this)">schematic design drawings</button>
+      <button class="hint-pill" onclick="useHint(this)">structural consultant report</button>
+      <button class="hint-pill" onclick="useHint(this)">planning submission documents</button>
+      <button class="hint-pill" onclick="useHint(this)">material specification</button>
     </div>
   </main>
 
@@ -320,6 +356,11 @@ body{font-family:'Source Serif 4',Georgia,serif;background:var(--page-bg);color:
     <div class="results-list" id="resultsList"></div>
     <div class="followups" id="followUps"></div>
     <button class="show-more-btn" id="showMoreBtn" onclick="showMore()" style="display:none">Show more results</button>
+    <div class="show-more-dots" id="showMoreDots">
+      <div class="show-more-dot"></div>
+      <div class="show-more-dot"></div>
+      <div class="show-more-dot"></div>
+    </div>
   </section>
 </div>
 
@@ -451,7 +492,7 @@ window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () 
 function fileIcon(ext) {
   const m = {pdf:'📕',docx:'📝',doc:'📝',pptx:'📊',ppt:'📊',xlsx:'📊',xls:'📊',
              dwg:'📐',rvt:'🏗️',ifc:'🏗️',jpg:'🖼️',jpeg:'🖼️',png:'🖼️',
-             mp4:'🎬',mov:'🎬',txt:'📋',md:'📋',csv:'📊',zip:'🗜️'};
+             mp4:'🎬',mov:'🎬',txt:'📋',md:'📋',csv:'📊',zip:'🗜️',dir:'📁'};
   return m[(ext||'').toLowerCase()] || '📄';
 }
 
@@ -464,11 +505,24 @@ async function doSearch(offset) {
   _query  = q;
   _offset = offset;
 
-  const cat = document.getElementById('catWrap');
+  const cat    = document.getElementById('catWrap');
+  const prog   = document.getElementById('searchProgress');
+  const smBtn  = document.getElementById('showMoreBtn');
+  const smDots = document.getElementById('showMoreDots');
+
   cat.classList.add('searching');
+  prog.classList.add('active');
+
   if (offset === 0) {
     document.getElementById('resultsSection').classList.remove('visible');
     document.getElementById('feedbackBar').classList.remove('visible');
+    // Hide hints after first search
+    const hints = document.getElementById('hintPills');
+    if (hints) hints.style.display = 'none';
+  } else {
+    // Show loading dots near the Show More button
+    smBtn.style.display  = 'none';
+    smDots.classList.add('active');
   }
 
   try {
@@ -486,10 +540,14 @@ async function doSearch(offset) {
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const data = await resp.json();
     cat.classList.remove('searching');
+    prog.classList.remove('active');
+    smDots.classList.remove('active');
     showResults(data, offset > 0);
 
   } catch(e) {
     cat.classList.remove('searching');
+    prog.classList.remove('active');
+    smDots.classList.remove('active');
     showError('Could not reach the server. Is TIGA running? ' + e.message);
   }
 }
@@ -511,8 +569,9 @@ function showResults(data, append) {
   newResults.forEach((r, i) => {
     const idx = startIdx + i;
     const ext = (r.ext || '').replace('.', '').toLowerCase();
+    const isDir = ext === 'dir';
     const el  = document.createElement('div');
-    el.className = 'result-item';
+    el.className = 'result-item' + (isDir ? ' is-dir' : '');
     el.style.animation = `fadeUp 0.32s ${i * 0.06}s ease both`;
     el.style.opacity = '0';
 
@@ -520,12 +579,11 @@ function showResults(data, append) {
     const score    = Math.round((r.final_score || 0) * 100);
     const meta     = [r.project_id, r.typology].filter(Boolean).join(' · ');
 
-    el.innerHTML = `
-      <div class="file-icon">${fileIcon(ext)}</div>
-      <div class="file-info" onclick="openPreview(${idx})" style="cursor:pointer">
-        <div class="file-name">${esc(nameOnly)}</div>
-        <div class="file-path">${esc(r.rel_path)}${meta ? ' · ' + esc(meta) : ''}</div>
-      </div>
+    // Directory results: no vote buttons, show folder snippet
+    const actionsHtml = isDir ? `
+      <div class="result-actions">
+        <div class="file-meta" style="font-size:11px;color:var(--coral);white-space:nowrap">📁 folder</div>
+      </div>` : `
       <div class="file-meta">${score}%</div>
       <div class="result-actions">
         <button class="action-btn" title="Preview"
@@ -539,6 +597,14 @@ function showResults(data, append) {
         <button class="action-btn" id="dn_${idx}" title="Not helpful"
           onclick="voteResult('down', ${idx}, event)" aria-label="Not helpful">👎</button>
       </div>`;
+
+    el.innerHTML = `
+      <div class="file-icon">${fileIcon(ext)}</div>
+      <div class="file-info" onclick="${isDir ? '' : `openPreview(${idx})`}" style="cursor:${isDir ? 'default' : 'pointer'}">
+        <div class="file-name">${esc(nameOnly)}</div>
+        <div class="file-path">${esc(isDir ? r.snippet : r.rel_path)}${!isDir && meta ? ' · ' + esc(meta) : ''}</div>
+      </div>
+      ${actionsHtml}`;
     list.appendChild(el);
   });
 
@@ -568,6 +634,12 @@ function showResults(data, append) {
 function showMore() {
   _offset += 5;
   doSearch(_offset);
+}
+
+/* ── Hint pills ─────────────────────────────────────────── */
+function useHint(el) {
+  document.getElementById('searchInput').value = el.textContent;
+  doSearch(0);
 }
 
 function showError(msg) {

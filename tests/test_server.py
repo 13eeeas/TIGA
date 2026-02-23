@@ -94,11 +94,22 @@ def test_health_endpoint_ollama_down(client) -> None:
 # POST /api/query
 # ---------------------------------------------------------------------------
 
+def _semantic_route():
+    """Return a mock RouteResult that forces semantic mode."""
+    from core.router import RouteResult
+    return RouteResult(mode="semantic", project_code=None, filters={}, confidence=0.8)
+
+
 def test_query_endpoint_returns_answer_payload(client) -> None:
     """Query endpoint returns answer_summary, follow_ups, confidence, results, session_id."""
+    mock_router = type("R", (), {
+        "load_project_codes": lambda self, c: None,
+        "classify": lambda self, q, project_code=None: _semantic_route(),
+    })()
     with (
         patch("server.search", return_value=[]),
         patch("server.compose_answer", return_value=_fake_compose_result()),
+        patch("server.get_router", return_value=mock_router),
     ):
         resp = client.post("/api/query", json={"query": "hospital brief"})
 
@@ -107,6 +118,7 @@ def test_query_endpoint_returns_answer_payload(client) -> None:
     assert data["answer_summary"] == "Hospital brief covers design requirements."
     assert len(data["follow_up_prompts"]) == 3
     assert "confidence" in data
+    assert "mode" in data
     assert "session_id" in data
     assert "latency_ms" in data
     assert len(data["results"]) == 1
@@ -117,9 +129,14 @@ def test_query_endpoint_returns_answer_payload(client) -> None:
 
 def test_query_creates_session_if_none_provided(client) -> None:
     """No session_id in request → server generates a UUID and echoes it back."""
+    mock_router = type("R", (), {
+        "load_project_codes": lambda self, c: None,
+        "classify": lambda self, q, project_code=None: _semantic_route(),
+    })()
     with (
         patch("server.search", return_value=[]),
         patch("server.compose_answer", return_value=_fake_compose_result()),
+        patch("server.get_router", return_value=mock_router),
     ):
         resp = client.post("/api/query", json={"query": "hospital"})
 
@@ -132,9 +149,14 @@ def test_query_creates_session_if_none_provided(client) -> None:
 def test_query_preserves_provided_session_id(client) -> None:
     """Explicit session_id is echoed back unchanged."""
     sid = "my-known-session-abc"
+    mock_router = type("R", (), {
+        "load_project_codes": lambda self, c: None,
+        "classify": lambda self, q, project_code=None: _semantic_route(),
+    })()
     with (
         patch("server.search", return_value=[]),
         patch("server.compose_answer", return_value=_fake_compose_result()),
+        patch("server.get_router", return_value=mock_router),
     ):
         resp = client.post("/api/query", json={"query": "school", "session_id": sid})
 

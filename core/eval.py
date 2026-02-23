@@ -32,6 +32,7 @@ from core.db import file_id_from_path
 logger = logging.getLogger(__name__)
 
 _FIXTURE_FILENAME = "eval_queries.yaml"
+_ROUTING_EVAL_FILENAME = "eval_questions.json"
 
 
 # ---------------------------------------------------------------------------
@@ -265,18 +266,137 @@ def run_eval(
 
     # Summary
     gate = "PASS" if exit_code == 0 else "FAIL"
-    print(f"\n{'─' * 52}")
+    print(f"\n{'-' * 52}")
     print(f"  Queries:          {n}")
     print(f"  Top-5 recall:     {top5_recall * 100:.0f}%")
     print(f"  Citation valid:   {citation_valid_pct:.0f}%  [{gate}]")
     print(f"  Latency p50/p95:  {p50:.0f} / {p95:.0f} ms")
     print(f"  Report:           {report_path}")
-    print(f"{'─' * 52}")
+    print(f"{'-' * 52}")
 
     if exit_code == 1:
         print(
             f"\n  GATE FAIL: {invalid_count} invalid citation(s) detected.",
             file=sys.stderr,
         )
+
+    return exit_code
+
+
+# ---------------------------------------------------------------------------
+# Routing eval (Chunk 7) — fast, no Ollama required
+# ---------------------------------------------------------------------------
+
+def _load_routing_fixture() -> list[dict[str, Any]]:
+    """Load eval_questions.json from tests/ directory."""
+    # Try tests/ directory first
+    candidates = [
+        Path(__file__).parent.parent / "tests" / _ROUTING_EVAL_FILENAME,
+        cfg.work_dir / "fixtures" / _ROUTING_EVAL_FILENAME,
+    ]
+    for p in candidates:
+        if p.exists():
+            try:
+                import re as _re
+                text = p.read_text(encoding="utf-8")
+                # Strip JS-style // comments before JSON parsing
+                text = _re.sub(r'//[^\n]*', '', text)
+                return json.loads(text)
+            except Exception as e:
+                logger.warning("Failed to load routing fixture %s: %s", p, e)
+    return []
+
+
+def run_routing_eval(verbose: bool = True) -> int:
+    """
+    Run routing-only eval (no search, no Ollama).
+    Tests that classify() returns the expected mode for each question.
+
+    Returns:
+        exit code: 0 = >=85% accuracy, 1 = below threshold
+    """
+    from core.router import QueryRouter
+
+    router = QueryRouter()
+    fixture = _load_routing_fixture()
+
+    if not fixture:
+        print(
+            "No routing eval fixture found.\n"
+            "Expected: tests/eval_questions.json",
+            file=sys.stderr,
+        )
+        return 0
+
+    total = len(fixture)
+    correct = 0
+    failures: list[dict[str, Any]] = []
+
+    for item in fixture:
+        q = item.get("q", "")
+        expected_mode = item.get("mode", "")
+        if not q or not expected_mode:
+            continue
+
+        result = router.classify(q)
+        actual_mode = result.mode
+        passed = actual_mode == expected_mode
+
+        if passed:
+            correct += 1
+        else:
+            failures.append({
+                "q":        q,
+                "expected": expected_mode,
+                "actual":   actual_mode,
+                "tags":     result.expanded_query.concept_tags if result.expanded_query else [],
+                "conf":     round(result.confidence, 2),
+                "reason":   result.reason,
+            })
+
+        if verbose:
+            marker = "PASS" if passed else "FAIL"
+            tags_str = (
+                ",".join(result.expanded_query.concept_tags)
+                if result.expanded_query and result.expanded_query.concept_tags
+                else "none"
+            )
+            print(f"[{marker}] {q!r}")
+            if not passed:
+                print(f"       Expected: {expected_mode}  Got: {actual_mode}  Tags: [{tags_str}]")
+
+    accuracy = correct / total if total else 0.0
+    threshold = 0.85
+    exit_code = 0 if accuracy >= threshold else 1
+    gate = "PASS" if exit_code == 0 else "FAIL"
+
+    print(f"\n{'-' * 52}")
+    print(f"  Questions:   {total}")
+    print(f"  Correct:     {correct}")
+    print(f"  Accuracy:    {accuracy * 100:.1f}%  [{gate}]  (threshold: {threshold * 100:.0f}%)")
+    print(f"  Failures:    {len(failures)}")
+    print(f"{'-' * 52}")
+
+    if failures:
+        print("\nFailed questions:")
+        for f in failures:
+            print(f"  [{f['expected']} -> {f['actual']}] {f['q']!r}")
+            if f['tags']:
+                print(f"    Concept tags: {f['tags']}")
+
+    # Save report
+    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
+    report_dir = cfg.get_report_dir()
+    report_dir.mkdir(parents=True, exist_ok=True)
+    report_path = report_dir / f"routing_eval_{ts}.json"
+    report_path.write_text(
+        json.dumps({
+            "ts": ts, "total": total, "correct": correct,
+            "accuracy": round(accuracy, 4), "threshold": threshold,
+            "failures": failures,
+        }, indent=2),
+        encoding="utf-8",
+    )
+    print(f"  Report: {report_path}")
 
     return exit_code

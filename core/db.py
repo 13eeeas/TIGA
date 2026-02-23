@@ -135,6 +135,60 @@ CREATE TABLE IF NOT EXISTS audit_log (
     ts        TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Rich project data card (Chunk 1)
+CREATE TABLE IF NOT EXISTS project_cards (
+    project_code         TEXT PRIMARY KEY,
+    name                 TEXT,
+    alt_names            TEXT,    -- JSON array
+    typology_primary     TEXT,
+    typology_secondary   TEXT,
+    location             TEXT,
+    client               TEXT,
+    stage                TEXT,
+    gfa_sqm              REAL,
+    site_area_sqm        REAL,
+    plot_ratio_proposed  REAL,
+    plot_ratio_allowable REAL,
+    storeys_above        INTEGER,
+    storeys_below        INTEGER,
+    units                INTEGER,
+    keys                 INTEGER,
+    beds                 INTEGER,
+    program_components   TEXT,    -- JSON array
+    contract_value       TEXT,
+    architect            TEXT,
+    pm_job_captain       TEXT,
+    consultants          TEXT,    -- JSON array [{discipline, company}]
+    contractor           TEXT,
+    authorities          TEXT,    -- JSON array
+    milestone_dates      TEXT,    -- JSON {appointment, schematic, tender, IFC, TOP, completion}
+    root_path            TEXT,
+    woha_url             TEXT,
+    concept_summary      TEXT,
+    awards               TEXT,    -- JSON array
+    data_sources         TEXT,    -- JSON: {field: {value, source, confidence}}
+    created_at           TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at           TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_project_cards_typology ON project_cards(typology_primary);
+CREATE INDEX IF NOT EXISTS idx_project_cards_stage    ON project_cards(stage);
+
+-- Chunk 11 — Project name aliases (for matching files to projects)
+CREATE TABLE IF NOT EXISTS project_aliases (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_code TEXT NOT NULL,
+    alias        TEXT NOT NULL,
+    alias_type   TEXT NOT NULL DEFAULT 'inferred'
+                     CHECK(alias_type IN ('abbreviation', 'client_ref', 'old_name', 'common_name', 'manual', 'inferred')),
+    source       TEXT NOT NULL DEFAULT 'inferred'
+                     CHECK(source IN ('manual', 'inferred')),
+    created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(project_code, alias)
+);
+CREATE INDEX IF NOT EXISTS idx_project_aliases_code  ON project_aliases(project_code);
+CREATE INDEX IF NOT EXISTS idx_project_aliases_alias ON project_aliases(alias);
+
 CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
     text,
     chunk_id UNINDEXED,
@@ -166,6 +220,69 @@ END;
 
 
 # ---------------------------------------------------------------------------
+# Schema migrations (idempotent ALTER TABLE additions)
+# ---------------------------------------------------------------------------
+
+_FILE_EXTRA_COLS = [
+    # Chunk 2 — path-parsed metadata
+    ("project_code",  "TEXT"),
+    ("folder_stage",  "TEXT"),
+    ("discipline",    "TEXT"),
+    ("doc_type",      "TEXT"),
+    ("revision",      "INTEGER"),
+    ("file_date",     "TEXT"),
+    ("content_type",  "TEXT"),
+    ("is_issued",     "INTEGER DEFAULT 0"),
+    ("is_superseded", "INTEGER DEFAULT 0"),
+    ("is_latest",     "INTEGER DEFAULT 0"),
+    # Chunk 8 — email metadata
+    ("email_subject",      "TEXT"),
+    ("email_sender",       "TEXT"),
+    ("email_sender_email", "TEXT"),
+    ("email_recipients",   "TEXT"),   # JSON array
+    ("email_date",         "TEXT"),   # ISO datetime
+    ("email_direction",    "TEXT"),   # inbound | outbound | internal | unknown
+    ("email_thread",       "TEXT"),   # thread_subject for grouping
+    ("email_parties",      "TEXT"),   # JSON array of domains involved
+    ("content_tags",       "TEXT"),   # JSON array of tags (waiver_correspondence etc.)
+    # Chunk 9 — image handling
+    ("image_type",         "TEXT"),   # render | scanned_drawing | scanned_document | photo | unknown
+    ("ocr_processed",      "INTEGER DEFAULT 0"),
+    ("ocr_text_length",    "INTEGER"),
+    # Chunk 10 — Excel extraction
+    ("spreadsheet_type",   "TEXT"),   # area_schedule | programme | cost_plan | etc.
+    # Chunk 12 — classification
+    ("classification_method",     "TEXT"),   # path | content | llm | unknown
+    ("classification_confidence", "REAL"),
+]
+
+_FILE_EXTRA_INDEXES = [
+    "CREATE INDEX IF NOT EXISTS idx_files_project_code  ON files(project_code)",
+    "CREATE INDEX IF NOT EXISTS idx_files_folder_stage  ON files(folder_stage)",
+    "CREATE INDEX IF NOT EXISTS idx_files_content_type  ON files(content_type)",
+    "CREATE INDEX IF NOT EXISTS idx_files_is_issued     ON files(is_issued)",
+    "CREATE INDEX IF NOT EXISTS idx_files_is_superseded ON files(is_superseded)",
+    "CREATE INDEX IF NOT EXISTS idx_files_file_date     ON files(file_date)",
+    "CREATE INDEX IF NOT EXISTS idx_files_discipline    ON files(discipline)",
+]
+
+
+def _run_migrations(conn: sqlite3.Connection) -> None:
+    """Apply idempotent ALTER TABLE migrations."""
+    for col_name, col_type in _FILE_EXTRA_COLS:
+        try:
+            conn.execute(f"ALTER TABLE files ADD COLUMN {col_name} {col_type}")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+    for idx_sql in _FILE_EXTRA_INDEXES:
+        try:
+            conn.execute(idx_sql)
+        except sqlite3.OperationalError:
+            pass
+    conn.commit()
+
+
+# ---------------------------------------------------------------------------
 # Connection
 # ---------------------------------------------------------------------------
 
@@ -176,6 +293,7 @@ def get_connection(db_path: Path) -> sqlite3.Connection:
     conn = sqlite3.connect(path_str, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.executescript(_DDL)
+    _run_migrations(conn)
     conn.commit()
     return conn
 

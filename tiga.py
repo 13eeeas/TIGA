@@ -192,6 +192,12 @@ def cmd_discover(args: argparse.Namespace) -> None:
     print("Scanning index_roots…")
     files = discover()
 
+    # Filter by project if requested
+    if getattr(args, "project", None):
+        project_filter = args.project.lower()
+        files = [f for f in files if project_filter in str(f).lower()]
+        print(f"Filtered to project '{args.project}': {len(files)} files")
+
     ext_counts: Counter[str] = Counter(f.suffix.lower() for f in files)
     print(f"\nFound {len(files)} files\n")
     print(f"{'Extension':<12} {'Count':>6}")
@@ -199,7 +205,44 @@ def cmd_discover(args: argparse.Namespace) -> None:
     for ext, count in sorted(ext_counts.items(), key=lambda x: -x[1]):
         print(f"{ext:<12} {count:>6}")
 
-    if args.list:
+    if getattr(args, "parsed", False):
+        from config import cfg
+        from core.path_parser import parse_file_path, load_semantics
+
+        sem_path = cfg.work_dir / "folder_semantics.yml"
+        semantics = load_semantics(sem_path)
+
+        print(f"\n{'File':<50} {'Stage':<14} {'Discipline':<14} {'Doc Type':<22} {'Rev':<5} {'Date'}")
+        print("-" * 125)
+        unknown_stage = 0
+        unknown_disc = 0
+
+        for f in files[:200]:  # cap at 200 to keep output readable
+            for root in cfg.index_roots:
+                try:
+                    parsed = parse_file_path(str(f), str(root), semantics)
+                    name = f.name[:48]
+                    stage = parsed.get("folder_stage", "?")
+                    disc = parsed.get("discipline", "?")
+                    doc = parsed.get("doc_type", "?")
+                    rev = str(parsed.get("revision", "")) or ""
+                    dt = parsed.get("file_date", "") or ""
+                    flag = " ⚠" if stage == "unknown" or disc == "unknown" else ""
+                    print(f"  {name:<50} {stage:<14} {disc:<14} {doc:<22} {rev:<5} {dt}{flag}")
+                    if stage == "unknown":
+                        unknown_stage += 1
+                    if disc == "unknown":
+                        unknown_disc += 1
+                    break
+                except ValueError:
+                    continue
+
+        if len(files) > 200:
+            print(f"\n  … (showing 200 of {len(files)} files)")
+        print(f"\n  Unknown stage: {unknown_stage} | Unknown discipline: {unknown_disc}")
+        return
+
+    if getattr(args, "list", False):
         print("\nFiles:")
         for f in files:
             print(f"  {f}")
@@ -334,11 +377,89 @@ def cmd_status(_args: argparse.Namespace) -> None:
 
 
 def cmd_eval(args: argparse.Namespace) -> None:
+    if getattr(args, "review_failures", False):
+        _cmd_review_failures()
+        return
+
+    if getattr(args, "routing", False):
+        from core.eval import run_routing_eval
+        code = run_routing_eval(verbose=True)
+        sys.exit(code)
+        return
+
     from core.eval import run_eval
 
     queries = args.queries if args.queries else None
     code = run_eval(queries=queries, top_k=args.top_k)
     sys.exit(code)
+
+
+def _cmd_review_failures() -> None:
+    """Interactively review low-confidence queries and create corrections."""
+    from config import cfg
+
+    log_file = cfg.work_dir / "logs" / "low_confidence.log"
+    if not log_file.exists():
+        print("No low-confidence queries logged yet.")
+        return
+
+    import json as _json
+    entries = []
+    with open(log_file, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                try:
+                    entries.append(_json.loads(line))
+                except Exception:
+                    pass
+
+    recent = entries[-20:]
+    if not recent:
+        print("No low-confidence queries found.")
+        return
+
+    print(f"\nReviewing last {len(recent)} low-confidence queries")
+    print("=" * 60)
+    corrected = 0
+
+    for entry in recent:
+        query = entry.get("query", "")
+        confidence = entry.get("confidence", 0)
+        mode = entry.get("mode", "?")
+        ts = entry.get("timestamp", "?")
+        print(f"\n[{ts[:16]}] {query!r}")
+        print(f"  Mode: {mode}, Confidence: {confidence:.2f}")
+        try:
+            answer = input("  Was this answer correct? (y/n/skip) ").strip().lower()
+        except (KeyboardInterrupt, EOFError):
+            print("\nAborted.")
+            return
+
+        if answer == "n":
+            try:
+                project = input("  Project code: ").strip()
+                field = input("  Field that was wrong (or 'answer'): ").strip()
+                correct_val = input("  Correct value: ").strip()
+            except (KeyboardInterrupt, EOFError):
+                print("\nAborted.")
+                return
+
+            if project and field and correct_val:
+                from core.corrections import save_correction
+                save_correction(
+                    project_code=project,
+                    field=field,
+                    correct_value=correct_val,
+                    wrong_value=None,
+                    source_path=None,
+                )
+                print(f"  Saved correction: {project}.{field} = {correct_val!r}")
+                corrected += 1
+        elif answer == "skip":
+            continue
+
+    print(f"\nDone. {corrected} correction(s) saved.")
 
 
 def cmd_serve(_args: argparse.Namespace) -> None:
@@ -374,6 +495,481 @@ def cmd_ui(_args: argparse.Namespace) -> None:
          "--server.headless", "true"],
         check=True,
     )
+
+
+def cmd_card(args: argparse.Namespace) -> None:
+    """View, scrape, or interactively edit a project data card."""
+    from config import cfg
+    from core.db import get_connection
+    from core.project_card import (
+        get_project_card, upsert_project_card,
+        get_missing_fields, scrape_woha_project,
+    )
+
+    cfg.ensure_dirs()
+    conn = get_connection(cfg.get_db_path())
+    code = args.project_code
+
+    try:
+        # --show: just print the card
+        if args.show:
+            card = get_project_card(code, conn=conn)
+            if card is None:
+                print(f"No project card found for '{code}'.")
+                print(f"Create one with: python tiga.py card {code}")
+                return
+            _print_card(card)
+            return
+
+        # --woha-url: scrape first, then interactive review
+        if args.woha_url:
+            print(f"Scraping {args.woha_url} …")
+            scraped = scrape_woha_project(args.woha_url)
+            scraped["project_code"] = code
+            if scraped:
+                upsert_project_card(scraped, conn=conn)
+                print(f"Scraped {len(scraped) - 2} fields from WOHA.")
+            else:
+                print("Warning: scrape returned no data. Check the URL.")
+
+        # Interactive edit
+        card = get_project_card(code, conn=conn) or {"project_code": code}
+        ds = card.get("data_sources") or {}
+        print(f"\nProject card: {code}")
+        print("=" * 50)
+        print("Press Enter to keep current value. Type new value to update.")
+        print("Type 'skip' to skip a field.\n")
+
+        _EDITABLE_FIELDS = [
+            ("name", "Project name"),
+            ("typology_primary", "Primary typology (residential/hospitality/commercial/civic)"),
+            ("typology_secondary", "Secondary typology (optional)"),
+            ("location", "Location (city, country)"),
+            ("client", "Client / Developer"),
+            ("stage", "Stage (Design/Tender/Construction/Completed)"),
+            ("gfa_sqm", "GFA (sqm)"),
+            ("site_area_sqm", "Site area (sqm)"),
+            ("storeys_above", "Storeys above grade"),
+            ("storeys_below", "Storeys below grade"),
+            ("units", "Residential units (leave blank if N/A)"),
+            ("keys", "Hotel keys (leave blank if N/A)"),
+            ("architect", "Lead architect name"),
+            ("pm_job_captain", "PM / Job captain"),
+            ("contract_value", "Contract value (or 'confidential')"),
+            ("woha_url", "WOHA website URL"),
+        ]
+
+        updates: dict = {"project_code": code}
+        ds_updates: dict = {}
+
+        for field_key, label in _EDITABLE_FIELDS:
+            current = card.get(field_key)
+            src = ds.get(field_key, {}).get("source", "unset")
+            src_tag = f" [{src}]" if src != "unset" else " [not set]"
+            current_display = str(current) if current is not None else "(not set)"
+            try:
+                user_input = input(f"{label}{src_tag}\n  Current: {current_display}\n  New: ").strip()
+            except (KeyboardInterrupt, EOFError):
+                print("\nAborted.")
+                conn.close()
+                return
+
+            if user_input.lower() == "skip" or user_input == "":
+                continue
+
+            # Type coercion for numeric fields
+            if field_key in ("gfa_sqm", "site_area_sqm"):
+                try:
+                    user_input = float(user_input.replace(",", ""))
+                except ValueError:
+                    print(f"  Invalid number, skipping {field_key}")
+                    continue
+            elif field_key in ("storeys_above", "storeys_below", "units", "keys"):
+                try:
+                    user_input = int(user_input.replace(",", ""))
+                except ValueError:
+                    print(f"  Invalid integer, skipping {field_key}")
+                    continue
+
+            updates[field_key] = user_input
+            ds_updates[field_key] = {"value": user_input, "source": "manual", "confidence": 1.0}
+
+        if len(updates) > 1:  # more than just project_code
+            updates["_source"] = "manual"
+            updates["_confidence"] = 1.0
+            updates["data_sources"] = ds_updates
+            upsert_project_card(updates, conn=conn)
+            print(f"\nSaved {len(updates) - 3} field(s) to project card.")
+        else:
+            print("\nNo changes made.")
+
+        # Show missing fields
+        missing = get_missing_fields(code, conn=conn)
+        if missing:
+            print(f"\nStill missing: {', '.join(missing)}")
+
+    finally:
+        conn.close()
+
+
+def _print_card(card: dict) -> None:
+    """Pretty-print a project card."""
+    import json as _json
+    ds = card.get("data_sources") or {}
+    print(f"\n{'=' * 60}")
+    print(f"  Project Card: {card.get('project_code', '?')}")
+    print(f"{'=' * 60}")
+
+    _DISPLAY_FIELDS = [
+        ("name", "Name"), ("typology_primary", "Typology"), ("typology_secondary", "Sub-typology"),
+        ("location", "Location"), ("client", "Client"), ("stage", "Stage"),
+        ("gfa_sqm", "GFA (sqm)"), ("site_area_sqm", "Site area (sqm)"),
+        ("storeys_above", "Storeys above"), ("storeys_below", "Storeys below"),
+        ("units", "Units"), ("keys", "Keys"), ("beds", "Beds"),
+        ("architect", "Architect"), ("pm_job_captain", "PM/Job Captain"),
+        ("contract_value", "Contract value"),
+        ("concept_summary", "Concept"),
+        ("root_path", "Root path"), ("woha_url", "WOHA URL"),
+        ("awards", "Awards"),
+    ]
+    for key, label in _DISPLAY_FIELDS:
+        val = card.get(key)
+        if val is None:
+            continue
+        src = ds.get(key, {}).get("source", "?") if ds else "?"
+        if isinstance(val, (list, dict)):
+            val_str = _json.dumps(val, ensure_ascii=False)[:120]
+        else:
+            val_str = str(val)[:120]
+        print(f"  {label:<20} {val_str}  [{src}]")
+
+    milestones = card.get("milestone_dates")
+    if isinstance(milestones, dict) and milestones:
+        print(f"  {'Milestones':<20}")
+        for k, v in milestones.items():
+            print(f"    {k}: {v}")
+    print()
+
+
+def cmd_correct(args: argparse.Namespace) -> None:
+    """Save a manual field correction."""
+    from core.corrections import save_correction
+
+    save_correction(
+        project_code=args.project,
+        field=args.field,
+        correct_value=args.value,
+    )
+    print(f"Saved: {args.project}.{args.field} = {args.value!r}")
+
+
+def cmd_cards(args: argparse.Namespace) -> None:
+    """List project cards, optionally showing only those with missing data."""
+    from config import cfg
+    from core.db import get_connection
+    from core.project_card import list_project_cards, get_missing_fields
+
+    cfg.ensure_dirs()
+    conn = get_connection(cfg.get_db_path())
+    try:
+        cards = list_project_cards(conn=conn)
+        if not cards:
+            print("No project cards found. Create one with: python tiga.py card <code>")
+            return
+
+        for card in cards:
+            code = card.get("project_code", "?")
+            name = card.get("name") or "(name not set)"
+            stage = card.get("stage") or "?"
+            typology = card.get("typology_primary") or "?"
+
+            if args.missing:
+                missing = get_missing_fields(code, conn=conn)
+                if missing:
+                    print(f"  {code:<8} {name:<40} {typology:<16} {stage:<14}")
+                    print(f"           Missing: {', '.join(missing)}")
+            else:
+                gfa = f"{card.get('gfa_sqm'):,.0f}sqm" if card.get("gfa_sqm") else "?"
+                print(f"  {code:<8} {name:<40} {typology:<16} {gfa:<12} {stage}")
+    finally:
+        conn.close()
+
+
+def cmd_route(args: argparse.Namespace) -> None:
+    """Show how the router would classify a query."""
+    from config import cfg
+    from core.db import get_connection
+    from core.router import get_router
+
+    query = " ".join(args.query)
+    if not query:
+        print("Usage: tiga.py route \"<query>\"")
+        sys.exit(1)
+
+    cfg.ensure_dirs()
+    conn = get_connection(cfg.get_db_path())
+    try:
+        router = get_router()
+        router.load_project_codes(conn)
+        result = router.classify(query)
+    finally:
+        conn.close()
+
+    print(f"\nQuery:      {query!r}")
+    print(f"Mode:       {result.mode}")
+    print(f"Confidence: {result.confidence:.2f}")
+    print(f"Project:    {result.project_code or '(none detected)'}")
+    print(f"Filters:    {result.filters or '(none)'}")
+    print(f"Reason:     {result.reason}")
+    if result.secondary_mode:
+        print(f"Secondary:  {result.secondary_mode} (ambiguous — confidence < 0.7)")
+
+
+def cmd_semantics(args: argparse.Namespace) -> None:
+    """Audit folder name matching against folder_semantics.yml."""
+    from collections import Counter
+    from config import cfg
+    from core.db import get_connection
+    from core.path_parser import load_semantics, match_stage
+
+    cfg.ensure_dirs()
+    conn = get_connection(cfg.get_db_path())
+    sem_path = cfg.work_dir / "folder_semantics.yml"
+    semantics = load_semantics(sem_path)
+
+    try:
+        if args.project:
+            where = "WHERE project_id LIKE ? OR project_code = ?"
+            params = [f"%{args.project}%", args.project]
+        else:
+            where = ""
+            params = []
+
+        rows = conn.execute(
+            f"SELECT file_path FROM files {where} LIMIT 50000",
+            params,
+        ).fetchall()
+    finally:
+        conn.close()
+
+    from pathlib import Path as _P
+    all_folders: list[str] = []
+    for row in rows:
+        p = _P(row["file_path"])
+        for root in cfg.index_roots:
+            try:
+                rel = p.relative_to(root)
+                all_folders.extend(rel.parts[:-1])  # exclude filename
+                break
+            except ValueError:
+                continue
+
+    unmatched: Counter = Counter()
+    matched: Counter = Counter()
+
+    for folder in all_folders:
+        stage = match_stage(folder, semantics)
+        if stage:
+            matched[f"{folder} → {stage}"] += 1
+        else:
+            unmatched[folder] += 1
+
+    scope = f"project {args.project}" if args.project else "all projects"
+    print(f"\nFolder semantics audit — {scope}")
+    print(f"Scanned {len(all_folders)} folder segments from {len(rows)} files\n")
+
+    if matched:
+        print(f"Matched ({len(matched)} unique):")
+        for k, cnt in matched.most_common(20):
+            print(f"  {cnt:>5}×  {k}")
+
+    print(f"\nUnmatched ({len(unmatched)} unique — add to folder_semantics.yml):")
+    for folder, cnt in unmatched.most_common(40):
+        print(f"  {cnt:>5}×  {folder!r}")
+
+    print(f"\nSemantics file: {sem_path}")
+
+
+def cmd_synonyms(args: argparse.Namespace) -> None:
+    """Audit or extend query_synonyms.yml."""
+    from config import cfg
+    from core.router import load_synonyms, expand_query as _expand
+
+    syn_path = cfg.work_dir / "query_synonyms.yml"
+
+    if args.add and args.concept:
+        # Quick-add a phrase to an existing concept
+        phrase = args.add.lower().strip()
+        concept = args.concept.lower().strip()
+        synonyms = load_synonyms(syn_path)
+
+        if concept not in synonyms:
+            print(f"Unknown concept '{concept}'. Known: {', '.join(sorted(synonyms.keys()))}")
+            sys.exit(1)
+
+        existing = [str(s).lower() for s in synonyms[concept].get("synonyms", [])]
+        if phrase in existing:
+            print(f"'{phrase}' is already in concept '{concept}'.")
+            return
+
+        # Append to YAML file
+        import yaml as _yaml
+        with open(syn_path, "r", encoding="utf-8") as f:
+            raw = f.read()
+
+        # Find the synonyms block for this concept and append
+        # Simple append: add line under the last synonym
+        import re as _re
+        # Match the concept block and append the new synonym
+        pattern = rf"(^{re.escape(concept)}:\n(?:[ \t]+.*\n)*)"
+        def _append_syn(m):
+            block = m.group(1).rstrip("\n")
+            return block + f"\n    - \"{phrase}\"\n"
+        new_raw, n = _re.subn(pattern, _append_syn, raw, flags=_re.MULTILINE)
+        if n == 0:
+            print(f"Could not locate '{concept}' block in YAML. Edit manually.")
+            sys.exit(1)
+
+        with open(syn_path, "w", encoding="utf-8") as f:
+            f.write(new_raw)
+
+        # Invalidate synonym cache
+        import core.router as _router_mod
+        _router_mod._synonyms_data = None
+
+        print(f"Added '{phrase}' to concept '{concept}'.")
+
+        # Auto-run routing eval to check nothing broke
+        print("\nRunning routing eval to verify...")
+        from core.eval import run_routing_eval
+        run_routing_eval(verbose=False)
+        return
+
+    if args.audit:
+        from core.router import QueryRouter
+        router = QueryRouter()
+
+        log_file = cfg.work_dir / "logs" / "queries.log"
+        if not log_file.exists():
+            print(f"No queries.log found at {log_file}")
+            print("Run some queries first, then audit.")
+            return
+
+        import json as _json
+        from collections import Counter
+        queries_seen: list[str] = []
+        with open(log_file, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = _json.loads(line)
+                    q = entry.get("query", "")
+                    if q:
+                        queries_seen.append(q)
+                except Exception:
+                    # Plain text line
+                    queries_seen.append(line.split("|")[0].strip())
+
+        # Take last 200
+        recent = queries_seen[-200:]
+        no_match: Counter = Counter()
+        for q in recent:
+            expanded = router.expand_query(q)
+            if not expanded.concept_tags:
+                no_match[q] += 1
+
+        print(f"\nSynonym audit — last {len(recent)} queries")
+        print(f"No concept match: {len(no_match)} unique queries\n")
+        if no_match:
+            print("Queries with NO concept match (most frequent first):")
+            for q, cnt in no_match.most_common(30):
+                print(f"  {cnt:>3}×  {q!r}")
+            print(f"\nAdd missing phrases to: {syn_path}")
+        else:
+            print("All recent queries matched at least one concept.")
+        return
+
+    # Default: show expansion for a test query
+    if args.query:
+        from core.router import QueryRouter
+        router = QueryRouter()
+        query = " ".join(args.query)
+        expanded = router.expand_query(query)
+        print(f"\nQuery:         {query!r}")
+        print(f"Normalised:    {expanded.normalised!r}")
+        print(f"Concept tags:  {expanded.concept_tags or ['(none)']}")
+        print(f"Expanded terms ({len(expanded.expanded_terms)}): "
+              f"{expanded.expanded_terms[:10]}{'...' if len(expanded.expanded_terms) > 10 else ''}")
+    else:
+        print("Usage:\n"
+              "  python tiga.py synonyms --audit\n"
+              "  python tiga.py synonyms --add \"phrase\" --concept <concept>\n"
+              "  python tiga.py synonyms <query text>")
+
+
+def cmd_aliases(args: argparse.Namespace) -> None:
+    """Manage project name aliases."""
+    from config import cfg
+    from core.db import get_connection
+
+    cfg.ensure_dirs()
+    conn = get_connection(cfg.get_db_path())
+
+    try:
+        if args.rebuild:
+            from core.infer import generate_aliases_for_all
+            print("Rebuilding project aliases...")
+            added = generate_aliases_for_all(conn)
+            print(f"Generated {added} alias(es) for all projects.")
+            return
+
+        if args.add and args.project:
+            from core.infer import add_alias
+            add_alias(conn, args.project, args.alias_name, alias_type="manual")
+            print(f"Added alias '{args.alias_name}' for project {args.project}")
+            return
+
+        if args.project:
+            # Show aliases for a project
+            rows = conn.execute(
+                "SELECT alias, alias_type, source FROM project_aliases WHERE project_code = ?",
+                (args.project,),
+            ).fetchall()
+            if not rows:
+                print(f"No aliases for project {args.project}.")
+            else:
+                print(f"\nAliases for {args.project}:")
+                for r in rows:
+                    print(f"  {r['alias']:<30} [{r['alias_type']}] from {r['source']}")
+            return
+
+        if args.audit:
+            # Show unmatched files log
+            log_file = cfg.work_dir / "logs" / "unmatched_files.log"
+            if not log_file.exists():
+                print("No unmatched files log yet.")
+                return
+            print(f"\nUnmatched files from {log_file}:")
+            with open(log_file, encoding="utf-8") as f:
+                for i, line in enumerate(f, 1):
+                    print(f"  {i:4d}. {line.rstrip()}")
+            return
+
+        # Default: list all aliases
+        rows = conn.execute(
+            "SELECT project_code, alias, alias_type FROM project_aliases ORDER BY project_code, alias"
+        ).fetchall()
+        if not rows:
+            print("No aliases yet. Run: python tiga.py aliases --rebuild")
+        else:
+            print(f"\n{'Project':<12} {'Alias':<35} {'Type'}")
+            print("-" * 60)
+            for r in rows:
+                print(f"  {r['project_code']:<12} {r['alias']:<35} {r['alias_type']}")
+    finally:
+        conn.close()
 
 
 def cmd_einstein(_args: argparse.Namespace) -> None:
@@ -424,6 +1020,9 @@ def build_parser() -> argparse.ArgumentParser:
     # discover
     p_disc = sub.add_parser("discover", help="List files that would be indexed")
     p_disc.add_argument("--list", action="store_true", help="Print all file paths")
+    p_disc.add_argument("--project", help="Filter to a specific project code")
+    p_disc.add_argument("--parsed", action="store_true",
+                        help="Show parsed path metadata for each file")
 
     # extract
     p_ext = sub.add_parser("extract", help="Test extraction on a file")
@@ -451,6 +1050,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_ev = sub.add_parser("eval", help="Run search quality evaluation")
     p_ev.add_argument("--queries", nargs="*", help="Custom test queries")
     p_ev.add_argument("--top-k", type=int, default=5)
+    p_ev.add_argument("--review-failures", action="store_true",
+                      help="Review last 20 low-confidence queries interactively")
+    p_ev.add_argument("--routing", action="store_true",
+                      help="Run routing-only eval (fast, no Ollama required)")
 
     # serve
     sub.add_parser("serve", help="Start FastAPI LAN server")
@@ -464,6 +1067,57 @@ def build_parser() -> argparse.ArgumentParser:
     # einstein
     sub.add_parser("einstein", help="Phase 2 (stub)")
 
+    # card
+    p_card = sub.add_parser("card", help="View or edit a project data card")
+    p_card.add_argument("project_code", help="Project code (e.g. 186)")
+    p_card.add_argument("--woha-url", dest="woha_url", default=None,
+                        help="Scrape WOHA project page to pre-populate")
+    p_card.add_argument("--show", action="store_true",
+                        help="Print card without editing")
+
+    # correct
+    p_corr = sub.add_parser("correct", help="Save a manual field correction")
+    p_corr.add_argument("--project", required=True, help="Project code")
+    p_corr.add_argument("--field", required=True, help="Field name")
+    p_corr.add_argument("--value", required=True, help="Correct value")
+
+    # cards
+    p_cards = sub.add_parser("cards", help="List all project cards")
+    p_cards.add_argument("--missing", action="store_true",
+                         help="Show only cards with missing required fields")
+
+    # route
+    p_route = sub.add_parser("route", help="Show query routing classification")
+    p_route.add_argument("query", nargs="+", help="Query to classify")
+
+    # semantics
+    p_sem = sub.add_parser("semantics", help="Audit folder name matching")
+    p_sem.add_argument("--audit", action="store_true", help="Run audit")
+    p_sem.add_argument("--project", default=None, help="Limit to project code")
+    p_sem.add_argument("--all", dest="all_projects", action="store_true",
+                       help="Audit all indexed projects")
+
+    # synonyms
+    p_syn = sub.add_parser("synonyms", help="Audit or extend query synonym map")
+    p_syn.add_argument("query", nargs="*", help="Test query for expansion preview")
+    p_syn.add_argument("--audit", action="store_true",
+                       help="Scan queries.log for gaps in synonym coverage")
+    p_syn.add_argument("--add", default=None, metavar="PHRASE",
+                       help="Quick-add a phrase to a concept")
+    p_syn.add_argument("--concept", default=None, metavar="CONCEPT",
+                       help="Concept to add the phrase to (use with --add)")
+
+    # aliases
+    p_al = sub.add_parser("aliases", help="Manage project name aliases")
+    p_al.add_argument("--project", default=None, help="Project code to show/manage")
+    p_al.add_argument("--add", action="store_true", help="Add a manual alias")
+    p_al.add_argument("--alias-name", dest="alias_name", default=None,
+                      help="Alias to add (use with --add --project)")
+    p_al.add_argument("--audit", action="store_true",
+                      help="Show unmatched files log")
+    p_al.add_argument("--rebuild", action="store_true",
+                      help="Re-generate inferred aliases for all projects")
+
     return parser
 
 
@@ -476,19 +1130,26 @@ def main() -> None:
     args = parser.parse_args()
 
     dispatch = {
-        "init":     cmd_init,
-        "discover": cmd_discover,
-        "extract":  cmd_extract,
-        "embed":    cmd_embed,
-        "index":    cmd_index,
-        "rebuild":  cmd_rebuild,
-        "query":    cmd_query,
-        "status":   cmd_status,
-        "eval":     cmd_eval,
-        "serve":    cmd_serve,
-        "ui":       cmd_ui,
-        "health":   cmd_health,
-        "einstein": cmd_einstein,
+        "init":      cmd_init,
+        "discover":  cmd_discover,
+        "extract":   cmd_extract,
+        "embed":     cmd_embed,
+        "index":     cmd_index,
+        "rebuild":   cmd_rebuild,
+        "query":     cmd_query,
+        "status":    cmd_status,
+        "eval":      cmd_eval,
+        "serve":     cmd_serve,
+        "ui":        cmd_ui,
+        "health":    cmd_health,
+        "einstein":  cmd_einstein,
+        "card":      cmd_card,
+        "correct":   cmd_correct,
+        "cards":     cmd_cards,
+        "route":     cmd_route,
+        "semantics": cmd_semantics,
+        "synonyms":  cmd_synonyms,
+        "aliases":   cmd_aliases,
     }
     dispatch[args.command](args)
 

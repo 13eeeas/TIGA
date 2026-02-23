@@ -27,6 +27,55 @@ st.set_page_config(
     layout="wide",
 )
 
+# ── Design system: match main UI fonts + coral accents ──────────────────────
+st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Lora:wght@400;500&family=Source+Serif+4:opsz,wght@8..60,300;8..60,400&display=swap');
+
+/* Body & UI text */
+html, body, [class*="css"], .stMarkdown, .stText, .stCaption,
+.stDataFrame, div[data-testid="stMetricLabel"], div[data-testid="stMetricValue"] {
+    font-family: 'Source Serif 4', Georgia, serif !important;
+}
+/* Headings */
+h1, h2, h3, h4, .stSubheader, div[data-testid="stHeading"] {
+    font-family: 'Lora', Georgia, serif !important;
+    font-weight: 400 !important;
+}
+/* Primary action buttons → coral */
+.stButton > button[kind="primary"] {
+    background-color: #C96442 !important;
+    border-color: #C96442 !important;
+    color: white !important;
+    font-family: 'Source Serif 4', Georgia, serif !important;
+}
+.stButton > button[kind="primary"]:hover {
+    background-color: #a8522f !important;
+    border-color: #a8522f !important;
+}
+/* All other buttons */
+.stButton > button {
+    font-family: 'Source Serif 4', Georgia, serif !important;
+}
+/* Tab active underline → coral */
+.stTabs [data-baseweb="tab"][aria-selected="true"] {
+    border-bottom-color: #C96442 !important;
+    color: #C96442 !important;
+}
+/* Metric value */
+div[data-testid="stMetricValue"] {
+    font-family: 'Lora', Georgia, serif !important;
+    font-size: 1.6rem !important;
+}
+/* Progress bar → coral */
+.stProgress > div > div { background-color: #C96442 !important; }
+/* Text inputs */
+.stTextInput input, .stTextArea textarea, .stNumberInput input {
+    font-family: 'Source Serif 4', Georgia, serif !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
 _API = f"http://localhost:{cfg.server_port}"
 
 
@@ -351,6 +400,56 @@ with tabs[4]:
                         json={"action": f"Killed process PID {p['pid']}"})
     else:
         st.write("No active workers.")
+
+    st.subheader("Search Quality Self-Test")
+    st.caption("10 Tianmu-specific queries probing the index from multiple angles.")
+
+    _TIANMU_QUERIES = [
+        ("Design",       "facade glazing system and curtain wall details"),
+        ("Programme",    "building area schedule and programme breakdown"),
+        ("Client",       "client presentation schematic design"),
+        ("Structure",    "structural engineer consultant report"),
+        ("Submission",   "planning authority submission drawings"),
+        ("Materials",    "external cladding material specification"),
+        ("Site",         "site analysis topography survey"),
+        ("Tender",       "tender package drawings and specifications"),
+        ("Meetings",     "project meeting minutes and action items"),
+        ("Coordination", "MEP services coordination drawings"),
+    ]
+
+    if st.button("Run Self-Test (10 queries)", type="primary", key="selftest_run"):
+        results = []
+        prog_bar = st.progress(0, text="Testing queries…")
+        for i, (category, query) in enumerate(_TIANMU_QUERIES):
+            prog_bar.progress((i + 1) / len(_TIANMU_QUERIES), text=f"Testing: {query[:50]}…")
+            r = api("post", "/api/query", json={"query": query, "top_k": 1})
+            if r is None:
+                results.append({"Category": category, "Query": query, "Top Result": "ERROR", "Score": "—", "✓": "❌"})
+            elif not r.get("results"):
+                results.append({"Category": category, "Query": query, "Top Result": "(no results)", "Score": "0%", "✓": "❌"})
+            else:
+                top   = r["results"][0]
+                score = int((top.get("final_score", 0)) * 100)
+                passed = score >= 35
+                results.append({
+                    "Category":   category,
+                    "Query":      query,
+                    "Top Result": top.get("title", "?"),
+                    "Score":      f"{score}%",
+                    "✓":          "✅" if passed else "⚠️",
+                })
+        prog_bar.empty()
+
+        import pandas as pd
+        st.dataframe(pd.DataFrame(results), use_container_width=True, hide_index=True)
+
+        passed_n = sum(1 for r in results if r["✓"] == "✅")
+        if passed_n >= 8:
+            st.success(f"✅ {passed_n}/10 queries returned relevant results")
+        elif passed_n >= 5:
+            st.warning(f"⚠️ {passed_n}/10 queries returned relevant results — some gaps in coverage")
+        else:
+            st.error(f"❌ {passed_n}/10 queries returned relevant results — index may need attention")
 
 
 # ── TAB 6: Feedback ────────────────────────────────────────────────────────

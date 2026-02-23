@@ -335,6 +335,118 @@ def run_index(
     return {**s1, **s2}
 
 
+def _run_path_parse(conn: sqlite3.Connection, cfg_obj: Config) -> dict[str, int]:
+    """
+    Parse structured metadata from file paths for all DISCOVERED files
+    that haven't been path-parsed yet (folder_stage IS NULL).
+    Updates files table with project_code, folder_stage, discipline, etc.
+    """
+    stats = {"path_parsed": 0, "path_parse_errors": 0}
+    try:
+        from core.path_parser import parse_file_path, load_semantics, update_is_latest
+
+        sem_path = cfg_obj.work_dir / "folder_semantics.yml"
+        semantics = load_semantics(sem_path)
+
+        # Build root→project_code mapping from project_cards and files
+        root_map: dict[str, str] = {}
+        try:
+            rows = conn.execute(
+                "SELECT project_code, root_path FROM project_cards "
+                "WHERE root_path IS NOT NULL"
+            ).fetchall()
+            for r in rows:
+                root_map[r["root_path"]] = r["project_code"]
+        except Exception:
+            pass
+
+        # Process all files missing folder_stage
+        pending = conn.execute(
+            "SELECT file_id, file_path, project_id FROM files "
+            "WHERE folder_stage IS NULL"
+        ).fetchall()
+
+        if not pending:
+            return stats
+
+        logger.info("_run_path_parse: parsing %d file paths", len(pending))
+
+        for row in pending:
+            try:
+                file_path = row["file_path"]
+                # Determine project root: match against known roots or index_roots
+                project_root = ""
+                project_code = row["project_id"]  # existing inference result
+
+                for root in cfg_obj.index_roots:
+                    root_str = str(root)
+                    if file_path.startswith(root_str):
+                        project_root = root_str
+                        # Override project_code from root_map if available
+                        if root_str in root_map:
+                            project_code = root_map[root_str]
+                        break
+
+                if not project_root:
+                    project_root = str(Path(file_path).parent)
+
+                parsed = parse_file_path(file_path, project_root, semantics)
+                if project_code and project_code != "Unknown":
+                    parsed["project_code"] = project_code
+
+                conn.execute(
+                    """UPDATE files SET
+                        project_code  = COALESCE(?, project_code),
+                        folder_stage  = ?,
+                        discipline    = ?,
+                        doc_type      = ?,
+                        revision      = ?,
+                        file_date     = ?,
+                        content_type  = ?,
+                        is_issued     = ?,
+                        is_superseded = ?
+                       WHERE file_id = ?""",
+                    (
+                        parsed.get("project_code"),
+                        parsed.get("folder_stage"),
+                        parsed.get("discipline"),
+                        parsed.get("doc_type"),
+                        parsed.get("revision"),
+                        parsed.get("file_date"),
+                        parsed.get("content_type"),
+                        int(parsed.get("is_issued", 0)),
+                        int(parsed.get("is_superseded", 0)),
+                        row["file_id"],
+                    ),
+                )
+                stats["path_parsed"] += 1
+
+                if stats["path_parsed"] % 500 == 0:
+                    conn.commit()
+                    logger.info("_run_path_parse: %d parsed…", stats["path_parsed"])
+
+            except Exception as e:
+                logger.warning("path_parse failed for %s: %s", row.get("file_path"), e)
+                stats["path_parse_errors"] += 1
+
+        conn.commit()
+
+        # Update is_latest for all project codes seen
+        try:
+            update_is_latest(conn)
+        except Exception as e:
+            logger.warning("update_is_latest failed: %s", e)
+
+        logger.info(
+            "_run_path_parse complete — parsed=%d errors=%d",
+            stats["path_parsed"], stats["path_parse_errors"],
+        )
+    except Exception as e:
+        logger.warning("_run_path_parse skipped: %s", e)
+
+    return stats
+
+
 def run_full_pipeline(
     conn: sqlite3.Connection,
     cfg_obj: Config | None = None,
@@ -358,6 +470,10 @@ def run_full_pipeline(
     # ── Phase 0: discover ────────────────────────────────────────────────────
     logger.info("run_full_pipeline: phase 0 — discover")
     d_stats = run_discover(conn, _cfg.index_roots, _cfg)
+
+    # ── Phase 0b: parse file paths for structured metadata ───────────────────
+    logger.info("run_full_pipeline: phase 0b — path parsing")
+    _run_path_parse(conn, _cfg)
 
     # ── Phase 1: extract DISCOVERED files ───────────────────────────────────
     logger.info("run_full_pipeline: phase 1 — extract")
@@ -387,12 +503,308 @@ def run_full_pipeline(
     logger.info("run_full_pipeline: phases 2+3 — embed + FTS")
     i_stats = run_index(conn, _cfg)
 
-    return {**d_stats, **e_stats, **i_stats}
+    # ── Phase 4: Image context indexing (renders → synthetic descriptions) ────
+    logger.info("run_full_pipeline: phase 4 — image context indexing")
+    img_stats = _run_image_indexing(conn, _cfg)
+
+    # ── Phase 5: Content-based classification fallback ───────────────────────
+    logger.info("run_full_pipeline: phase 5 — content classification")
+    cls_stats = _run_content_classification(conn, _cfg)
+
+    return {**d_stats, **e_stats, **i_stats, **img_stats, **cls_stats}
 
 
 # ---------------------------------------------------------------------------
 # Rebuild
 # ---------------------------------------------------------------------------
+
+def _run_image_indexing(conn: sqlite3.Connection, cfg_obj: Config) -> dict[str, int]:
+    """
+    Chunk 9: For image files (METADATA_ONLY with image extensions) that haven't
+    been given a synthetic description yet, generate one from the path context.
+    Updates image_type and inserts a synthetic text chunk for semantic search.
+    """
+    stats = {"images_indexed": 0, "images_skipped": 0}
+    try:
+        from core.extract import classify_image, build_image_synthetic_description
+        import hashlib as _hash
+
+        image_exts = {".jpg", ".jpeg", ".png", ".gif", ".tif", ".tiff", ".bmp"}
+        # Find image files that are EXTRACTED (have meta chunk) but no image_type set
+        rows = conn.execute(
+            "SELECT f.file_id, f.file_path, f.extension "
+            "FROM files f "
+            "WHERE f.image_type IS NULL "
+            "AND f.lane = 'METADATA_ONLY' "
+            "AND LOWER(f.extension) IN (" +
+            ",".join("?" * len(image_exts)) + ")",
+            list(image_exts),
+        ).fetchall()
+
+        if not rows:
+            return stats
+
+        logger.info("_run_image_indexing: processing %d image files", len(rows))
+
+        for row in rows:
+            try:
+                path = Path(row["file_path"])
+                img_cls = classify_image(path)
+
+                # Update image_type in files table
+                conn.execute(
+                    "UPDATE files SET image_type = ? WHERE file_id = ?",
+                    (img_cls.image_type, row["file_id"]),
+                )
+
+                # For renders: generate synthetic description as chunk text
+                if not img_cls.needs_ocr:
+                    desc = build_image_synthetic_description(path, img_cls)
+                    if desc:
+                        # Upsert a synthetic text chunk for this image
+                        from core.db import upsert_chunk as _upsert_chunk
+                        chunk_id = _hash.sha256(
+                            f"{row['file_id']}::image_context".encode()
+                        ).hexdigest()
+                        c_hash = _hash.sha256(desc.encode()).hexdigest()
+                        existing = conn.execute(
+                            "SELECT content_hash FROM chunks WHERE chunk_id=?",
+                            (chunk_id,),
+                        ).fetchone()
+                        if not existing:
+                            _upsert_chunk(conn, {
+                                "chunk_id": chunk_id,
+                                "file_id": row["file_id"],
+                                "ref_value": "image_context",
+                                "text": desc,
+                                "token_estimate": len(desc.split()),
+                                "content_hash": c_hash,
+                            })
+                            stats["images_indexed"] += 1
+                        else:
+                            stats["images_skipped"] += 1
+
+            except Exception as e:
+                logger.debug("image indexing failed for %s: %s", row.get("file_path"), e)
+                stats["images_skipped"] += 1
+
+        conn.commit()
+        logger.info("_run_image_indexing: indexed=%d skipped=%d",
+                    stats["images_indexed"], stats["images_skipped"])
+
+    except Exception as e:
+        logger.warning("_run_image_indexing skipped: %s", e)
+
+    return stats
+
+
+def _run_content_classification(conn: sqlite3.Connection, cfg_obj: Config) -> dict[str, int]:
+    """
+    Chunk 12: Content-based document classification fallback.
+    For TEXT_EXTRACTABLE files where doc_type is NULL or 'unknown',
+    read first 500 words from DB chunks and classify.
+    Only applies classification if confidence > 0.75.
+    """
+    stats = {"content_classified": 0, "content_classified_low_conf": 0}
+    try:
+        from core.extract import classify_document_by_content
+
+        # Find indexed files with unknown doc_type
+        rows = conn.execute(
+            """SELECT f.file_id, f.file_path,
+                      (SELECT c.text FROM chunks c WHERE c.file_id = f.file_id
+                       ORDER BY c.rowid LIMIT 1) AS first_chunk_text
+               FROM files f
+               WHERE f.lane = 'TEXT_EXTRACTABLE'
+                 AND (f.doc_type IS NULL OR f.doc_type = 'unknown')
+                 AND f.status = 'INDEXED'
+               LIMIT 5000"""
+        ).fetchall()
+
+        if not rows:
+            return stats
+
+        logger.info("_run_content_classification: checking %d files", len(rows))
+
+        for row in rows:
+            text = row["first_chunk_text"] or ""
+            if not text.strip():
+                continue
+
+            try:
+                cls = classify_document_by_content(text, row["file_path"])
+                method = "content"
+                if cls.confidence >= 0.75:
+                    conn.execute(
+                        "UPDATE files SET doc_type = ?, classification_method = ?, "
+                        "classification_confidence = ? WHERE file_id = ?",
+                        (cls.doc_type, method, cls.confidence, row["file_id"]),
+                    )
+                    stats["content_classified"] += 1
+                else:
+                    conn.execute(
+                        "UPDATE files SET classification_method = 'unknown', "
+                        "classification_confidence = ? WHERE file_id = ?",
+                        (cls.confidence, row["file_id"]),
+                    )
+                    stats["content_classified_low_conf"] += 1
+            except Exception as e:
+                logger.debug("content classification failed for %s: %s", row["file_path"], e)
+
+        conn.commit()
+        logger.info(
+            "_run_content_classification: classified=%d low_conf=%d",
+            stats["content_classified"], stats["content_classified_low_conf"],
+        )
+
+    except Exception as e:
+        logger.warning("_run_content_classification skipped: %s", e)
+
+    return stats
+
+
+# ---------------------------------------------------------------------------
+# Chunk 13 — Index health / staleness detection
+# ---------------------------------------------------------------------------
+
+from dataclasses import dataclass as _dc
+
+
+@_dc
+class StalenessReport:
+    project_code:           str | None
+    last_full_index:        str          # ISO datetime or empty
+    last_incremental_index: str          # ISO datetime or empty
+    files_indexed:          int
+    files_missing:          int          # indexed files no longer on disk
+    files_new_estimate:     int          # rough estimate only
+    staleness_score:        float        # 0.0 = fresh, 1.0 = very stale
+    recommendation:         str          # "fresh" | "run incremental" | "run rebuild"
+
+
+def check_index_staleness(
+    conn: sqlite3.Connection,
+    project_code: str | None = None,
+    cfg_obj: Config | None = None,
+    sample_limit: int = 500,
+) -> StalenessReport:
+    """
+    Lightweight staleness check.
+    Samples up to `sample_limit` indexed file paths to detect missing files.
+    Does NOT scan the full archive (too slow for real-time use).
+    """
+    from datetime import datetime, timezone, timedelta
+
+    _cfg = cfg_obj or _module_cfg
+
+    try:
+        # Last indexed timestamp
+        if project_code:
+            row = conn.execute(
+                "SELECT MAX(e.ts) AS last_ts FROM events e "
+                "JOIN files f ON f.file_id = e.file_id "
+                "WHERE e.event_type = 'INDEXED' AND f.project_code = ?",
+                (project_code,),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                "SELECT MAX(ts) AS last_ts FROM events WHERE event_type = 'INDEXED'"
+            ).fetchone()
+        last_index = row["last_ts"] if row and row["last_ts"] else ""
+
+        # Count indexed files
+        if project_code:
+            count_row = conn.execute(
+                "SELECT COUNT(*) AS n FROM files WHERE status = 'INDEXED' AND project_code = ?",
+                (project_code,),
+            ).fetchone()
+        else:
+            count_row = conn.execute(
+                "SELECT COUNT(*) AS n FROM files WHERE status = 'INDEXED'"
+            ).fetchone()
+        files_indexed = count_row["n"] if count_row else 0
+
+        # Sample files and check if they still exist
+        if project_code:
+            sample_rows = conn.execute(
+                "SELECT file_path FROM files WHERE status = 'INDEXED' "
+                "AND project_code = ? LIMIT ?",
+                (project_code, sample_limit),
+            ).fetchall()
+        else:
+            sample_rows = conn.execute(
+                "SELECT file_path FROM files WHERE status = 'INDEXED' "
+                "ORDER BY RANDOM() LIMIT ?",
+                (sample_limit,),
+            ).fetchall()
+
+        files_missing_sample = sum(
+            1 for r in sample_rows if not Path(r["file_path"]).exists()
+        )
+        # Scale estimate to full population
+        sample_size = len(sample_rows)
+        if sample_size > 0:
+            missing_rate = files_missing_sample / sample_size
+            files_missing = int(missing_rate * files_indexed)
+        else:
+            files_missing = 0
+
+        # Staleness score
+        score = 0.0
+        if last_index:
+            try:
+                last_dt = datetime.fromisoformat(last_index.replace("Z", "+00:00"))
+                age_days = (datetime.now(timezone.utc) - last_dt.replace(
+                    tzinfo=last_dt.tzinfo or timezone.utc
+                )).days
+                if age_days > 7:
+                    score += 0.2
+                if age_days > 30:
+                    score += 0.3
+            except Exception:
+                score += 0.1
+        else:
+            score += 0.5  # never indexed
+
+        missing_rate_total = files_missing / max(files_indexed, 1)
+        if missing_rate_total > 0.1:
+            score += 0.2
+        if missing_rate_total > 0.02:
+            score += 0.1
+
+        score = min(score, 1.0)
+
+        if score < 0.2:
+            recommendation = "fresh"
+        elif score < 0.5:
+            recommendation = "run incremental"
+        else:
+            recommendation = "run rebuild"
+
+        return StalenessReport(
+            project_code=project_code,
+            last_full_index=last_index,
+            last_incremental_index=last_index,
+            files_indexed=files_indexed,
+            files_missing=files_missing,
+            files_new_estimate=0,   # only computable by full disk scan
+            staleness_score=round(score, 3),
+            recommendation=recommendation,
+        )
+
+    except Exception as e:
+        logger.warning("check_index_staleness failed: %s", e)
+        return StalenessReport(
+            project_code=project_code,
+            last_full_index="",
+            last_incremental_index="",
+            files_indexed=0,
+            files_missing=0,
+            files_new_estimate=0,
+            staleness_score=0.5,
+            recommendation="run incremental",
+        )
+
 
 def run_rebuild(
     conn: sqlite3.Connection,

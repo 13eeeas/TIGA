@@ -1,0 +1,82 @@
+[
+  // ── CATEGORY A: Project Identity ──
+  {"q": "What's project 261 about?",                     "mode": "structured", "field": "concept_summary"},
+  {"q": "Give me a quick rundown on 261",                "mode": "structured", "field": "project_overview"},
+  {"q": "Is this a residential or commercial job?",      "mode": "structured", "field": "typology_primary"},
+  {"q": "What's the building type for 261?",             "mode": "structured", "field": "typology_primary"},
+  {"q": "Any other names this project goes by?",         "mode": "structured", "field": "alt_names"},
+  {"q": "Where is project 261?",                         "mode": "structured", "field": "location"},
+  {"q": "Are we still in design or is it on site?",      "mode": "structured", "field": "stage"},
+  {"q": "What stage is 261 at right now?",               "mode": "structured", "field": "stage"},
+  {"q": "Is this job completed?",                        "mode": "structured", "field": "stage"},
+
+  // ── CATEGORY B: Scale ──
+  {"q": "How big is this project?",                      "mode": "structured", "field": "gfa_sqm"},
+  {"q": "What's the GFA for 261?",                       "mode": "structured", "field": "gfa_sqm"},
+  {"q": "How many floors does it have?",                 "mode": "structured", "field": "storeys_above"},
+  {"q": "How tall is this building?",                    "mode": "structured", "field": "storeys_above"},
+  {"q": "How many units are we doing?",                  "mode": "structured", "field": "units"},
+  {"q": "What's the plot ratio?",                        "mode": "structured", "field": "plot_ratio_proposed"},
+  {"q": "What's the allowable PR vs what we proposed?",  "mode": "structured", "field": "plot_ratio"},
+  {"q": "How many hotel keys?",                          "mode": "structured", "field": "keys"},
+  {"q": "What's the site area?",                         "mode": "structured", "field": "site_area_sqm"},
+
+  // ── CATEGORY C: Stakeholders ──
+  {"q": "Who's the PA on 261?",                          "mode": "structured", "field": "architect"},
+  {"q": "Who's running this job?",                       "mode": "structured", "field": "pm_job_captain"},
+  {"q": "Who's the job captain?",                        "mode": "structured", "field": "pm_job_captain"},
+  {"q": "Who's the PIC?",                                "mode": "structured", "field": "pm_job_captain"},
+  {"q": "Who's handling this project?",                  "mode": "structured", "field": "pm_job_captain"},
+  {"q": "Who's the structural engineer?",                "mode": "structured", "field": "consultants"},
+  {"q": "Who does the M&E?",                             "mode": "structured", "field": "consultants"},
+  {"q": "Who's the main contractor?",                    "mode": "structured", "field": "contractor"},
+  {"q": "List all consultants on 261",                   "mode": "structured", "field": "consultants"},
+  {"q": "Who's the QS?",                                 "mode": "structured", "field": "consultants"},
+
+  // ── CATEGORY D: File Location ──
+  {"q": "Where's the latest Revit?",                     "mode": "file_locator", "content_type": "BIM"},
+  {"q": "What model are we working from?",               "mode": "file_locator", "content_type": "BIM"},
+  {"q": "Find the construction drawings",                "mode": "file_locator", "folder_stage": "IFC"},
+  {"q": "Where's the final tender set?",                 "mode": "file_locator", "folder_stage": "IFC"},
+  {"q": "Show me the renders for 261",                   "mode": "file_locator", "content_type": "Image"},
+  {"q": "Where are the viz images?",                     "mode": "file_locator", "content_type": "Image"},
+  {"q": "Pull up the client deck",                       "mode": "file_locator", "content_type": "Presentation"},
+  {"q": "Find all PDFs we sent out",                     "mode": "file_locator", "is_issued": true},
+  {"q": "Show me everything issued to the client",       "mode": "file_locator", "is_issued": true},
+  {"q": "Any old archived drawing versions?",            "mode": "file_locator", "is_superseded": true},
+  {"q": "Find all the meeting minutes",                  "mode": "file_locator", "content_type": "Minutes"},
+  {"q": "Where are the DWGs?",                           "mode": "file_locator", "content_type": "CAD"},
+  {"q": "Show me the AutoCAD files",                     "mode": "file_locator", "content_type": "CAD"},
+  {"q": "Find the InDesign files",                       "mode": "file_locator", "content_type": "InDesign"},
+  {"q": "Where's the programme?",                        "mode": "file_locator", "content_type": "Spreadsheet"},
+
+  // ── CATEGORY E/F: Design & Technical ──
+  {"q": "What's the concept for this project?",          "mode": "semantic", "topic": "design_concept"},
+  {"q": "What's the big idea behind 261?",               "mode": "semantic", "topic": "design_concept"},
+  {"q": "Tell me about the facade strategy",             "mode": "semantic", "topic": "facade"},
+  {"q": "What cladding system are we using?",            "mode": "semantic", "topic": "facade"},
+  {"q": "What are the glazing specs?",                   "mode": "semantic", "topic": "facade"},
+  {"q": "What green mark rating are we targeting?",      "mode": "semantic", "topic": "sustainability"},
+  {"q": "What materials did we specify?",                "mode": "semantic", "topic": "materials"},
+
+  // ── CATEGORY G: Waivers ──
+  {"q": "Did we get any exemptions on this project?",    "mode": "semantic", "topic": "waivers"},
+  {"q": "Any deviations from code?",                     "mode": "semantic", "topic": "waivers"},
+  {"q": "What waivers did we get from FSSD?",            "mode": "semantic", "topic": "waivers"},
+  {"q": "Were there any special approvals needed?",      "mode": "semantic", "topic": "waivers"},
+  {"q": "Did we apply for any bonus GFA?",               "mode": "semantic", "topic": "waivers"},
+
+  // ── CATEGORY H: Meetings ──
+  {"q": "Show me minutes from last quarter",             "mode": "file_locator", "content_type": "Minutes"},
+  {"q": "What were the outstanding actions?",            "mode": "semantic", "topic": "action_items"},
+  {"q": "What did the authorities come back with?",      "mode": "semantic", "topic": "authority_comments"},
+  {"q": "Any unresolved issues on the facade?",          "mode": "semantic", "topic": "action_items"},
+  {"q": "What did URA say about our submission?",        "mode": "semantic", "topic": "authority_comments"},
+
+  // ── CATEGORY I: Cross-Project ──
+  {"q": "Show me all our hotel projects",                "mode": "cross_project", "filter": "typology=hospitality"},
+  {"q": "Which projects are bigger than 50,000 sqm?",   "mode": "cross_project", "filter": "gfa_min=50000"},
+  {"q": "List all our high-rise residential jobs",       "mode": "cross_project", "filter": "typology=residential"},
+  {"q": "What other projects had FSSD waivers?",         "mode": "cross_project", "topic": "waivers"},
+  {"q": "Show all completed projects",                   "mode": "cross_project", "filter": "stage=completed"}
+]

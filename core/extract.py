@@ -592,3 +592,384 @@ def _build_surrogate(path: Path, note: str) -> str:
 
 def word_count(text: str) -> int:
     return len(text.split()) if text else 0
+
+
+# ---------------------------------------------------------------------------
+# Chunk 8 — Email extraction (.msg / .eml)
+# ---------------------------------------------------------------------------
+
+from dataclasses import dataclass, field as _dc_field
+
+@dataclass
+class EmailExtract:
+    subject:        str
+    sender:         str
+    sender_email:   str
+    recipients:     list[str]
+    date:           str          # ISO datetime
+    body_text:      str
+    attachments:    list[str]    # filenames only
+    thread_subject: str          # subject with Re:/Fwd: stripped
+    direction:      str          # inbound | outbound | internal | unknown
+    parties:        list[str]    # email domains involved
+
+
+def _strip_reply_prefix(subject: str) -> str:
+    """Remove Re:, Fwd:, RE:, FW: prefixes."""
+    return re.sub(r'^(?:Re|Fwd?|Fw):\s*', '', subject, flags=re.IGNORECASE).strip()
+
+
+def _detect_direction(
+    sender_domain: str,
+    recipient_domains: list[str],
+    internal_domains: list[str],
+) -> str:
+    if not sender_domain:
+        return "unknown"
+    internal_set = {d.lower() for d in internal_domains}
+    sender_internal = sender_domain.lower() in internal_set
+    recipients_all_internal = all(d.lower() in internal_set for d in recipient_domains if d)
+    if sender_internal and recipients_all_internal:
+        return "internal"
+    if sender_internal:
+        return "outbound"
+    return "inbound"
+
+
+def _email_domain(email_addr: str) -> str:
+    """Extract domain from email address."""
+    if "@" in email_addr:
+        return email_addr.split("@")[-1].strip().lower()
+    return ""
+
+
+def extract_email(file_path: str | Path) -> EmailExtract | None:
+    """
+    Extract metadata and body from .msg or .eml files.
+    Returns None on unrecoverable failure.
+    """
+    path = Path(file_path)
+    ext = path.suffix.lower()
+
+    try:
+        from config import cfg as _cfg
+        internal_domains: list[str] = getattr(_cfg, "email_internal_domains", ["woha.com"])
+    except Exception:
+        internal_domains = ["woha.com"]
+
+    try:
+        if ext == ".msg":
+            return _extract_msg(path, internal_domains)
+        elif ext == ".eml":
+            return _extract_eml(path, internal_domains)
+        else:
+            return None
+    except Exception as e:
+        logger.warning("extract_email failed for %s: %s", path.name, e)
+        return None
+
+
+def _extract_msg(path: Path, internal_domains: list[str]) -> EmailExtract:
+    import extract_msg as _emsg  # type: ignore
+    msg = _emsg.Message(str(path))
+
+    subject = (msg.subject or "").strip()
+    sender_name = (msg.sender or "").strip()
+    sender_email_raw = (msg.senderEmail or "").strip()
+    sender_domain = _email_domain(sender_email_raw)
+
+    # Recipients
+    to_list = [str(r).strip() for r in (msg.to or "").split(";") if str(r).strip()]
+    cc_list = [str(r).strip() for r in (msg.cc or "").split(";") if str(r).strip()]
+    recipients = [r for r in to_list + cc_list if r]
+
+    recipient_domains = [_email_domain(r) for r in recipients]
+    all_domains = list({d for d in [sender_domain] + recipient_domains if d})
+
+    date_str = str(msg.date) if msg.date else ""
+    body = (msg.body or "").strip()
+    attachments = [str(a.longFilename or a.shortFilename or "") for a in (msg.attachments or [])]
+
+    direction = _detect_direction(sender_domain, recipient_domains, internal_domains)
+
+    return EmailExtract(
+        subject=subject,
+        sender=sender_name,
+        sender_email=sender_email_raw,
+        recipients=recipients,
+        date=date_str,
+        body_text=body[:50_000],  # cap body for indexing
+        attachments=[a for a in attachments if a],
+        thread_subject=_strip_reply_prefix(subject),
+        direction=direction,
+        parties=all_domains,
+    )
+
+
+def _extract_eml(path: Path, internal_domains: list[str]) -> EmailExtract:
+    import email as _email_lib
+    from email.header import decode_header as _decode_header
+
+    def _decode_str(value) -> str:
+        if value is None:
+            return ""
+        parts = _decode_header(str(value))
+        result = []
+        for part, charset in parts:
+            if isinstance(part, bytes):
+                result.append(part.decode(charset or "utf-8", errors="replace"))
+            else:
+                result.append(str(part))
+        return " ".join(result).strip()
+
+    raw = path.read_bytes()
+    msg = _email_lib.message_from_bytes(raw)
+
+    subject = _decode_str(msg.get("Subject", ""))
+    from_raw = _decode_str(msg.get("From", ""))
+    # Parse sender name and email
+    import email.utils as _eu
+    sender_name, sender_email_raw = _eu.parseaddr(from_raw)
+    sender_domain = _email_domain(sender_email_raw)
+
+    to_raw = _decode_str(msg.get("To", ""))
+    cc_raw = _decode_str(msg.get("Cc", ""))
+    recipients_raw = [r for r in to_raw.split(",") + cc_raw.split(",") if r.strip()]
+    recipients = [r.strip() for r in recipients_raw]
+    recipient_domains = [_email_domain(r) for r in recipients]
+    all_domains = list({d for d in [sender_domain] + recipient_domains if d})
+
+    date_str = _decode_str(msg.get("Date", ""))
+
+    # Extract body text
+    body = ""
+    attachments: list[str] = []
+    for part in msg.walk():
+        ct = part.get_content_type()
+        disposition = part.get("Content-Disposition", "")
+        if "attachment" in disposition:
+            fname = part.get_filename() or ""
+            if fname:
+                attachments.append(_decode_str(fname))
+        elif ct == "text/plain" and not body:
+            payload = part.get_payload(decode=True)
+            if payload:
+                charset = part.get_content_charset() or "utf-8"
+                body = payload.decode(charset, errors="replace")
+
+    direction = _detect_direction(sender_domain, recipient_domains, internal_domains)
+
+    return EmailExtract(
+        subject=subject,
+        sender=sender_name,
+        sender_email=sender_email_raw,
+        recipients=recipients,
+        date=date_str,
+        body_text=body.strip()[:50_000],
+        attachments=attachments,
+        thread_subject=_strip_reply_prefix(subject),
+        direction=direction,
+        parties=all_domains,
+    )
+
+
+def get_email_content_tags(email_data: EmailExtract) -> list[str]:
+    """Assign content_tags based on subject/body/parties for correspondence tagging."""
+    tags: list[str] = []
+    subject_lower = email_data.subject.lower()
+    body_lower = email_data.body_text[:2000].lower()
+    combined = subject_lower + " " + body_lower
+
+    waiver_keywords = {"waiver", "deviation", "exemption", "relaxation", "dispensation"}
+    if any(kw in combined for kw in waiver_keywords):
+        tags.append("waiver_correspondence")
+
+    authority_domains = {"ura.gov.sg", "bca.gov.sg", "scdf.gov.sg", "pub.gov.sg",
+                         "nea.gov.sg", "lta.gov.sg", "hdb.gov.sg", "sla.gov.sg"}
+    if any(domain in email_data.parties for domain in authority_domains):
+        tags.append("authority_correspondence")
+
+    submission_keywords = {"transmittal", "submission", "submitted"}
+    if any(kw in combined for kw in submission_keywords):
+        tags.append("submission_correspondence")
+
+    meeting_keywords = {"minutes", "mom", "minute of meeting"}
+    if any(kw in combined for kw in meeting_keywords):
+        tags.append("meeting_correspondence")
+
+    return tags
+
+
+# ---------------------------------------------------------------------------
+# Chunk 9 — Image classification
+# ---------------------------------------------------------------------------
+
+@dataclass
+class ImageClass:
+    image_type: str   # render | scanned_drawing | scanned_document | photo | diagram | unknown
+    needs_ocr:  bool
+    confidence: float
+
+
+def classify_image(file_path: str | Path) -> ImageClass:
+    """
+    Classify an image by type (render vs scanned) based on path analysis.
+    Returns ImageClass with needs_ocr flag.
+    """
+    path = Path(file_path)
+    path_lower = str(path).lower().replace("\\", "/")
+    name_lower = path.name.lower()
+
+    # Render indicators (path-based, fast)
+    render_path_signals = {"/viz/", "/renders/", "/cgi/", "/3d/", "/visualis", "/perspectives/",
+                           "/enscape/", "/lumion/", "/twinmotion/", "\\viz\\", "\\renders\\"}
+    if any(sig in path_lower for sig in render_path_signals):
+        return ImageClass(image_type="render", needs_ocr=False, confidence=0.9)
+
+    # Scan indicators
+    scan_signals = {"/scan/", "/scanned/", "\\scan\\", "\\scanned\\"}
+    if any(sig in path_lower for sig in scan_signals) or "scan" in name_lower:
+        return ImageClass(image_type="scanned_document", needs_ocr=True, confidence=0.85)
+
+    # Large file in Images folder → likely render
+    try:
+        size_mb = path.stat().st_size / (1024 * 1024)
+        if size_mb > 5 and "/images/" in path_lower:
+            return ImageClass(image_type="render", needs_ocr=False, confidence=0.75)
+    except OSError:
+        pass
+
+    # Default: unknown, skip OCR (don't waste time)
+    return ImageClass(image_type="unknown", needs_ocr=False, confidence=0.5)
+
+
+def build_image_synthetic_description(file_path: str | Path, image_class: ImageClass) -> str:
+    """
+    Build a synthetic text description for renders/images so they're findable
+    via semantic search without reading the image content.
+    """
+    path = Path(file_path)
+    parts = path.parts
+
+    # Extract useful tokens from path
+    tokens: list[str] = []
+    for part in parts[-6:]:
+        cleaned = re.sub(r'[-_.]', ' ', part).strip()
+        if cleaned and cleaned not in ("jpg", "jpeg", "png", "gif", "tif", "tiff"):
+            tokens.append(cleaned)
+
+    type_word = {
+        "render": "render visualisation image",
+        "photo": "photograph photo",
+        "scanned_drawing": "scanned drawing",
+        "scanned_document": "scanned document",
+        "diagram": "diagram diagram",
+    }.get(image_class.image_type, "image")
+
+    desc = f"Project image {type_word} — {' '.join(tokens)}"
+    return desc.strip()
+
+
+# ---------------------------------------------------------------------------
+# Chunk 12 — Content-based document classification
+# ---------------------------------------------------------------------------
+
+@dataclass
+class ContentClass:
+    doc_type:         str          # minutes | transmittal | authority_submission |
+                                   # waiver_request | design_brief | specification | unknown
+    confidence:       float
+    detected_signals: list[str]
+
+
+def classify_document_by_content(text_preview: str, filename: str = "") -> ContentClass:
+    """
+    Classify a document by reading the first 500 words.
+    Fast pattern matching — no LLM required.
+
+    Returns ContentClass with doc_type, confidence, and detected_signals.
+    """
+    # Normalise to first 500 words
+    words = text_preview.split()[:500]
+    preview = " ".join(words).lower()
+    first_50 = " ".join(words[:50]).lower()
+    first_20 = " ".join(words[:20]).lower()
+
+    signals: list[str] = []
+
+    # ── MINUTES ───────────────────────────────────────────────
+    minutes_signals = 0
+    if "minutes of meeting" in first_50 or "mom" in first_20:
+        signals.append("mom_header"); minutes_signals += 2
+    if re.search(r"present\s*:", preview) or "attendees:" in preview or "in attendance" in preview:
+        signals.append("attendees_list"); minutes_signals += 1
+    if re.search(r"action\s+by", preview) or "action items" in preview:
+        signals.append("action_items"); minutes_signals += 1
+    if "date of meeting" in preview or "venue:" in preview:
+        signals.append("venue_date"); minutes_signals += 1
+    if minutes_signals >= 2:
+        conf = min(0.5 + minutes_signals * 0.1, 1.0)
+        return ContentClass("minutes", conf, signals)
+
+    # ── TRANSMITTAL ───────────────────────────────────────────
+    trans_signals = 0
+    if "transmittal" in first_20:
+        signals.append("transmittal_header"); trans_signals += 3
+    if "we transmit herewith" in preview or "please find enclosed" in preview:
+        signals.append("transmittal_phrase"); trans_signals += 2
+    if "document number" in preview and "revision" in preview:
+        signals.append("doc_table"); trans_signals += 1
+    if "transmitted by" in preview or "issued by" in preview:
+        signals.append("transmitted_by"); trans_signals += 1
+    if trans_signals >= 2:
+        conf = min(0.5 + trans_signals * 0.1, 1.0)
+        return ContentClass("transmittal", conf, signals)
+
+    # ── AUTHORITY SUBMISSION ──────────────────────────────────
+    auth_signals = 0
+    for authority in ["ura", "bca", "scdf", "pub", "lta", "hdb"]:
+        if f"submission to {authority}" in preview or f"to the {authority}" in first_50:
+            signals.append(f"authority_{authority}"); auth_signals += 2; break
+    if "building plan" in preview or "development application" in preview:
+        signals.append("building_plan"); auth_signals += 1
+    if re.search(r"ura/dc/|bca/|scdf/", preview):
+        signals.append("authority_ref"); auth_signals += 2
+    if auth_signals >= 2:
+        return ContentClass("authority_submission", min(0.5 + auth_signals * 0.1, 1.0), signals)
+
+    # ── WAIVER / DEVIATION REQUEST ────────────────────────────
+    waiver_signals = 0
+    if re.search(r"we (?:wish to apply|request|seek)\s+(?:a\s+)?(?:waiver|deviation|exemption)", preview):
+        signals.append("waiver_request_phrase"); waiver_signals += 2
+    if "in lieu of" in preview or "alternative solution" in preview:
+        signals.append("in_lieu_of"); waiver_signals += 1
+    if re.search(r"regulation\s+\d+", preview):
+        signals.append("regulation_ref"); waiver_signals += 1
+    if waiver_signals >= 2:
+        return ContentClass("waiver_request", min(0.5 + waiver_signals * 0.1, 1.0), signals)
+
+    # ── DESIGN BRIEF ──────────────────────────────────────────
+    brief_signals = 0
+    if "project brief" in first_20 or "design brief" in first_20:
+        signals.append("brief_header"); brief_signals += 2
+    if "scope of works" in preview or "project description" in preview:
+        signals.append("scope_description"); brief_signals += 1
+    if "design requirements" in preview:
+        signals.append("design_requirements"); brief_signals += 1
+    if brief_signals >= 2:
+        return ContentClass("design_brief", min(0.5 + brief_signals * 0.1, 1.0), signals)
+
+    # ── SPECIFICATION ─────────────────────────────────────────
+    spec_signals = 0
+    if "specification" in first_20:
+        signals.append("spec_header"); spec_signals += 2
+    if re.search(r"\b\d+\.\d+\.\d+\b", preview):  # clause numbering like 1.1.1
+        signals.append("clause_numbering"); spec_signals += 1
+    if "materials and workmanship" in preview:
+        signals.append("workmanship"); spec_signals += 1
+    if "contractor shall" in preview or "the contractor shall" in preview:
+        signals.append("contractor_shall"); spec_signals += 1
+    if spec_signals >= 2:
+        return ContentClass("specification", min(0.5 + spec_signals * 0.1, 1.0), signals)
+
+    return ContentClass("unknown", 0.3, signals)
