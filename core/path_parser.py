@@ -43,6 +43,7 @@ _EXT_CONTENT_TYPE: dict[str, str] = {
     ".docx": "Word", ".doc": "Word",
     ".mp4": "Video", ".mov": "Video", ".avi": "Video",
     ".txt": "Text", ".md": "Text",
+    ".msg": "Email", ".eml": "Email",
 }
 
 # ---------------------------------------------------------------------------
@@ -75,7 +76,7 @@ _DOC_TYPE_PATTERNS: list[tuple[re.Pattern, str, str | None]] = [
     (re.compile(r'\bMIN\b|Minutes',                    re.I), "Minutes",             "Minutes"),
     (re.compile(r'\bTRX\b|Transmittal',                re.I), "Transmittal",         "Transmittal"),
     (re.compile(r'\bRFI\b',                            re.I), "RFI",                 "RFI"),
-    (re.compile(r'\bSITE\b|Site\s*Plan',               re.I), "Site Plan",           None),
+    (re.compile(r'Site[\s_-]*Plan',                    re.I), "Site Plan",           None),
     (re.compile(r'\bROOF\b',                           re.I), "Roof Plan",           None),
 ]
 
