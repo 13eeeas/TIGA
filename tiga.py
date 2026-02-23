@@ -388,6 +388,12 @@ def cmd_eval(args: argparse.Namespace) -> None:
         sys.exit(code)
         return
 
+    if getattr(args, "stress", False):
+        from core.eval import run_stress_eval
+        code = run_stress_eval(project=getattr(args, "project", None))
+        sys.exit(code)
+        return
+
     from core.eval import run_eval
 
     queries = args.queries if args.queries else None
@@ -1216,6 +1222,10 @@ def build_parser() -> argparse.ArgumentParser:
                       help="Review last 20 low-confidence queries interactively")
     p_ev.add_argument("--routing", action="store_true",
                       help="Run routing-only eval (fast, no Ollama required)")
+    p_ev.add_argument("--stress", action="store_true",
+                      help="Run all 100 stress-test questions end-to-end and export HTML report")
+    p_ev.add_argument("--project", default=None,
+                      help="Filter stress eval to a category or keyword (use with --stress)")
 
     # serve
     sub.add_parser("serve", help="Start FastAPI LAN server")
