@@ -1,0 +1,434 @@
+[
+  // ── CATEGORY A: Project Identity (10 questions) ──
+  // Target: PASS rate 90%+ (structured data card queries)
+
+  {"id": 1,  "q": "What is project 186?",
+             "expected_mode": "structured",  "category": "A_identity",
+             "expected_hint": "Name (Tianmu), typology, location, brief overview"},
+
+  {"id": 2,  "q": "What kind of building is Tianmu?",
+             "expected_mode": "structured",  "category": "A_identity",
+             "expected_hint": "Typology — likely mixed-use or residential"},
+
+  {"id": 3,  "q": "Where is the Tianmu project located?",
+             "expected_mode": "structured",  "category": "A_identity",
+             "expected_hint": "Location — Tianmu, Taiwan"},
+
+  {"id": 4,  "q": "What's the project code for Tianmu?",
+             "expected_mode": "structured",  "category": "A_identity",
+             "expected_hint": "186"},
+
+  {"id": 5,  "q": "Is project 186 completed?",
+             "expected_mode": "structured",  "category": "A_identity",
+             "expected_hint": "Yes — construction photos + site visit folder from 2018"},
+
+  {"id": 6,  "q": "What other names does this project go by?",
+             "expected_mode": "structured",  "category": "A_identity",
+             "expected_hint": "186, Tianmu, any client reference names"},
+
+  {"id": 7,  "q": "Give me a quick summary of project 186.",
+             "expected_mode": "structured",  "category": "A_identity",
+             "expected_hint": "Synthesised overview from data card + brief document"},
+
+  {"id": 8,  "q": "What stage did this project reach?",
+             "expected_mode": "structured",  "category": "A_identity",
+             "expected_hint": "Completed/constructed — construction photos + site visit folder"},
+
+  {"id": 9,  "q": "When did construction finish?",
+             "expected_mode": "structured",  "category": "A_identity",
+             "expected_hint": "Around 2018 — '20180106 Completion Site Visit' folder"},
+
+  {"id": 10, "q": "What awards did 186 Tianmu receive?",
+             "expected_mode": "semantic",    "category": "A_identity",
+             "expected_hint": "Awards/Publication folder contents"},
+
+  // ── CATEGORY B: Scale & Metrics (8 questions) ──
+
+  {"id": 11, "q": "What is the GFA of project 186?",
+             "expected_mode": "structured",    "category": "B_metrics",
+             "expected_hint": "Numeric value from area schedule or brief"},
+
+  {"id": 12, "q": "How many floors does Tianmu have?",
+             "expected_mode": "structured",    "category": "B_metrics",
+             "expected_hint": "Storey count"},
+
+  {"id": 13, "q": "What is the site area for 186?",
+             "expected_mode": "structured",    "category": "B_metrics",
+             "expected_hint": "Numeric value"},
+
+  {"id": 14, "q": "How many units does the project have?",
+             "expected_mode": "structured",    "category": "B_metrics",
+             "expected_hint": "Unit count"},
+
+  {"id": 15, "q": "What's the plot ratio for Tianmu?",
+             "expected_mode": "structured",    "category": "B_metrics",
+             "expected_hint": "Proposed vs allowable PR from Electronic Submission docs"},
+
+  {"id": 16, "q": "What does the programme look like for 186?",
+             "expected_mode": "file_locator",  "category": "B_metrics",
+             "expected_hint": "Programme folder — Milestone_Program.doc"},
+
+  {"id": 17, "q": "What's the project programme?",
+             "expected_mode": "file_locator",  "category": "B_metrics",
+             "expected_hint": "Programme folder files"},
+
+  {"id": 18, "q": "Show me the milestone dates for 186.",
+             "expected_mode": "structured",    "category": "B_metrics",
+             "expected_hint": "Key dates from Milestone_Program.doc or data card"},
+
+  // ── CATEGORY C: Stakeholders (10 questions) ──
+
+  {"id": 19, "q": "Who is the project architect on 186?",
+             "expected_mode": "structured",    "category": "C_stakeholders",
+             "expected_hint": "Named architect from data card or document"},
+
+  {"id": 20, "q": "Who's running project 186?",
+             "expected_mode": "structured",    "category": "C_stakeholders",
+             "expected_hint": "PM / Job Captain name"},
+
+  {"id": 21, "q": "Who are the consultants on Tianmu?",
+             "expected_mode": "structured",    "category": "C_stakeholders",
+             "expected_hint": "List from Consultants folder or data card"},
+
+  {"id": 22, "q": "Who is LDI?",
+             "expected_mode": "semantic",      "category": "C_stakeholders",
+             "expected_hint": "LDI = consultant (likely local architect in Taiwan) referenced in 'Translated Program from LDI' filename"},
+
+  {"id": 23, "q": "Who is the main contractor?",
+             "expected_mode": "structured",    "category": "C_stakeholders",
+             "expected_hint": "From Contractors folder or data card"},
+
+  {"id": 24, "q": "Who is the client for project 186?",
+             "expected_mode": "structured",    "category": "C_stakeholders",
+             "expected_hint": "Client name from data card or Client folder documents"},
+
+  {"id": 25, "q": "What consultants had meetings on this project?",
+             "expected_mode": "file_locator",  "category": "C_stakeholders",
+             "expected_hint": "'Consultants Mtg' folder — list of consultant meetings"},
+
+  {"id": 26, "q": "Who was the Clerk of Works?",
+             "expected_mode": "file_locator",  "category": "C_stakeholders",
+             "expected_hint": "Name or company from Clerk of Works folder"},
+
+  {"id": 27, "q": "Who are the suppliers on 186?",
+             "expected_mode": "file_locator",  "category": "C_stakeholders",
+             "expected_hint": "Suppliers folder — list of suppliers"},
+
+  {"id": 28, "q": "Which authorities were involved in 186?",
+             "expected_mode": "file_locator",  "category": "C_stakeholders",
+             "expected_hint": "Authorities folder and Electronic Submission"},
+
+  // ── CATEGORY D: File Location (25 questions) ──
+  // CRITICAL: These test the file_locator engine accuracy.
+
+  {"id": 29, "q": "Where are the renders for project 186?",
+             "expected_mode": "file_locator",  "category": "D_file_location",
+             "expected_hint": "Project Images/186 Design Presentation Images — MUST recognise 'Design Presentation Images' as renders",
+             "known_failure_risk": "HIGH — most important test"},
+
+  {"id": 30, "q": "Show me the design presentations for 186.",
+             "expected_mode": "file_locator",  "category": "D_file_location",
+             "expected_hint": "Project Images folder — dated presentation subfolders"},
+
+  {"id": 31, "q": "Where are the schematic design presentations?",
+             "expected_mode": "file_locator",  "category": "D_file_location",
+             "expected_hint": "Subfolders named '186 YYYYMMDD Schematic Design Presentation'"},
+
+  {"id": 32, "q": "Find me the latest design presentation.",
+             "expected_mode": "file_locator",  "category": "D_file_location",
+             "expected_hint": "'186 20131114 Presentation' — most recent dated folder"},
+
+  {"id": 33, "q": "Where are the north and east elevation renders?",
+             "expected_mode": "file_locator",  "category": "D_file_location",
+             "expected_hint": "186 20130710 Updated Elevations/North Elevation.jpg + East Elevation.jpg"},
+
+  {"id": 34, "q": "Where are the Photoshop source files for the elevations?",
+             "expected_mode": "file_locator",  "category": "D_file_location",
+             "expected_hint": "East Elevation Revised.psd, North Elevation Revised.psd"},
+
+  {"id": 35, "q": "Show me all PSD files in project 186.",
+             "expected_mode": "file_locator",  "category": "D_file_location",
+             "expected_hint": "At minimum the two elevation PSDs — extension filter .psd"},
+
+  {"id": 36, "q": "Find the model photos for 186.",
+             "expected_mode": "file_locator",  "category": "D_file_location",
+             "expected_hint": "Project Images/186 Model photos subfolder"},
+
+  {"id": 37, "q": "Show me the construction photos.",
+             "expected_mode": "file_locator",  "category": "D_file_location",
+             "expected_hint": "Project Images/186 Construction photos"},
+
+  {"id": 38, "q": "Where are the site visit photos from completion?",
+             "expected_mode": "file_locator",  "category": "D_file_location",
+             "expected_hint": "186 Construction photos/20180106 Completion Site Visit"},
+
+  {"id": 39, "q": "Find the meeting minutes for project 186.",
+             "expected_mode": "file_locator",  "category": "D_file_location",
+             "expected_hint": "Project Documents/Meetings folder"},
+
+  {"id": 40, "q": "Show me all consultant meeting records.",
+             "expected_mode": "file_locator",  "category": "D_file_location",
+             "expected_hint": "Meetings/Consultants Mtg subfolder contents"},
+
+  {"id": 41, "q": "Where are the transmittals for 186?",
+             "expected_mode": "file_locator",  "category": "D_file_location",
+             "expected_hint": "Project Documents/Drawing Register & Transmittal — MUST recognise this as transmittal folder",
+             "known_failure_risk": "MEDIUM"},
+
+  {"id": 42, "q": "Find all documents received from the client.",
+             "expected_mode": "file_locator",  "category": "D_file_location",
+             "expected_hint": "Project Documents/Client/Received — is_received filter"},
+
+  {"id": 43, "q": "What drawings did the client send us?",
+             "expected_mode": "file_locator",  "category": "D_file_location",
+             "expected_hint": "Client/Received subfolders — DWG files"},
+
+  {"id": 44, "q": "Where are the authority submission documents?",
+             "expected_mode": "file_locator",  "category": "D_file_location",
+             "expected_hint": "Electronic Submission folder or Authorities folder"},
+
+  {"id": 45, "q": "Find all DWG files in project 186.",
+             "expected_mode": "file_locator",  "category": "D_file_location",
+             "expected_hint": "Full list including xCF.dwg, xCF-20121127.dwg etc."},
+
+  {"id": 46, "q": "Where is the project brief for 186?",
+             "expected_mode": "file_locator",  "category": "D_file_location",
+             "expected_hint": "Project Documents root or QMS folder"},
+
+  {"id": 47, "q": "Find the contract documentation.",
+             "expected_mode": "file_locator",  "category": "D_file_location",
+             "expected_hint": "Project Documents/Contract Documentation"},
+
+  {"id": 48, "q": "Show me the QMS documents.",
+             "expected_mode": "file_locator",  "category": "D_file_location",
+             "expected_hint": "Project Documents/QMS folder"},
+
+  {"id": 49, "q": "Where is the programme document?",
+             "expected_mode": "file_locator",  "category": "D_file_location",
+             "expected_hint": "Project Documents/Programme/186 20110601 Milestone_Program.doc"},
+
+  {"id": 50, "q": "Find the translated programme from LDI.",
+             "expected_mode": "file_locator",  "category": "D_file_location",
+             "expected_hint": "Programme/186 Translated Program from LDI 20110707.jpg — filename keyword 'LDI'",
+             "known_failure_risk": "HIGH — filename must be fully indexed and searchable"},
+
+  {"id": 51, "q": "Show me the project action list.",
+             "expected_mode": "file_locator",  "category": "D_file_location",
+             "expected_hint": "Project Documents/Project Action List folder"},
+
+  {"id": 52, "q": "Where are the publication and press materials?",
+             "expected_mode": "file_locator",  "category": "D_file_location",
+             "expected_hint": "Project Documents/Publication folder"},
+
+  {"id": 53, "q": "Find all PDF files in project 186.",
+             "expected_mode": "file_locator",  "category": "D_file_location",
+             "expected_hint": "All PDFs including meeting attachments like '186 - 20130502 Feedback on 3D Model.pdf'"},
+
+  // ── CATEGORY E: Design Intent (10 questions) ──
+  // Target: 70%+ (semantic RAG — depends on text extraction quality)
+
+  {"id": 54, "q": "What is the design concept for 186 Tianmu?",
+             "expected_mode": "semantic",     "category": "E_design_intent",
+             "expected_hint": "Synthesised from design brief or schematic presentation content"},
+
+  {"id": 55, "q": "What's the big idea behind the Tianmu project?",
+             "expected_mode": "semantic",     "category": "E_design_intent",
+             "expected_hint": "Same as above, different phrasing"},
+
+  {"id": 56, "q": "What were the key architectural features of 186?",
+             "expected_mode": "semantic",     "category": "E_design_intent",
+             "expected_hint": "From design presentations or brief documents"},
+
+  {"id": 57, "q": "What is the massing strategy for Tianmu?",
+             "expected_mode": "semantic",     "category": "E_design_intent",
+             "expected_hint": "From schematic design presentations or brief"},
+
+  {"id": 58, "q": "How did the design evolve from schematic to design development?",
+             "expected_mode": "semantic",     "category": "E_design_intent",
+             "expected_hint": "Comparison across dated presentation folders (2010-2013 progression)"},
+
+  {"id": 59, "q": "What does the podium look like?",
+             "expected_mode": "semantic",     "category": "E_design_intent",
+             "expected_hint": "Podium refs in renders + '186 Podium Screen Study' folder in Model photos"},
+
+  {"id": 60, "q": "What is the facade treatment for 186?",
+             "expected_mode": "semantic",     "category": "E_design_intent",
+             "expected_hint": "From design presentations, elevation images, or spec docs"},
+
+  {"id": 61, "q": "What materials are used on the exterior?",
+             "expected_mode": "semantic",     "category": "E_design_intent",
+             "expected_hint": "From specification or design presentation documents"},
+
+  {"id": 62, "q": "Tell me about the shop lots in this project.",
+             "expected_mode": "semantic",     "category": "E_design_intent",
+             "expected_hint": "'186 20120517 Resubmission with shops' folder + 'Shop Lots.pdf' attachment"},
+
+  {"id": 63, "q": "What was presented in the design development presentation?",
+             "expected_mode": "semantic",     "category": "E_design_intent",
+             "expected_hint": "Content from '186 20130322 Design Development Presentation' folder"},
+
+  // ── CATEGORY F: Technical Specs (5 questions) ──
+
+  {"id": 64, "q": "What are the glazing specifications for 186?",
+             "expected_mode": "semantic",     "category": "F_technical",
+             "expected_hint": "From specification documents if indexed"},
+
+  {"id": 65, "q": "What is the facade build-up for Tianmu?",
+             "expected_mode": "semantic",     "category": "F_technical",
+             "expected_hint": "From specification or design development documents"},
+
+  {"id": 66, "q": "What fire rating requirements apply to this project?",
+             "expected_mode": "semantic",     "category": "F_technical",
+             "expected_hint": "From specification or authority submission documents"},
+
+  {"id": 67, "q": "What is the waterproofing system used?",
+             "expected_mode": "semantic",     "category": "F_technical",
+             "expected_hint": "From specification documents"},
+
+  {"id": 68, "q": "What structural system does the building use?",
+             "expected_mode": "semantic",     "category": "F_technical",
+             "expected_hint": "From structural drawings or spec in Consultants folder"},
+
+  // ── CATEGORY G: Compliance & Waivers (7 questions) ──
+
+  {"id": 69, "q": "Were any waivers applied for on project 186?",
+             "expected_mode": "semantic",     "category": "G_compliance",
+             "expected_hint": "From Authorities folder or Electronic Submission correspondence"},
+
+  {"id": 70, "q": "What was submitted electronically to the authorities?",
+             "expected_mode": "file_locator", "category": "G_compliance",
+             "expected_hint": "Electronic Submission folder contents"},
+
+  {"id": 71, "q": "Any deviations from code on the Tianmu project?",
+             "expected_mode": "semantic",     "category": "G_compliance",
+             "expected_hint": "From authority correspondence or Electronic Submission"},
+
+  {"id": 72, "q": "What did the authorities require for 186?",
+             "expected_mode": "semantic",     "category": "G_compliance",
+             "expected_hint": "From Authorities folder documents"},
+
+  {"id": 73, "q": "Was there a resubmission? What changed?",
+             "expected_mode": "semantic",     "category": "G_compliance",
+             "expected_hint": "'186 20120517 Resubmission with shops' — shops were added",
+             "known_failure_risk": "MEDIUM — requires semantic understanding of folder name"},
+
+  {"id": 74, "q": "Why was there a resubmission in 2012?",
+             "expected_mode": "semantic",     "category": "G_compliance",
+             "expected_hint": "Infer from 'Resubmission with shops' — shops added, supporting docs from 2012",
+             "known_failure_risk": "MEDIUM"},
+
+  {"id": 75, "q": "Show me all documents related to the planning submission.",
+             "expected_mode": "file_locator", "category": "G_compliance",
+             "expected_hint": "'186 20110512 Planning Submission' folder + Electronic Submission folder"},
+
+  // ── CATEGORY H: Meetings & History (10 questions) ──
+
+  {"id": 76, "q": "Show me all meetings for project 186.",
+             "expected_mode": "file_locator", "category": "H_meetings",
+             "expected_hint": "Complete list from Meetings folder including Consultants Mtg subfolders"},
+
+  {"id": 77, "q": "What happened in the February 2013 consultants meeting?",
+             "expected_mode": "semantic",     "category": "H_meetings",
+             "expected_hint": "'183 Consultants Meeting 20130205' folder + '186 - 20130502 Feedback on 3D Model.pdf'"},
+
+  {"id": 78, "q": "What was the feedback on the 3D model?",
+             "expected_mode": "file_locator", "category": "H_meetings",
+             "expected_hint": "'186 - 20130502 Feedback on 3D Model.pdf' + semantic if PDF indexed"},
+
+  {"id": 79, "q": "Show me documents from the May 2013 consultant meeting.",
+             "expected_mode": "file_locator", "category": "H_meetings",
+             "expected_hint": "Meeting folder from that date + PDFs inside it"},
+
+  {"id": 80, "q": "What decisions were made about shop lots?",
+             "expected_mode": "semantic",     "category": "H_meetings",
+             "expected_hint": "'186 - 20130502 Shop Lots.pdf' + resubmission presentation"},
+
+  {"id": 81, "q": "Show me all documents from 2012.",
+             "expected_mode": "file_locator", "category": "H_meetings",
+             "expected_hint": "All files with dates in 2012 — Client/Received, presentations"},
+
+  {"id": 82, "q": "Show me all documents from 2013.",
+             "expected_mode": "file_locator", "category": "H_meetings",
+             "expected_hint": "All 2013 files — consultant meeting, updated elevations, presentations"},
+
+  {"id": 83, "q": "What changed between the schematic design and design development?",
+             "expected_mode": "semantic",     "category": "H_meetings",
+             "expected_hint": "Comparison of presentation folders from 2010-2011 vs 2013"},
+
+  {"id": 84, "q": "Were there any outstanding action items?",
+             "expected_mode": "file_locator", "category": "H_meetings",
+             "expected_hint": "Project Action List folder contents"},
+
+  {"id": 85, "q": "Show me the project history — what happened when.",
+             "expected_mode": "semantic",     "category": "H_meetings",
+             "expected_hint": "Timeline derived from all dated folders across the project"},
+
+  // ── CATEGORY I: Cross-Project (5 questions) ──
+  // With only 186 indexed, expect graceful degradation + scope note.
+
+  {"id": 86, "q": "Show me all WOHA projects in Taiwan.",
+             "expected_mode": "cross_project","category": "I_cross_project",
+             "expected_hint": "186 Tianmu + note that only 186 is currently indexed"},
+
+  {"id": 87, "q": "Are there other mixed-use projects like Tianmu in the archive?",
+             "expected_mode": "cross_project","category": "I_cross_project",
+             "expected_hint": "Return 186 + explain scope limitation"},
+
+  {"id": 88, "q": "Show me all projects with construction photos.",
+             "expected_mode": "cross_project","category": "I_cross_project",
+             "expected_hint": "186 Tianmu (has construction photos folder)"},
+
+  {"id": 89, "q": "Which projects have resubmissions?",
+             "expected_mode": "cross_project","category": "I_cross_project",
+             "expected_hint": "186 (has resubmission folder) — partial answer with scope note"},
+
+  {"id": 90, "q": "Find all projects with LDI as consultant.",
+             "expected_mode": "cross_project","category": "I_cross_project",
+             "expected_hint": "186 (LDI referenced in filenames)"},
+
+  // ── HARD / EDGE CASES (10 questions) ──
+  // Target: 60%+ — unusual phrasings and exact-date lookups.
+
+  {"id": 91, "q": "What was in the folder that the client sent us on 28 November 2012?",
+             "expected_mode": "file_locator", "category": "Z_edge_cases",
+             "expected_hint": "Client/Received/20121128 All Plans and Draft Section at Podium & Penthouse — Email.doc, xCF.dwg etc.",
+             "known_failure_risk": "HIGH — tests exact folder_date extraction from '20121128' in folder name"},
+
+  {"id": 92, "q": "Show me the interior frame study.",
+             "expected_mode": "file_locator", "category": "Z_edge_cases",
+             "expected_hint": "Project Images/186 Model photos/186 Interior Frame Study"},
+
+  {"id": 93, "q": "Where is the podium screen study?",
+             "expected_mode": "file_locator", "category": "Z_edge_cases",
+             "expected_hint": "Project Images/186 Model photos/186 Podium Screen Study"},
+
+  {"id": 94, "q": "Find the in-house presentation from May 2012.",
+             "expected_mode": "file_locator", "category": "Z_edge_cases",
+             "expected_hint": "Design Presentation Images/186 20120514 In house Presentation"},
+
+  {"id": 95, "q": "What files did we get from LDI?",
+             "expected_mode": "file_locator", "category": "Z_edge_cases",
+             "expected_hint": "'186 Translated Program from LDI 20110707.jpg' — keyword 'LDI'",
+             "known_failure_risk": "HIGH — filename must be indexed and FTS searchable"},
+
+  {"id": 96, "q": "Find all .MOV files in project 186.",
+             "expected_mode": "file_locator", "category": "Z_edge_cases",
+             "expected_hint": ".MOV files in Construction photos folder — extension filter .mov"},
+
+  {"id": 97, "q": "What was the 3D model like when it was first presented?",
+             "expected_mode": "semantic",     "category": "Z_edge_cases",
+             "expected_hint": "Earliest dated model photo folder: '186 1 is to 400 Model' then '186 20110701 Presentation'",
+             "known_failure_risk": "HIGH — requires temporal reasoning across dated folders"},
+
+  {"id": 98, "q": "Show me the drawing set from August 2013.",
+             "expected_mode": "file_locator", "category": "Z_edge_cases",
+             "expected_hint": "Design Presentation Images/186 20130830 Drawing Set Presentation"},
+
+  {"id": 99, "q": "Are there any emails in this project?",
+             "expected_mode": "file_locator", "category": "Z_edge_cases",
+             "expected_hint": "'Email attachment' folder in Project Documents + Email.doc in Client/Received"},
+
+  {"id": 100,"q": "What is the most recent document in project 186?",
+             "expected_mode": "file_locator", "category": "Z_edge_cases",
+             "expected_hint": "Most recent file by date — likely construction photos from 2018 or HTML index from 2025"}
+]

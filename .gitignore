@@ -9,7 +9,14 @@ build/
 .eggs/
 
 # TIGA work directories (contain DB, vectors, logs — not source)
-tiga_work/
+# Ignore data/runtime files but keep committable YAML templates
+tiga_work/db/
+tiga_work/vectors/
+tiga_work/logs/
+tiga_work/reports/
+tiga_work/config.yaml
+tiga_work/corrections.json
+tiga_work/project_conventions.yml
 tiga_work_tianmu/
 tiga_work_*/
 

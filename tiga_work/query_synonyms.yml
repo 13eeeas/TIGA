@@ -1,0 +1,477 @@
+# TIGA Hunt — Query Synonym Map
+# Concept → all phrasing variants (case-insensitive matching).
+# Router expands incoming query against this map BEFORE keyword matching.
+# Run: python tiga.py synonyms --audit  to find gaps.
+
+# ─── PROJECT IDENTITY ───────────────────────────────────────
+project_overview:
+  canonical: "project overview"
+  synonyms:
+    - "what is this project"
+    - "tell me about"
+    - "give me a summary"
+    - "project brief"
+    - "what are we doing"
+    - "what's the project about"
+    - "overview of"
+    - "background on"
+    - "what is project"
+    - "rundown on"
+    - "quick summary"
+
+typology:
+  canonical: "typology"
+  synonyms:
+    - "building type"
+    - "what type of building"
+    - "what kind of project"
+    - "programme type"
+    - "use type"
+    - "land use"
+    - "what is it"
+    - "residential or commercial"
+    - "what are we building"
+
+client:
+  canonical: "client"
+  synonyms:
+    - "who is the client"
+    - "who's the developer"
+    - "who owns it"
+    - "who commissioned"
+    - "developer"
+    - "owner"
+    - "who are we designing for"
+    - "client name"
+    - "who's paying"
+    - "end user"
+
+project_stage:
+  canonical: "project stage"
+  synonyms:
+    - "what stage"
+    - "where are we"
+    - "current status"
+    - "project status"
+    - "how far along"
+    - "are we in construction"
+    - "is it built"
+    - "under construction"
+    - "completed"
+    - "still in design"
+    - "what phase"
+    - "on site"
+    - "is it done"
+
+# ─── SCALE & METRICS ────────────────────────────────────────
+gfa:
+  canonical: "gfa"
+  synonyms:
+    - "gross floor area"
+    - "floor area"
+    - "how big"
+    - "total area"
+    - "building area"
+    - "how large"
+    - "sqm"
+    - "square metres"
+    - "size of the building"
+    - "building size"
+    - "how many sqm"
+    - "total gfa"
+    - "nett floor area"
+    - "nfa"
+
+storeys:
+  canonical: "storeys"
+  synonyms:
+    - "how many floors"
+    - "number of floors"
+    - "how tall"
+    - "building height"
+    - "how many levels"
+    - "floors above ground"
+    - "storeys above"
+    - "how high"
+    - "levels"
+    - "floor count"
+    - "storey height"
+
+units:
+  canonical: "units"
+  synonyms:
+    - "how many units"
+    - "number of apartments"
+    - "how many apartments"
+    - "how many rooms"
+    - "how many keys"
+    - "hotel keys"
+    - "how many beds"
+    - "residential count"
+    - "unit count"
+    - "dwelling units"
+    - "number of keys"
+    - "total units"
+
+plot_ratio:
+  canonical: "plot ratio"
+  synonyms:
+    - "gross plot ratio"
+    - "gpr"
+    - "plot ratio allowable"
+    - "how dense"
+    - "density"
+    - "permissible plot ratio"
+    - "allowable pr"
+    - "proposed pr"
+    - "pr allowable"
+
+# ─── STAKEHOLDERS ────────────────────────────────────────────
+project_architect:
+  canonical: "project architect"
+  synonyms:
+    - "who is the architect"
+    - "lead architect"
+    - "design architect"
+    - "who designed it"
+    - "who's the pa"
+    - "principal architect"
+    - "architect in charge"
+    - "aic"
+
+pm:
+  canonical: "pm"
+  synonyms:
+    - "project manager"
+    - "who is the pm"
+    - "job captain"
+    - "who's managing"
+    - "who's running the job"
+    - "running this job"
+    - "who's in charge"
+    - "project lead"
+    - "who manages this"
+    - "team lead"
+    - "person in charge"
+    - "pic"
+    - "who's handling"
+    - "project coordinator"
+    - "who's looking after"
+
+consultants:
+  canonical: "consultants"
+  synonyms:
+    - "who are the consultants"
+    - "consultant team"
+    - "engineers"
+    - "who is the structural engineer"
+    - "who is the mep"
+    - "structural"
+    - "civil engineer"
+    - "quantity surveyor"
+    - "landscape architect"
+    - "who else is on the team"
+    - "professional team"
+    - "subconsultants"
+    - "who does the mech"
+    - "who does the elec"
+    - "c&s engineer"
+    - "m&e"
+    - "qs"
+
+contractor:
+  canonical: "contractor"
+  synonyms:
+    - "main contractor"
+    - "builder"
+    - "who is building it"
+    - "who built it"
+    - "construction company"
+    - "general contractor"
+    - "who's on site"
+    - "nominated contractor"
+
+# ─── FILE LOCATIONS ──────────────────────────────────────────
+bim_model:
+  canonical: "bim model"
+  synonyms:
+    - "revit file"
+    - "revit model"
+    - "working model"
+    - "current model"
+    - "3d model"
+    - "ifc model"
+    - "federated model"
+    - "navisworks"
+    - "what model are we working from"
+    - "latest model"
+    - "rvt"
+    - "revit"
+
+cad_drawings:
+  canonical: "cad drawings"
+  synonyms:
+    - "autocad"
+    - "dwg files"
+    - "cad files"
+    - "2d drawings"
+    - "autocad files"
+    - "line drawings"
+    - "dwg"
+
+ifc_set:
+  canonical: "ifc drawing set"
+  synonyms:
+    - "issued for construction"
+    - "construction drawings"
+    - "construction set"
+    - "cd set"
+    - "final drawings"
+    - "for construction"
+    - "contract drawings"
+    - "tender drawings"
+    - "tender set"
+    - "what was issued"
+    - "issued drawings"
+    - "final tender"
+    - "final set"
+    - "ifc drawings"
+    - "stamped drawings"
+    - "approved drawings"
+
+renders:
+  canonical: "renders"
+  synonyms:
+    - "visualisations"
+    - "visualizations"
+    - "viz images"
+    - "cgi"
+    - "3d images"
+    - "3d views"
+    - "perspectives"
+    - "rendered images"
+    - "design images"
+    - "what does it look like"
+    - "show me the images"
+    - "project images"
+    - "lumion"
+    - "twinmotion"
+    - "enscape"
+
+presentations:
+  canonical: "presentations"
+  synonyms:
+    - "powerpoint"
+    - "ppt"
+    - "deck"
+    - "slide deck"
+    - "client presentation"
+    - "design presentation"
+    - "design review"
+    - "slides"
+    - "what did we present"
+    - "client deck"
+    - "pptx"
+
+transmittals:
+  canonical: "transmittals"
+  synonyms:
+    - "what was sent"
+    - "what did we issue"
+    - "outgoing documents"
+    - "documents sent to client"
+    - "issued to client"
+    - "issued to the client"
+    - "everything issued to"
+    - "outgoing"
+    - "sent out"
+    - "dispatched"
+    - "delivery record"
+    - "document transmittal"
+    - "trx"
+    - "what have we sent"
+    - "submission record"
+
+meeting_minutes:
+  canonical: "meeting minutes"
+  synonyms:
+    - "minutes"
+    - "mom"
+    - "meeting notes"
+    - "meeting records"
+    - "what was discussed"
+    - "what happened in the meeting"
+    - "site meeting"
+    - "design meeting"
+    - "client meeting"
+    - "progress meeting"
+    - "minutes of meeting"
+    - "record of meeting"
+
+specifications:
+  canonical: "specification"
+  synonyms:
+    - "spec"
+    - "specs"
+    - "technical spec"
+    - "project specification"
+    - "materials spec"
+    - "works specification"
+    - "schedule of works"
+    - "preambles"
+    - "material schedule"
+
+emails:
+  canonical: "emails"
+  synonyms:
+    - "email"
+    - "correspondence"
+    - "what was the email"
+    - "what did we write"
+    - "what did they say in the email"
+    - "email chain"
+    - "email thread"
+    - "what was communicated"
+    - "written communication"
+
+# ─── DESIGN INTENT ───────────────────────────────────────────
+design_concept:
+  canonical: "design concept"
+  synonyms:
+    - "concept"
+    - "design idea"
+    - "design intent"
+    - "what's the idea"
+    - "what is the concept"
+    - "design narrative"
+    - "design story"
+    - "design rationale"
+    - "what is the thinking"
+    - "design vision"
+    - "the big idea"
+    - "parti"
+    - "design approach"
+    - "what inspired"
+    - "design philosophy"
+    - "what makes it special"
+
+facade:
+  canonical: "facade"
+  synonyms:
+    - "facade strategy"
+    - "external wall"
+    - "envelope"
+    - "building skin"
+    - "cladding"
+    - "outer wall"
+    - "exterior"
+    - "curtain wall"
+    - "wall system"
+    - "building facade"
+    - "facade system"
+    - "facade treatment"
+    - "external cladding"
+
+sustainability:
+  canonical: "sustainability"
+  synonyms:
+    - "green"
+    - "green mark"
+    - "bca green mark"
+    - "sustainability targets"
+    - "environmental strategy"
+    - "energy efficiency"
+    - "passive design"
+    - "climate responsive"
+    - "carbon"
+    - "leed"
+    - "sustainable design"
+    - "eco"
+    - "biophilic"
+    - "solar"
+    - "daylight"
+    - "ventilation strategy"
+
+materials:
+  canonical: "materials"
+  synonyms:
+    - "what materials"
+    - "material palette"
+    - "finishes"
+    - "material selection"
+    - "what is it made of"
+    - "material spec"
+    - "surface finishes"
+    - "floor finishes"
+    - "wall finishes"
+    - "cladding material"
+    - "facade material"
+
+# ─── COMPLIANCE & WAIVERS ────────────────────────────────────
+waivers:
+  canonical: "waivers"
+  synonyms:
+    - "waiver"
+    - "deviation"
+    - "exemption"
+    - "exceptions"
+    - "code deviation"
+    - "relaxation"
+    - "dispensation"
+    - "any approvals"
+    - "special approval"
+    - "authority approval"
+    - "did we get any exceptions"
+    - "bypassed any rules"
+    - "any concessions"
+    - "sign off"
+    - "sign-off"
+    - "approved deviation"
+    - "staircase exemption"
+    - "fire exemption"
+    - "setback waiver"
+    - "height exception"
+    - "gfa exemption"
+    - "bonus gfa"
+    - "ura concession"
+    - "bca waiver"
+    - "fssd waiver"
+    - "any special cases"
+    - "did we need approval"
+
+# ─── MEETINGS & HISTORY ──────────────────────────────────────
+action_items:
+  canonical: "action items"
+  synonyms:
+    - "outstanding actions"
+    - "unresolved"
+    - "open items"
+    - "pending"
+    - "what needs to be done"
+    - "to-do"
+    - "outstanding issues"
+    - "follow up items"
+    - "what's outstanding"
+    - "what's still open"
+    - "who needs to do what"
+    - "outstanding tasks"
+
+authority_comments:
+  canonical: "authority comments"
+  synonyms:
+    - "authority queries"
+    - "ura comments"
+    - "bca comments"
+    - "fssd comments"
+    - "planning comments"
+    - "submission comments"
+    - "query response"
+    - "authority response"
+    - "what did the authorities say"
+    - "planning queries"
+    - "technical queries"
+    - "authority feedback"
+    - "what did ura say"
+    - "what did bca say"
+    - "objections"
+    - "planning objection"

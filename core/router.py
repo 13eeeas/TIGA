@@ -97,6 +97,19 @@ _CONCEPT_FLAGS: dict[str, dict[str, Any]] = {
     "transmittals": {"is_issued": 1},
 }
 
+# Concept → canonical_category filter (enables cross-project SQL joins)
+_CONCEPT_CANONICAL: dict[str, str] = {
+    "meeting_minutes": "meetings",
+    "bim_model":       "bim",
+    "cad_drawings":    "cad",
+    "renders":         "renders_3d",
+    "ifc_set":         "cad",           # IFC lives in cad or issued
+    "transmittals":    "issued",
+    "presentations":   "submission_materials",
+    "specifications":  "documents",
+    "emails":          "correspondence",
+}
+
 
 # ---------------------------------------------------------------------------
 # Keyword sets (fallback when no concept matches)
@@ -507,6 +520,10 @@ class QueryRouter:
                     f["content_type"] = ct
                 extra = _CONCEPT_FLAGS.get(tag, {})
                 f.update(extra)
+                # Also set canonical_category for cross-project SQL joins
+                cat = _CONCEPT_CANONICAL.get(tag)
+                if cat:
+                    f["canonical_category"] = cat
                 break
 
         # If no concept match, fall back to raw string matching

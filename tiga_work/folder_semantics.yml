@@ -1,0 +1,427 @@
+# TIGA Hunt — Folder Semantics Map
+# Generic template — copy to your project's work_dir and customise.
+# All matching is case-insensitive. Long synonyms use substring match;
+# short (≤4 chars) require word-boundary match to avoid false positives.
+
+stage_synonyms:
+
+  IFC:
+    - "IFC"
+    - "Issued for Construction"
+    - "For Construction"
+    - "Construction Set"
+    - "Final Tender"
+    - "Tender Drawings"
+    - "CD Set"
+    - "Construction Documents"
+
+  tender:
+    - "Tender"
+    - "Pre-Tender"
+    - "ITT"
+
+  submission:
+    - "Authority Submission"
+    - "BCA"
+    - "URA"
+    - "FSSD"
+    - "Submission"
+    - "Planning"
+    - "Electronic Submission"
+    - "Authorities"
+    - "EQS"
+    - "Written Permission"
+    - "WP"
+
+  superseded:
+    - "Superseded"
+    - "Old"
+    - "Archive"
+    - "Archived"
+    - "Backup"
+    - "Obsolete"
+    - "Do Not Use"
+
+  design:
+    - "Design"
+    - "Schematic"
+    - "SD"
+    - "DD"
+    - "Concept"
+    - "Preliminary"
+    - "Study"
+
+  renders:
+    - "Viz"
+    - "Renders"
+    - "CGI"
+    - "3D Views"
+    - "3D"
+    - "Images"
+    - "Design Presentation Images"
+    - "Presentation Images"
+    - "Model photos"
+    - "Project Images"
+    - "Lumion"
+    - "Enscape"
+
+  construction_photos:
+    - "Construction photos"
+    - "Construction Photos"
+    - "Site Visit"
+    - "Completion Site Visit"
+    - "Site Photography"
+
+  presentations:
+    - "Presentation"
+    - "Presentations"
+    - "PPT"
+    - "Review"
+    - "Design Presentation"
+    - "Marketing"
+
+  bim:
+    - "BIM"
+    - "Revit"
+    - "Model"
+    - "Current Model"
+    - "Working Model"
+    - "Coordination Model"
+
+  cad:
+    - "CAD"
+    - "AutoCAD"
+    - "Drawings"
+    - "DWG"
+    - "Working Drawings"
+    - "Drawing Register"
+
+  meetings:
+    - "Minutes"
+    - "Meeting Minutes"
+    - "MOM"
+    - "Meetings"
+    - "Consultants Mtg"
+    - "Consultants Meeting"
+    - "Client Meeting"
+    - "Progress Meeting"
+    - "Design Meeting"
+
+  correspondence:
+    - "Correspondence"
+    - "Emails"
+    - "Email"
+    - "Letters"
+
+  programme:
+    - "Programme"
+    - "Program"
+    - "Milestone"
+    - "Project Action List"
+
+  consultants_folder:
+    - "Consultants"
+    - "Subconsultants"
+    - "Clerk of Works"
+    - "Suppliers"
+
+  qms:
+    - "QMS"
+    - "Quality Management"
+    - "Contract Documentation"
+
+  publication:
+    - "Publication"
+    - "Awards"
+    - "Press"
+    - "Pubpack"
+
+  photos:
+    - "Photos"
+    - "Site Photos"
+    - "Photography"
+    - "As Built Photos"
+
+  reports:
+    - "Reports"
+    - "Survey"
+    - "Test Report"
+
+  references:
+    - "References"
+    - "Research"
+    - "Standards"
+
+
+issued_synonyms:
+  - "Issued"
+  - "Outgoing"
+  - "To Client"
+  - "Transmittal"
+  - "Transmittals"
+  - "For Approval"
+  - "For Construction"
+  - "Approved"
+  - "Drawing Register & Transmittal"
+
+
+received_synonyms:
+  - "Received"
+  - "From Client"
+  - "Incoming"
+
+
+direction_tags:
+  received_from_client:
+    - "Received"
+    - "From Client"
+  issued_to_client:
+    - "Issued"
+    - "To Client"
+    - "Drawing Register & Transmittal"
+
+
+discipline_folders:
+
+  Architecture:
+    - "Arch"
+    - "Architecture"
+    - "Architectural"
+
+  Structural:
+    - "Struct"
+    - "Structural"
+
+  Mechanical:
+    - "Mech"
+    - "Mechanical"
+    - "M&E"
+    - "ACMV"
+    - "HVAC"
+
+  Electrical:
+    - "Elec"
+    - "Electrical"
+
+  Civil:
+    - "Civil"
+    - "C&S"
+
+  Landscape:
+    - "Landscape"
+    - "Horticulture"
+
+  Interior:
+    - "Interior"
+    - "ID"
+    - "Interiors"
+    - "Fitout"
+
+
+# ---------------------------------------------------------------------------
+# Canonical categories — the normalised names shared across all projects.
+# All folder naming conventions (plain / numbered / prefixed) map to these.
+# ---------------------------------------------------------------------------
+
+canonical_categories:
+
+  brief:
+    description: "Project brief and scope"
+    folder_names:
+      - "01 Brief"
+      - "Brief"
+      - "Project Brief"
+      - "Scope"
+
+  client:
+    description: "Client correspondence and documents"
+    folder_names:
+      - "02 Client"
+      - "Client"
+      - "270 04 Client"
+
+  consultants:
+    description: "Consultant correspondence"
+    folder_names:
+      - "03 Consultants"
+      - "Consultants"
+      - "270 05 Consultant"
+      - "Subconsultants"
+
+  documents:
+    description: "General project documents"
+    folder_names:
+      - "05 Documents"
+      - "Project Documents"
+      - "270 Documents"
+
+  meetings:
+    description: "Meeting minutes and records"
+    folder_names:
+      - "06 Meeting"
+      - "Meetings"
+      - "270 10 Meeting"
+      - "Consultants Mtg"
+
+  submission:
+    description: "Authority submissions"
+    folder_names:
+      - "07 Submission"
+      - "Electronic Submission"
+      - "Authorities"
+      - "270 02 Authorities"
+      - "14 Authorities"
+      - "EQS"
+      - "12 EQS"
+      - "270 12 EQS"
+
+  cad:
+    description: "CAD drawing files"
+    folder_names:
+      - "09 CAD"
+      - "CAD"
+      - "Projects"
+      - "16 Drawings"
+      - "Drawing Register"
+      - "AutoCAD"
+
+  bim:
+    description: "BIM model files"
+    folder_names:
+      - "10 BIM"
+      - "BIM"
+      - "270 BIM"
+
+  renders_3d:
+    description: "3D visualisations, renders and model images"
+    folder_names:
+      - "11 3D"
+      - "3D"
+      - "Project Images"
+      - "270 Images"
+      - "Design Presentation Images"
+      - "Model photos"
+      - "Lumion"
+      - "08 Lumion"
+      - "07 Flythru"
+      - "270 Lumion"
+
+  construction_photos:
+    description: "Site and construction photographs"
+    folder_names:
+      - "Construction photos"
+      - "Construction Photos"
+      - "Site Visit"
+      - "Completion Site Visit"
+      - "Site Photography"
+
+  submission_materials:
+    description: "Submission boards, InDesign, presentations"
+    folder_names:
+      - "05 Indesign"
+      - "InDesign"
+      - "12 Text For Boards"
+      - "13 PPT"
+      - "06 Write Up"
+      - "17 Pubpack"
+      - "Pubpack"
+      - "Publication"
+
+  issued:
+    description: "Issued drawings and documents"
+    folder_names:
+      - "270 14 Issued"
+      - "Drawing Register & Transmittal"
+      - "01 Final Submission"
+      - "02 Drawing Exports"
+
+  working:
+    description: "Working and scratch files"
+    folder_names:
+      - "08 Working"
+      - "Working"
+      - "270 13 Working"
+      - "99 Temp"
+      - "Temp"
+      - "Miscellaneous"
+
+  sketches:
+    description: "Hand and concept sketches"
+    folder_names:
+      - "04 Sketches"
+      - "Sketches"
+      - "Sketch"
+
+  research:
+    description: "Research and reference material"
+    folder_names:
+      - "04 Research"
+      - "Research"
+      - "10 Axo Reference Images"
+      - "Reference"
+      - "270 15 Reference"
+
+  site_data:
+    description: "Site information and surveys"
+    folder_names:
+      - "13 Site Data"
+      - "Site Data"
+      - "270 03 Site Information"
+      - "Site Information"
+
+  landscape:
+    description: "Landscape design files"
+    folder_names:
+      - "11 Landscape"
+      - "Landscape"
+
+  contract:
+    description: "Contract documentation"
+    folder_names:
+      - "270 07 Contract Documentation"
+      - "Contract Documentation"
+      - "Contractors"
+      - "270 08 Contractor"
+
+  programme:
+    description: "Project programme and milestones"
+    folder_names:
+      - "Programme"
+      - "Program"
+      - "Project Action List"
+
+  correspondence:
+    description: "General correspondence and emails"
+    folder_names:
+      - "Correspondence"
+      - "Emails"
+      - "Letters"
+
+  addresses:
+    description: "Address and contact lists"
+    folder_names:
+      - "270 01 Addressee"
+      - "Addresses"
+      - "Addressee"
+
+  suppliers:
+    description: "Supplier correspondence"
+    folder_names:
+      - "270 11 Supplier"
+      - "Suppliers"
+
+  publication:
+    description: "Awards and press material"
+    folder_names:
+      - "Publication"
+      - "Awards"
+      - "Press"
+      - "Pubpack"
+      - "17 Pubpack"
+
+  qms:
+    description: "Quality management documents"
+    folder_names:
+      - "QMS"
+      - "Quality"
+      - "Quality Management"

@@ -254,6 +254,10 @@ _FILE_EXTRA_COLS = [
     # Chunk 12 — classification
     ("classification_method",     "TEXT"),   # path | content | llm | unknown
     ("classification_confidence", "REAL"),
+    # Chunk 14 — canonical category + folder date
+    ("canonical_category", "TEXT"),          # normalised category: renders_3d | meetings | cad | bim | ...
+    ("folder_date",        "TEXT"),          # ISO date extracted from folder name (e.g. "186 20130322 Presentation")
+    ("is_received",        "INTEGER DEFAULT 0"),  # 1 if file is in a "Received" / "From Client" folder
 ]
 
 _FILE_EXTRA_INDEXES = [
@@ -263,7 +267,9 @@ _FILE_EXTRA_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_files_is_issued     ON files(is_issued)",
     "CREATE INDEX IF NOT EXISTS idx_files_is_superseded ON files(is_superseded)",
     "CREATE INDEX IF NOT EXISTS idx_files_file_date     ON files(file_date)",
-    "CREATE INDEX IF NOT EXISTS idx_files_discipline    ON files(discipline)",
+    "CREATE INDEX IF NOT EXISTS idx_files_discipline         ON files(discipline)",
+    "CREATE INDEX IF NOT EXISTS idx_files_canonical_category ON files(canonical_category)",
+    "CREATE INDEX IF NOT EXISTS idx_files_folder_date        ON files(folder_date)",
 ]
 
 

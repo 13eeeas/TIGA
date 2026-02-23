@@ -2,17 +2,18 @@
 tiga.py — TIGA Hunt CLI entrypoint.
 
 Subcommands:
-  init      Generate default config.yaml in work_dir
-  discover  List files that would be indexed (dry run)
-  extract   Test text extraction on a single file
-  embed     Test Ollama embedding on a query string
-  index     Index archive files (incremental by default)
-  rebuild   Force full re-index
-  query     Search the archive from terminal
-  status    Show index stats
-  eval      Run search quality evaluation
-  serve     Start the FastAPI LAN server
-  einstein  Phase 2 (stub)
+  init         Generate default config.yaml in work_dir
+  discover     List files that would be indexed (dry run)
+  extract      Test text extraction on a single file
+  embed        Test Ollama embedding on a query string
+  index        Index archive files (incremental by default)
+  rebuild      Force full re-index
+  query        Search the archive from terminal
+  status       Show index stats
+  eval         Run search quality evaluation
+  serve        Start the FastAPI LAN server
+  conventions  Detect/show/override project folder naming conventions
+  einstein     Phase 2 (stub)
 """
 
 from __future__ import annotations
@@ -972,6 +973,167 @@ def cmd_aliases(args: argparse.Namespace) -> None:
         conn.close()
 
 
+def cmd_conventions(args: argparse.Namespace) -> None:
+    """Detect, show, or manually override project folder conventions."""
+    from config import cfg
+    from core.db import get_connection
+    from core.convention_detector import (
+        detect_and_save, load_conventions, save_conventions, _name_to_canonical,
+    )
+
+    cfg.ensure_dirs()
+    work_dir = cfg.work_dir
+
+    # --unmapped: list files with no canonical_category
+    if getattr(args, "unmapped", False):
+        conn = get_connection(cfg.get_db_path())
+        try:
+            rows = conn.execute(
+                "SELECT rel_path, project_id, folder_stage "
+                "FROM files WHERE canonical_category IS NULL "
+                "AND status != 'DISCOVERED' "
+                "ORDER BY project_id, rel_path LIMIT 500"
+            ).fetchall()
+        finally:
+            conn.close()
+
+        if not rows:
+            print("All indexed files have a canonical_category assigned.")
+            return
+
+        print(f"\nFiles with no canonical_category ({len(rows)} shown, max 500):\n")
+        print(f"  {'Project':<16} {'Stage':<14} {'Path'}")
+        print("  " + "-" * 80)
+        for r in rows:
+            print(
+                f"  {str(r['project_id'] or ''):<16} "
+                f"{str(r['folder_stage'] or ''):<14} "
+                f"{r['rel_path']}"
+            )
+        return
+
+    # --map: manually assign a folder name to a category
+    if getattr(args, "map_folder", False):
+        if not args.project or not args.folder or not args.category:
+            print("Usage: python tiga.py conventions --map --project CODE "
+                  "--folder \"Folder Name\" --category canonical_cat")
+            sys.exit(1)
+
+        data = load_conventions(work_dir)
+        entry = data.setdefault(args.project, {})
+        fm = entry.setdefault("folder_map", {})
+        fm[args.folder] = args.category
+        entry["folder_map"] = fm
+        data[args.project] = entry
+        save_conventions(work_dir, data)
+        print(f"Mapped: {args.project} / '{args.folder}' -> '{args.category}'")
+        return
+
+    # --show: print saved convention for a project (or all)
+    if getattr(args, "show", False):
+        data = load_conventions(work_dir)
+        if not data:
+            print("No conventions saved yet. Run --detect first.")
+            return
+
+        if args.project:
+            codes = [args.project] if args.project in data else []
+            if not codes:
+                print(f"No convention saved for project '{args.project}'.")
+                return
+        else:
+            codes = sorted(data.keys())
+
+        for code in codes:
+            entry = data[code]
+            print(f"\n{code}:")
+            print(f"  Convention : {entry.get('convention_type', '?')}")
+            print(f"  Prefix     : {entry.get('project_prefix', '') or '(none)'}")
+            print(f"  Confidence : {entry.get('confidence', 0.0):.0%}")
+            print(f"  Detected   : {entry.get('detected_at', '?')}")
+            fm = entry.get("folder_map", {})
+            if fm:
+                print(f"  Folder map ({len(fm)} entries):")
+                for folder, cat in sorted(fm.items()):
+                    print(f"    {folder!r:<40} -> {cat}")
+            else:
+                print("  Folder map : (empty)")
+        return
+
+    # --detect: run detection for one project or all
+    if getattr(args, "detect", False):
+        # Build list of (project_code, project_root) pairs to detect
+        targets: list[tuple[str, str]] = []
+
+        if getattr(args, "all_projects", False):
+            # Infer from index_roots
+            for root in cfg.index_roots:
+                root_path = root if hasattr(root, "iterdir") else __import__("pathlib").Path(root)
+                if not root_path.is_dir():
+                    continue
+                # Each immediate subdir is a project
+                for subdir in sorted(root_path.iterdir()):
+                    if subdir.is_dir():
+                        targets.append((subdir.name, str(subdir)))
+            if not targets:
+                # index_roots ARE the project roots
+                for root in cfg.index_roots:
+                    root_path = __import__("pathlib").Path(root)
+                    targets.append((root_path.name, str(root_path)))
+        else:
+            if not args.project:
+                print("Specify --project CODE or --all to detect conventions.")
+                sys.exit(1)
+            # Find the project root
+            project_root = None
+            for root in cfg.index_roots:
+                root_path = __import__("pathlib").Path(root)
+                # Check if root itself matches
+                if args.project.lower() in root_path.name.lower():
+                    project_root = str(root_path)
+                    break
+                # Check immediate subdirs
+                for subdir in (root_path.iterdir() if root_path.is_dir() else []):
+                    if args.project.lower() in subdir.name.lower() and subdir.is_dir():
+                        project_root = str(subdir)
+                        break
+                if project_root:
+                    break
+
+            if not project_root:
+                print(f"Could not locate project '{args.project}' in index_roots.")
+                sys.exit(1)
+            targets.append((args.project, project_root))
+
+        if not targets:
+            print("No project directories found to detect.")
+            return
+
+        print(f"Detecting conventions for {len(targets)} project(s)…\n")
+        for code, root in targets:
+            conv = detect_and_save(code, root, work_dir)
+            print(
+                f"  {code:<30} {conv.convention_type:<18} "
+                f"prefix={conv.project_prefix or '(none)':<8} "
+                f"conf={conv.confidence:.0%}  "
+                f"folders_mapped={len(conv.folder_map)}"
+            )
+        print(f"\nSaved to: {work_dir / 'project_conventions.yml'}")
+        return
+
+    # Default: show help
+    print(
+        "Usage:\n"
+        "  python tiga.py conventions --detect --project 186\n"
+        "  python tiga.py conventions --detect --all\n"
+        "  python tiga.py conventions --show\n"
+        "  python tiga.py conventions --show --project 186\n"
+        "  python tiga.py conventions --map --project 186 "
+        "--folder \"Project Images\" --category renders_3d\n"
+        "  python tiga.py conventions --unmapped"
+    )
+
+
 def cmd_einstein(_args: argparse.Namespace) -> None:
     from config import cfg
 
@@ -1107,6 +1269,25 @@ def build_parser() -> argparse.ArgumentParser:
     p_syn.add_argument("--concept", default=None, metavar="CONCEPT",
                        help="Concept to add the phrase to (use with --add)")
 
+    # conventions
+    p_conv = sub.add_parser("conventions", help="Detect/show/override project folder conventions")
+    p_conv.add_argument("--detect", action="store_true",
+                        help="Detect convention for a project (or all with --all)")
+    p_conv.add_argument("--all", dest="all_projects", action="store_true",
+                        help="Detect conventions for all projects in index_roots")
+    p_conv.add_argument("--show", action="store_true",
+                        help="Print saved convention data")
+    p_conv.add_argument("--project", default=None, metavar="CODE",
+                        help="Project code to detect/show/map")
+    p_conv.add_argument("--map", dest="map_folder", action="store_true",
+                        help="Manually assign a folder to a canonical category")
+    p_conv.add_argument("--folder", default=None, metavar="FOLDER_NAME",
+                        help="Folder name to map (use with --map)")
+    p_conv.add_argument("--category", default=None, metavar="CATEGORY",
+                        help="Canonical category to assign (use with --map)")
+    p_conv.add_argument("--unmapped", action="store_true",
+                        help="List indexed files with no canonical_category")
+
     # aliases
     p_al = sub.add_parser("aliases", help="Manage project name aliases")
     p_al.add_argument("--project", default=None, help="Project code to show/manage")
@@ -1146,10 +1327,11 @@ def main() -> None:
         "card":      cmd_card,
         "correct":   cmd_correct,
         "cards":     cmd_cards,
-        "route":     cmd_route,
-        "semantics": cmd_semantics,
-        "synonyms":  cmd_synonyms,
-        "aliases":   cmd_aliases,
+        "route":       cmd_route,
+        "semantics":   cmd_semantics,
+        "synonyms":    cmd_synonyms,
+        "aliases":     cmd_aliases,
+        "conventions": cmd_conventions,
     }
     dispatch[args.command](args)
 

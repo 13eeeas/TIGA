@@ -122,7 +122,31 @@ _ISSUED_KEYWORDS_RAW = [
     "issued", "outgoing", "to client", "transmittal", "transmittals",
     "for approval", "for review", "for construction",
     "approved", "released", "client issue", "final issue", "sent to",
+    "drawing register",
 ]
+
+_RECEIVED_KEYWORDS_RAW = [
+    "received", "from client", "incoming", "from consultant",
+]
+
+_RECEIVED_RE = _make_keyword_pattern(_RECEIVED_KEYWORDS_RAW)
+
+# Construction photo folder patterns (content_type override)
+_CONSTRUCTION_PHOTO_RE = re.compile(
+    r'construction\s+photos?|site\s+visit|completion\s+site\s+visit|'
+    r'site\s+photography|construction\s+photography',
+    re.IGNORECASE,
+)
+
+# Filename keywords that require OCR regardless of folder type
+_OCR_FILENAME_RE = re.compile(
+    r'\b(program|programme|schedule|milestone|gantt|timeline|programme|'
+    r'area\s+schedule|room\s+schedule)\b',
+    re.IGNORECASE,
+)
+
+# Folder date pattern: 8-digit YYYYMMDD (2000-2040) embedded anywhere in a folder name
+_FOLDER_DATE_RE = re.compile(r'(?<!\d)(20[0-3]\d)(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])(?!\d)')
 
 _SUPERSEDED_KEYWORDS_RAW = [
     "superseded", "obsolete", "void", "replaced",
@@ -313,9 +337,12 @@ def parse_file_path(
         "doc_type": "unknown",
         "revision": None,
         "file_date": None,
+        "folder_date": None,
         "content_type": "unknown",
         "is_issued": 0,
         "is_superseded": 0,
+        "is_received": 0,
+        "canonical_category": None,
         # is_latest is computed in bulk via update_is_latest()
     }
 
@@ -324,17 +351,35 @@ def parse_file_path(
 
     # ── Folder stage (scan all parts, use deepest/most specific match) ────────
     stage_matches: list[tuple[int, str]] = []  # (depth, stage)
-    seg_lower_list = [p.lower() for p in folder_parts]
+    folder_date_candidates: list[str] = []
 
     for i, seg in enumerate(folder_parts):
         stage = match_stage(seg, semantics)
         if stage:
             stage_matches.append((i, stage))
-        # Also check issued/superseded (word-boundary safe)
+        # Issued / superseded / received flags
         if _ISSUED_RE.search(seg):
             result["is_issued"] = 1
         if _SUPERSEDED_RE.search(seg):
             result["is_superseded"] = 1
+        if _RECEIVED_RE.search(seg):
+            result["is_received"] = 1
+        # Construction photo folder detection
+        if _CONSTRUCTION_PHOTO_RE.search(seg):
+            if ext in (".jpg", ".jpeg", ".png", ".tiff", ".tif", ".bmp", ".webp", ".heic"):
+                result["content_type"] = "Construction Photo"
+            elif ext in (".mp4", ".mov", ".avi", ".mkv"):
+                result["content_type"] = "Construction Video"
+        # Folder date extraction: YYYYMMDD embedded in folder name
+        m = _FOLDER_DATE_RE.search(seg)
+        if m:
+            try:
+                from datetime import datetime as _dt
+                iso = f"{m.group(1)}-{m.group(2)}-{m.group(3)}"
+                _dt.strptime(iso, "%Y-%m-%d")   # validate
+                folder_date_candidates.append(iso)
+            except ValueError:
+                pass
 
     # Use the deepest stage match (most specific)
     if stage_matches:
@@ -342,6 +387,10 @@ def parse_file_path(
         # Superseded stage implies is_superseded
         if result["folder_stage"] == "superseded":
             result["is_superseded"] = 1
+
+    # Use the deepest (most specific) folder date
+    if folder_date_candidates:
+        result["folder_date"] = folder_date_candidates[-1]
 
     # ── Discipline — from filename prefix first, then folder names ────────────
     for pattern, discipline in _DISC_PREFIX:
@@ -384,9 +433,87 @@ def parse_file_path(
     # 2. Try immediate parent folder name
     if not date_str and folder_parts:
         date_str = _extract_date(folder_parts[-1])
+    # 3. Fall back to folder_date if nothing else found
+    if not date_str and result["folder_date"]:
+        date_str = result["folder_date"]
     result["file_date"] = date_str
 
+    # ── OCR flag from filename (regardless of folder type) ───────────────────
+    # Images with "program/schedule/milestone" in name need OCR even outside OCR folders
+    if ext in (".jpg", ".jpeg", ".png", ".tiff", ".tif", ".bmp") and _OCR_FILENAME_RE.search(stem):
+        result["needs_ocr"] = True   # picked up by image_indexing phase
+
+    # ── Canonical category assignment ─────────────────────────────────────────
+    result["canonical_category"] = _assign_canonical_category(
+        folder_parts, result["folder_stage"], result["content_type"], semantics
+    )
+
     return result
+
+
+def _assign_canonical_category(
+    folder_parts: list[str],
+    folder_stage: str,
+    content_type: str,
+    semantics: dict,
+) -> str | None:
+    """
+    Assign a canonical_category from the canonical_categories section of folder_semantics.yml.
+    Resolution order:
+      1. Direct folder name match against canonical_categories[cat].folder_names
+      2. Fall back to folder_stage → canonical_category mapping
+    Returns None if no match found.
+    """
+    canonical = semantics.get("canonical_categories", {})
+    if not canonical:
+        # Built-in fallback: map folder_stage to canonical names
+        return _STAGE_TO_CANONICAL.get(folder_stage)
+
+    # Check all folder segments (deepest match wins)
+    best_cat: str | None = None
+    for seg in folder_parts:
+        seg_l = seg.lower()
+        for cat_name, cat_data in canonical.items():
+            if not isinstance(cat_data, dict):
+                continue
+            for fname in cat_data.get("folder_names", []):
+                fn_l = fname.lower()
+                if len(fn_l) > 3:
+                    if fn_l in seg_l or seg_l in fn_l:
+                        best_cat = cat_name
+                else:
+                    if re.search(r'(?<![a-zA-Z])' + re.escape(fn_l) + r'(?![a-zA-Z])', seg_l):
+                        best_cat = cat_name
+
+    if best_cat:
+        return best_cat
+
+    # Fall back to stage → canonical
+    return _STAGE_TO_CANONICAL.get(folder_stage)
+
+
+# Stage → canonical_category fallback map
+_STAGE_TO_CANONICAL: dict[str, str] = {
+    "renders":          "renders_3d",
+    "construction_photos": "construction_photos",
+    "bim":              "bim",
+    "cad":              "cad",
+    "IFC":              "issued",
+    "tender":           "issued",
+    "submission":       "submission",
+    "design":           "working",
+    "presentations":    "submission_materials",
+    "meetings":         "meetings",
+    "correspondence":   "correspondence",
+    "superseded":       "working",
+    "programme":        "programme",
+    "qms":              "qms",
+    "publication":      "publication",
+    "consultants_folder": "consultants",
+    "photos":           "construction_photos",
+    "reports":          "documents",
+    "references":       "research",
+}
 
 
 def _extract_date(text: str) -> str | None:

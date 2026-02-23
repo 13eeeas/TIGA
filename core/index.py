@@ -396,15 +396,18 @@ def _run_path_parse(conn: sqlite3.Connection, cfg_obj: Config) -> dict[str, int]
 
                 conn.execute(
                     """UPDATE files SET
-                        project_code  = COALESCE(?, project_code),
-                        folder_stage  = ?,
-                        discipline    = ?,
-                        doc_type      = ?,
-                        revision      = ?,
-                        file_date     = ?,
-                        content_type  = ?,
-                        is_issued     = ?,
-                        is_superseded = ?
+                        project_code       = COALESCE(?, project_code),
+                        folder_stage       = ?,
+                        discipline         = ?,
+                        doc_type           = ?,
+                        revision           = ?,
+                        file_date          = ?,
+                        folder_date        = ?,
+                        content_type       = ?,
+                        is_issued          = ?,
+                        is_superseded      = ?,
+                        is_received        = ?,
+                        canonical_category = ?
                        WHERE file_id = ?""",
                     (
                         parsed.get("project_code"),
@@ -413,9 +416,12 @@ def _run_path_parse(conn: sqlite3.Connection, cfg_obj: Config) -> dict[str, int]
                         parsed.get("doc_type"),
                         parsed.get("revision"),
                         parsed.get("file_date"),
+                        parsed.get("folder_date"),
                         parsed.get("content_type"),
                         int(parsed.get("is_issued", 0)),
                         int(parsed.get("is_superseded", 0)),
+                        int(parsed.get("is_received", 0)),
+                        parsed.get("canonical_category"),
                         row["file_id"],
                     ),
                 )
