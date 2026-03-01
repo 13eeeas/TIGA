@@ -287,7 +287,13 @@ def _scan_root(
 
 
 def _exclude_dir_names(exclude_globs: list[str]) -> set[str]:
-    """Extract directory-name excludes from glob patterns for traversal pruning."""
+    """Extract directory-name excludes from glob patterns for traversal pruning.
+
+    Only plain directory-name segments (no wildcards, no dots) are extracted.
+    Segments containing a dot are assumed to be file-name patterns and are skipped.
+    Versioned directory names like ``v1.0`` or ``release.2024`` must be excluded
+    via the full-path glob filter in ``_is_excluded`` instead.
+    """
     names: set[str] = set()
     for pattern in exclude_globs:
         for seg in pattern.split("/"):
@@ -296,6 +302,7 @@ def _exclude_dir_names(exclude_globs: list[str]) -> set[str]:
             if any(ch in seg for ch in ("*", "?", "[", "]")):
                 continue
             if "." in seg:
+                # Skip: likely a file-name pattern (e.g. "*.pdf", "Thumbs.db")
                 continue
             names.add(seg)
     return names
@@ -325,7 +332,9 @@ def _iter_files(root: Path, exclude_dir_names: set[str] | None = None):
 
 def _load_existing_by_path(conn: sqlite3.Connection, root: Path) -> dict[str, dict[str, Any]]:
     """Load existing file rows for a root into a lookup map to reduce per-file DB calls."""
-    prefix = root.resolve().as_posix().rstrip("/") + "/%"
+    resolved = root.resolve().as_posix()
+    # Guard against filesystem-root edge case: rstrip("/") on "/" gives ""
+    prefix = (resolved.rstrip("/") or "/") + "/%"
     rows = conn.execute(
         """
         SELECT file_path, fingerprint_sha256, status, size_bytes, mtime_epoch
@@ -337,12 +346,21 @@ def _load_existing_by_path(conn: sqlite3.Connection, root: Path) -> dict[str, di
     return {r["file_path"]: dict(r) for r in rows}
 
 
+_MTIME_EPSILON = 0.01  # seconds; tolerates SMB/NFS sub-second precision loss
+
+
 def _is_fast_unchanged(existing: dict[str, Any], size_bytes: int, mtime_epoch: float) -> bool:
-    """Fast unchanged check using metadata before expensive full-file hashing."""
+    """Fast unchanged check using metadata before expensive full-file hashing.
+
+    Uses an epsilon for mtime comparison to tolerate the sub-second precision
+    loss that can occur on SMB/NFS-mounted NAS shares.
+    """
+    stored_mtime = existing.get("mtime_epoch")
     return (
         existing.get("status") in _PROCESSED_STATUSES
         and existing.get("size_bytes") == size_bytes
-        and existing.get("mtime_epoch") == mtime_epoch
+        and stored_mtime is not None
+        and abs(stored_mtime - mtime_epoch) < _MTIME_EPSILON
     )
 
 

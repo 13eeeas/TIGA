@@ -51,3 +51,15 @@ def test_parse_handles_numbered_cad_folder() -> None:
 
     assert meta["folder_stage"] == "cad"
     assert meta["canonical_category"] == "cad"
+
+
+def test_normalisation_does_not_produce_false_stage_match() -> None:
+    """A folder whose numeric prefix strips to a non-stage word must not match."""
+    # "03 Reports" normalises to "Reports" which is not in stage_synonyms
+    path = "/archive/272 Documents/03 Reports/summary.pdf"
+    root = "/archive"
+
+    meta = parse_file_path(path, root, semantics=_semantics())
+
+    assert meta["folder_stage"] == "unknown"
+    assert meta["canonical_category"] is None
