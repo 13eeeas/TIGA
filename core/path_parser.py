@@ -108,6 +108,12 @@ _DATE_PATTERNS: list[tuple[re.Pattern, str]] = [
      "{2}-{1}-{0}"),
 ]
 
+# Folder prefix normaliser:
+#   "272 CAD" -> "CAD"
+#   "07 Submission" -> "Submission"
+#   "270 04 Client" -> "Client"
+_FOLDER_PREFIX_RE = re.compile(r'^\s*(?:\d{1,4}[\s._-]+){1,3}')
+
 # ---------------------------------------------------------------------------
 # Issued / superseded keywords (compiled word-boundary patterns)
 # ---------------------------------------------------------------------------
@@ -289,6 +295,13 @@ def _disc_name_matches(seg_l: str, names: list[str]) -> bool:
     return False
 
 
+def _normalise_folder_segment(seg: str) -> str:
+    """Remove common numeric/prefix tokens used in archive folder conventions."""
+    s = seg.strip()
+    s = _FOLDER_PREFIX_RE.sub("", s)
+    return " ".join(s.split())
+
+
 def parse_file_path(
     full_path: str,
     project_root: str,
@@ -353,19 +366,24 @@ def parse_file_path(
     stage_matches: list[tuple[int, str]] = []  # (depth, stage)
     folder_date_candidates: list[str] = []
 
+    normalised_parts = [_normalise_folder_segment(seg) for seg in folder_parts]
+
     for i, seg in enumerate(folder_parts):
-        stage = match_stage(seg, semantics)
+        seg_norm = normalised_parts[i]
+
+        # Try both raw and normalised forms for robust convention matching
+        stage = match_stage(seg, semantics) or match_stage(seg_norm, semantics)
         if stage:
             stage_matches.append((i, stage))
         # Issued / superseded / received flags
-        if _ISSUED_RE.search(seg):
+        if _ISSUED_RE.search(seg) or _ISSUED_RE.search(seg_norm):
             result["is_issued"] = 1
-        if _SUPERSEDED_RE.search(seg):
+        if _SUPERSEDED_RE.search(seg) or _SUPERSEDED_RE.search(seg_norm):
             result["is_superseded"] = 1
-        if _RECEIVED_RE.search(seg):
+        if _RECEIVED_RE.search(seg) or _RECEIVED_RE.search(seg_norm):
             result["is_received"] = 1
         # Construction photo folder detection
-        if _CONSTRUCTION_PHOTO_RE.search(seg):
+        if _CONSTRUCTION_PHOTO_RE.search(seg) or _CONSTRUCTION_PHOTO_RE.search(seg_norm):
             if ext in (".jpg", ".jpeg", ".png", ".tiff", ".tif", ".bmp", ".webp", ".heic"):
                 result["content_type"] = "Construction Photo"
             elif ext in (".mp4", ".mov", ".avi", ".mkv"):
@@ -400,10 +418,11 @@ def parse_file_path(
 
     if result["discipline"] == "unknown":
         disc_folders: dict[str, list[str]] = semantics.get("discipline_folders", {})
-        for seg in folder_parts:
+        for seg, seg_norm in zip(folder_parts, normalised_parts):
             seg_l = seg.lower()
+            seg_nl = seg_norm.lower()
             for discipline, names in disc_folders.items():
-                if _disc_name_matches(seg_l, names):
+                if _disc_name_matches(seg_l, names) or _disc_name_matches(seg_nl, names):
                     result["discipline"] = discipline
                     break
             if result["discipline"] != "unknown":
@@ -445,7 +464,7 @@ def parse_file_path(
 
     # ── Canonical category assignment ─────────────────────────────────────────
     result["canonical_category"] = _assign_canonical_category(
-        folder_parts, result["folder_stage"], result["content_type"], semantics
+        folder_parts, normalised_parts, result["folder_stage"], result["content_type"], semantics
     )
 
     return result
@@ -453,6 +472,7 @@ def parse_file_path(
 
 def _assign_canonical_category(
     folder_parts: list[str],
+    normalised_parts: list[str],
     folder_stage: str,
     content_type: str,
     semantics: dict,
@@ -471,18 +491,22 @@ def _assign_canonical_category(
 
     # Check all folder segments (deepest match wins)
     best_cat: str | None = None
-    for seg in folder_parts:
+    for seg, seg_norm in zip(folder_parts, normalised_parts):
         seg_l = seg.lower()
+        seg_nl = seg_norm.lower()
         for cat_name, cat_data in canonical.items():
             if not isinstance(cat_data, dict):
                 continue
             for fname in cat_data.get("folder_names", []):
                 fn_l = fname.lower()
                 if len(fn_l) > 3:
-                    if fn_l in seg_l or seg_l in fn_l:
+                    if fn_l in seg_l or seg_l in fn_l or fn_l in seg_nl or seg_nl in fn_l:
                         best_cat = cat_name
                 else:
-                    if re.search(r'(?<![a-zA-Z])' + re.escape(fn_l) + r'(?![a-zA-Z])', seg_l):
+                    if (
+                        re.search(r'(?<![a-zA-Z])' + re.escape(fn_l) + r'(?![a-zA-Z])', seg_l)
+                        or re.search(r'(?<![a-zA-Z])' + re.escape(fn_l) + r'(?![a-zA-Z])', seg_nl)
+                    ):
                         best_cat = cat_name
 
     if best_cat:

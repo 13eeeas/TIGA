@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 from pathlib import Path
+from contextlib import contextmanager
 from unittest.mock import patch, MagicMock
 
 import pytest
@@ -21,6 +22,31 @@ from core.db import get_connection, file_id_from_path, fts_search
 from core.index import run_embed, run_fts, run_index, run_rebuild
 
 FIXTURES = Path(__file__).parent / "fixtures"
+
+
+class _FakeMergeBuilder:
+    def when_matched_update_all(self):
+        return self
+
+    def when_not_matched_insert_all(self):
+        return self
+
+    def execute(self, _rows):
+        return None
+
+
+class _FakeTable:
+    def merge_insert(self, _key):
+        return _FakeMergeBuilder()
+
+
+@contextmanager
+def _mock_embed_success():
+    """Mock embedding + LanceDB merge path so no Ollama service is required."""
+    with patch("core.index._vectors.embed_texts_batched", side_effect=lambda texts, _cfg: [[0.1] * 768 for _ in texts]), \
+         patch("core.index._vectors._get_chunk_table", return_value=_FakeTable()), \
+         patch("lancedb.connect", return_value=MagicMock()):
+        yield
 
 
 # ---------------------------------------------------------------------------
@@ -87,7 +113,7 @@ def test_run_embed_sets_embedded_flag(tmp_path: Path, conn) -> None:
     cfg_obj = _cfg(tmp_path)
     file_id, chunk_id = _seed_extracted_file(conn, tmp_path)
 
-    with patch("core.vectors.upsert_chunk", return_value=True):
+    with _mock_embed_success():
         stats = run_embed(conn, cfg_obj)
 
     row = conn.execute(
@@ -103,7 +129,7 @@ def test_run_embed_file_advances_to_embedded(tmp_path: Path, conn) -> None:
     cfg_obj = _cfg(tmp_path)
     file_id, _ = _seed_extracted_file(conn, tmp_path)
 
-    with patch("core.vectors.upsert_chunk", return_value=True):
+    with _mock_embed_success():
         stats = run_embed(conn, cfg_obj)
 
     status = conn.execute(
@@ -217,7 +243,7 @@ def test_run_index_full_pipeline(tmp_path: Path, conn) -> None:
     cfg_obj = _cfg(tmp_path)
     file_id, chunk_id = _seed_extracted_file(conn, tmp_path)
 
-    with patch("core.vectors.upsert_chunk", return_value=True):
+    with _mock_embed_success():
         stats = run_index(conn, cfg_obj)
 
     file_status = conn.execute(
@@ -241,7 +267,7 @@ def test_run_index_idempotent(tmp_path: Path, conn) -> None:
         conn, tmp_path, chunk_text="idempotency test architecture"
     )
 
-    with patch("core.vectors.upsert_chunk", return_value=True):
+    with _mock_embed_success():
         stats1 = run_index(conn, cfg_obj)
         stats2 = run_index(conn, cfg_obj)
 
@@ -271,7 +297,7 @@ def test_run_rebuild_resets_and_reindexes(tmp_path: Path, conn) -> None:
     file_id, chunk_id = _seed_extracted_file(conn, tmp_path)
 
     # First index pass
-    with patch("core.vectors.upsert_chunk", return_value=True):
+    with _mock_embed_success():
         run_index(conn, cfg_obj)
 
     pre_status = conn.execute(
@@ -280,7 +306,7 @@ def test_run_rebuild_resets_and_reindexes(tmp_path: Path, conn) -> None:
     assert pre_status == "INDEXED"
 
     # Rebuild — mock both vector upsert and LanceDB reset
-    with patch("core.vectors.upsert_chunk", return_value=True), \
+    with _mock_embed_success(), \
          patch("core.index._reset_lancedb"):
         stats = run_rebuild(conn, cfg_obj)
 

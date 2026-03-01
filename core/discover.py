@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import fnmatch
 import logging
+import os
 import sqlite3
 from pathlib import Path
 from typing import Any
@@ -37,6 +38,7 @@ from core.db import (
 logger = logging.getLogger(__name__)
 
 _MAX_WIN_PATH = 248
+_PROCESSED_STATUSES = frozenset(("EXTRACTED", "EMBEDDED", "INDEXED"))
 
 
 # ---------------------------------------------------------------------------
@@ -171,9 +173,10 @@ def _scan_root(
     cfg_obj: Config,
     stats: dict[str, int],
 ) -> None:
-    for path in root.rglob("*"):
-        if not path.is_file():
-            continue
+    existing_by_path = _load_existing_by_path(conn, root)
+    exclude_dir_names = _exclude_dir_names(cfg_obj.exclude_globs)
+
+    for path in _iter_files(root, exclude_dir_names):
 
         # a/b. Glob filters (excluded files are silently ignored — not in DB)
         safe = _win_safe(path)
@@ -232,7 +235,13 @@ def _scan_root(
         # e. Lane classification (unknown ext → METADATA_ONLY)
         lane = _classify_lane(ext, cfg_obj)
 
-        # f. Fingerprint (IOError → FAILED, recorded in DB)
+        # f. Fast incremental skip by metadata before expensive hashing
+        existing_row = existing_by_path.get(posix)
+        if existing_row and _is_fast_unchanged(existing_row, size_bytes, mtime_epoch):
+            stats["unchanged"] += 1
+            continue
+
+        # g. Fingerprint (IOError → FAILED, recorded in DB)
         try:
             fp = compute_fingerprint(str(safe))
         except OSError as e:
@@ -252,12 +261,12 @@ def _scan_root(
             stats["failed"] += 1
             continue
 
-        # g. Incremental: skip if fingerprint unchanged and already processed
-        existing = get_file_by_path(conn, posix)
+        # h. Incremental: skip if fingerprint unchanged and already processed
+        existing = existing_row or get_file_by_path(conn, posix)
         if (
             existing
             and existing["fingerprint_sha256"] == fp
-            and existing["status"] in ("EXTRACTED", "EMBEDDED", "INDEXED")
+            and existing["status"] in _PROCESSED_STATUSES
         ):
             stats["unchanged"] += 1
             continue
@@ -275,6 +284,66 @@ def _scan_root(
             "status":             "DISCOVERED",
         })
         stats["discovered"] += 1
+
+
+def _exclude_dir_names(exclude_globs: list[str]) -> set[str]:
+    """Extract directory-name excludes from glob patterns for traversal pruning."""
+    names: set[str] = set()
+    for pattern in exclude_globs:
+        for seg in pattern.split("/"):
+            if not seg or seg in ("**", "*"):
+                continue
+            if any(ch in seg for ch in ("*", "?", "[", "]")):
+                continue
+            if "." in seg:
+                continue
+            names.add(seg)
+    return names
+
+
+def _iter_files(root: Path, exclude_dir_names: set[str] | None = None):
+    """Yield files under root using os.scandir, pruning excluded directory names."""
+    pruned = exclude_dir_names or set()
+    stack = [root]
+    while stack:
+        current = stack.pop()
+        try:
+            with os.scandir(current) as it:
+                for entry in it:
+                    try:
+                        if entry.is_dir(follow_symlinks=False):
+                            if entry.name in pruned:
+                                continue
+                            stack.append(Path(entry.path))
+                        elif entry.is_file(follow_symlinks=False):
+                            yield Path(entry.path)
+                    except OSError:
+                        continue
+        except (PermissionError, OSError):
+            continue
+
+
+def _load_existing_by_path(conn: sqlite3.Connection, root: Path) -> dict[str, dict[str, Any]]:
+    """Load existing file rows for a root into a lookup map to reduce per-file DB calls."""
+    prefix = root.resolve().as_posix().rstrip("/") + "/%"
+    rows = conn.execute(
+        """
+        SELECT file_path, fingerprint_sha256, status, size_bytes, mtime_epoch
+        FROM files
+        WHERE file_path LIKE ?
+        """,
+        (prefix,),
+    ).fetchall()
+    return {r["file_path"]: dict(r) for r in rows}
+
+
+def _is_fast_unchanged(existing: dict[str, Any], size_bytes: int, mtime_epoch: float) -> bool:
+    """Fast unchanged check using metadata before expensive full-file hashing."""
+    return (
+        existing.get("status") in _PROCESSED_STATUSES
+        and existing.get("size_bytes") == size_bytes
+        and existing.get("mtime_epoch") == mtime_epoch
+    )
 
 
 # ---------------------------------------------------------------------------
