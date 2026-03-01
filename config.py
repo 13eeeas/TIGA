@@ -171,6 +171,15 @@ class Config:
         self.hybrid_alpha: float = ret.get(
             "hybrid_alpha", ret.get("hybrid_weight_vector", 0.6)
         )
+        # Cross-encoder reranker (optional; requires: pip install sentence-transformers)
+        # Reranks the top-N hybrid candidates by reading query+chunk together,
+        # closing the accuracy gap to ChatGPT Projects-style retrieval quality.
+        self.reranker_enabled: bool = ret.get("reranker_enabled", False)
+        self.reranker_model: str = ret.get(
+            "reranker_model", "cross-encoder/ms-marco-MiniLM-L-6-v2"
+        )
+        # How many hybrid candidates to rerank before trimming to top_k_default.
+        self.reranker_top_k: int = ret.get("reranker_top_k", 20)
 
         # --- OCR (opt-in only) ---
         ocr = data.get("ocr", {})

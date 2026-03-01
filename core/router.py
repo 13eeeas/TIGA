@@ -513,14 +513,22 @@ class QueryRouter:
         elif best_mode == "structured":
             filters.update(self._parse_structured_filters(q))
         elif best_mode in ("semantic", "cross_project"):
-            # Extract typology / location / file-type intent for semantic queries.
-            # These become pre-filters on project_cards before hybrid search so that
-            # "final presentation from hospitality projects in Singapore" only searches
-            # within matching projects rather than the full 30 TB corpus.
-            sem_filters = self._extract_semantic_filters(q)
-            for k, v in sem_filters.items():
-                if k not in filters:  # don't overwrite project_code already set
-                    filters[k] = v
+            # Only apply location/typology scope when no specific project_code
+            # is already identified.  If we know it's project 186, it's already
+            # the scope — additional location/typology filters would incorrectly
+            # restrict or widen the search.
+            if not detected_code:
+                sem_filters = self._extract_semantic_filters(q)
+                for k, v in sem_filters.items():
+                    if k not in filters:
+                        filters[k] = v
+            else:
+                # Project is identified — still extract file-type / stage intent
+                # (content_type, folder_stage) but NOT location/typology scope.
+                sem_filters = self._extract_semantic_filters(q)
+                for k, v in sem_filters.items():
+                    if k in ("content_type", "folder_stage") and k not in filters:
+                        filters[k] = v
 
         # Log ambiguous queries
         if confidence < 0.7:

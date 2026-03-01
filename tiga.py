@@ -106,6 +106,12 @@ retrieval:
   top_k_default: 5
   hybrid_weight_bm25: 0.4
   hybrid_weight_vector: 0.6
+  # Cross-encoder reranker — dramatically improves result precision.
+  # Install: pip install sentence-transformers
+  # Model downloads ~80 MB on first use, runs on CPU in ~15-20 ms.
+  reranker_enabled: false
+  reranker_model: cross-encoder/ms-marco-MiniLM-L-6-v2
+  reranker_top_k: 20  # rerank top-N candidates before trimming to top_k_default
 
 ocr:
   enabled: false

@@ -43,7 +43,8 @@ from __future__ import annotations
 import logging
 import re
 import sqlite3
-from concurrent.futures import ProcessPoolExecutor, as_completed
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from config import cfg as _module_cfg, Config
@@ -203,9 +204,23 @@ def run_embed(
 
     logger.info("run_embed: embedding %d pending chunks in batches", len(embeddable))
 
+    # Read embed batch size from the scheduler (time-of-day aware) so that
+    # night mode uses 256 (saturate 4090) and day mode uses 16 (leave VRAM
+    # headroom for the chat model serving LAN users).
+    _embed_batch_size: int | None = None
+    try:
+        from core.scheduler import get_schedule_cfg as _get_scfg
+        _embed_batch_size = _get_scfg().embed_batch_size
+        logger.debug("run_embed: scheduler batch_size=%d", _embed_batch_size)
+    except Exception:
+        pass  # scheduler not available — use cfg value
+
     # Batch embed all texts (sanitize control chars that cause Ollama HTTP 400)
     texts = [_sanitize(row["text"]) for row in embeddable]
-    embeddings = _vectors.embed_texts_batched(texts, _cfg) if texts else []
+    embeddings = (
+        _vectors.embed_texts_batched(texts, _cfg, batch_size=_embed_batch_size)
+        if texts else []
+    )
 
     # Open LanceDB once for bulk upsert
     import lancedb as _lancedb
@@ -458,33 +473,6 @@ def _run_path_parse(conn: sqlite3.Connection, cfg_obj: Config) -> dict[str, int]
 # Parallel extraction helpers
 # ---------------------------------------------------------------------------
 
-def _extract_chunks_worker(args: tuple) -> tuple:
-    """
-    Worker function for parallel text extraction.
-
-    Runs in a subprocess — does NOT touch the database.  Returns raw chunk
-    tuples to the main process which handles all DB writes.
-
-    Args:
-        args: (file_id, file_path_str, lane)
-
-    Returns:
-        (file_id, file_path_str, lane, chunks, error_str | None)
-        where chunks = [(ref, text), ...]
-    """
-    file_id, file_path_str, lane = args
-    try:
-        from core.extract import extract_chunks
-        from pathlib import Path as _P
-        if lane == "TEXT_EXTRACTABLE":
-            chunks = extract_chunks(_P(file_path_str))
-        else:
-            chunks = []  # meta chunk written by main process
-        return file_id, file_path_str, lane, chunks, None
-    except Exception as exc:
-        return file_id, file_path_str, lane, [], str(exc)
-
-
 def _run_parallel_extract(
     conn: sqlite3.Connection,
     discovered: list,
@@ -492,18 +480,20 @@ def _run_parallel_extract(
     cfg_obj: Config,
 ) -> dict[str, int]:
     """
-    Extract text from DISCOVERED files using a ProcessPoolExecutor.
+    Extract text from DISCOVERED files using a ThreadPoolExecutor.
 
-    Text extraction (PDF/DOCX/PPTX parsing) is CPU-bound and releases Python's
-    GIL via native libraries, making it safe to parallelise with processes.
-    All DB writes happen in the main process to avoid SQLite locking issues.
+    Each thread gets its own SQLite connection (WAL mode allows concurrent
+    reads and serialises writes automatically).  PDF/DOCX/PPTX parsers
+    (PyMuPDF, python-docx, python-pptx) release the GIL during file I/O,
+    so threads provide real parallelism for the dominant I/O-bound work.
 
     Architecture:
-      Worker processes: extract_chunks(path) → [(ref, text), ...]
-      Main process:     infer_project/typology + write chunks + update status
+      N threads: each calls run_extract() with its own DB connection.
+      SQLite WAL: concurrent writers are serialised by SQLite internally.
     """
     from pathlib import Path as _Path
     from core.extract import run_extract
+    from core.db import get_connection
 
     stats = {"files_extracted": 0, "files_extract_failed": 0, "chunks_new": 0}
     total = len(discovered)
@@ -511,71 +501,70 @@ def _run_parallel_extract(
     if total == 0:
         return stats
 
-    # Separate METADATA_ONLY from TEXT_EXTRACTABLE.
-    # METADATA_ONLY files are cheap — handle them sequentially in main process.
-    # TEXT_EXTRACTABLE files go to the worker pool for parallel parsing.
-    meta_rows = [r for r in discovered if (r["lane"] or "METADATA_ONLY") != "TEXT_EXTRACTABLE"]
-    text_rows = [r for r in discovered if (r["lane"] or "METADATA_ONLY") == "TEXT_EXTRACTABLE"]
+    db_path = str(cfg_obj.get_db_path())
+    stats_lock = threading.Lock()
 
-    # Process METADATA_ONLY sequentially (each is just a surrogate meta chunk)
-    for row in meta_rows:
-        result = run_extract(
-            conn, row["file_id"], _Path(row["file_path"]),
-            row["lane"] or "METADATA_ONLY", cfg_obj,
-        )
-        if result.get("failed", 0) == 0:
-            stats["files_extracted"] += 1
-        else:
-            stats["files_extract_failed"] += 1
+    # Thread-local: each thread creates and owns its own connection.
+    _local = threading.local()
 
-    if not text_rows:
-        return stats
+    def _get_thread_conn() -> sqlite3.Connection:
+        if not hasattr(_local, "conn"):
+            _local.conn = sqlite3.connect(db_path, check_same_thread=False)
+            _local.conn.row_factory = sqlite3.Row
+            _local.conn.execute("PRAGMA journal_mode=WAL")
+            _local.conn.execute("PRAGMA synchronous=NORMAL")
+        return _local.conn
+
+    # Keep track of thread connections so we can close them after the pool exits.
+    _thread_conns: list[sqlite3.Connection] = []
+    _conns_lock = threading.Lock()
+
+    def _extract_one(row: sqlite3.Row) -> dict[str, int]:
+        thread_conn = _get_thread_conn()
+        with _conns_lock:
+            if thread_conn not in _thread_conns:
+                _thread_conns.append(thread_conn)
+        path = _Path(row["file_path"])
+        lane = row["lane"] or "METADATA_ONLY"
+        return run_extract(thread_conn, row["file_id"], path, lane, cfg_obj)
 
     logger.info(
-        "parallel_extract: %d text files across %d workers",
-        len(text_rows), extract_workers,
+        "parallel_extract: %d files, %d threads", total, extract_workers
     )
 
-    # Submit text extraction jobs to worker pool
-    args_list = [
-        (row["file_id"], row["file_path"], row["lane"] or "TEXT_EXTRACTABLE")
-        for row in text_rows
-    ]
-
     completed = 0
-    with ProcessPoolExecutor(max_workers=extract_workers) as pool:
-        future_map = {pool.submit(_extract_chunks_worker, a): a for a in args_list}
-        for future in as_completed(future_map):
-            file_id, file_path_str, lane, chunks, err = future.result()
+    with ThreadPoolExecutor(max_workers=extract_workers) as pool:
+        futures = {pool.submit(_extract_one, row): row for row in discovered}
+        for future in as_completed(futures):
             completed += 1
-
-            if err:
-                logger.warning("parallel_extract worker error %s: %s", file_path_str, err)
-                # Mark as FAILED via run_extract fallback (it handles error logging)
-                run_extract(
-                    conn, file_id, _Path(file_path_str), lane, cfg_obj,
+            row = futures[future]
+            try:
+                result = future.result()
+                with stats_lock:
+                    if result.get("failed", 0) == 0:
+                        stats["files_extracted"] += 1
+                        stats["chunks_new"] += result.get("new", 0)
+                    else:
+                        stats["files_extract_failed"] += 1
+            except Exception as exc:
+                logger.error(
+                    "parallel_extract thread failed for %s: %s",
+                    row.get("file_path", "?"), exc,
                 )
-                stats["files_extract_failed"] += 1
-            else:
-                # run_extract does inference + DB write; but text extraction already
-                # done — pass pre-extracted chunks via a thin wrapper that skips
-                # re-extraction.  For now, call run_extract normally; the
-                # pre-extracted chunks are a future optimisation when this path
-                # has been validated in production.
-                result = run_extract(
-                    conn, file_id, _Path(file_path_str), lane, cfg_obj,
-                )
-                if result.get("failed", 0) == 0:
-                    stats["files_extracted"] += 1
-                    stats["chunks_new"] += result.get("new", 0)
-                else:
+                with stats_lock:
                     stats["files_extract_failed"] += 1
-
             if completed % 100 == 0:
                 logger.info(
-                    "parallel_extract: %d/%d done  chunks_new=%d",
-                    completed, len(text_rows), stats["chunks_new"],
+                    "parallel_extract: %d/%d files  chunks_new=%d",
+                    completed, total, stats["chunks_new"],
                 )
+
+    # Close all thread-local connections
+    for tc in _thread_conns:
+        try:
+            tc.close()
+        except Exception:
+            pass
 
     logger.info(
         "parallel_extract complete: extracted=%d failed=%d chunks_new=%d",
