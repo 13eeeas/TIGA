@@ -168,6 +168,82 @@ _CROSS_PROJECT_KEYWORDS = frozenset([
     "all our projects", "every project", "all our",
 ])
 
+# ---------------------------------------------------------------------------
+# Location + typology maps for semantic query pre-filtering
+# ---------------------------------------------------------------------------
+
+# Natural language → normalised location string for project_cards.location lookup.
+# "__overseas__" is a sentinel meaning "NOT Singapore" (any other country).
+_LOCATION_KEYWORDS: dict[str, str] = {
+    "singapore":              "Singapore",
+    "s'pore":                 "Singapore",
+    "local":                  "Singapore",
+    "sg":                     "Singapore",
+    "china":                  "China",
+    "vietnam":                "Vietnam",
+    "viet nam":               "Vietnam",
+    "malaysia":               "Malaysia",
+    "kl":                     "Malaysia",
+    "indonesia":              "Indonesia",
+    "bali":                   "Indonesia",
+    "jakarta":                "Indonesia",
+    "thailand":               "Thailand",
+    "bangkok":                "Thailand",
+    "phuket":                 "Thailand",
+    "india":                  "India",
+    "australia":              "Australia",
+    "sydney":                 "Australia",
+    "taiwan":                 "Taiwan",
+    "bangladesh":             "Bangladesh",
+    "portugal":               "Portugal",
+    "uae":                    "United Arab Emirates",
+    "dubai":                  "United Arab Emirates",
+    "abu dhabi":              "United Arab Emirates",
+    "pakistan":               "Pakistan",
+    "overseas":               "__overseas__",
+    "international":          "__overseas__",
+    "regional":               "__overseas__",
+    "outside singapore":      "__overseas__",
+}
+
+# Natural language → typology string matching project_cards.typology_primary.
+# These are broader than the structured filters — hotel/resort both map to hospitality.
+_TYPOLOGY_QUERY_MAP: dict[str, str] = {
+    "hotel":          "hospitality",
+    "hospitality":    "hospitality",
+    "resort":         "hospitality",
+    "serviced apart": "hospitality",
+    "residential":    "residential",
+    "housing":        "residential",
+    "condominium":    "residential",
+    "condo":          "residential",
+    "hdb":            "residential",
+    "apartment":      "residential",
+    "high-rise":      "residential",
+    "high rise":      "residential",
+    "commercial":     "commercial",
+    "office":         "commercial",
+    "retail":         "commercial",
+    "shophouse":      "commercial",
+    "civic":          "civic",
+    "institutional":  "civic",
+    "museum":         "civic",
+    "community":      "civic",
+    "school":         "education",
+    "education":      "education",
+    "university":     "education",
+    "campus":         "education",
+    "healthcare":     "healthcare",
+    "hospital":       "healthcare",
+    "clinic":         "healthcare",
+    "mixed-use":      "mixed-use",
+    "mixed use":      "mixed-use",
+    "mixed":          "mixed-use",
+    "masterplan":     "masterplan",
+    "master plan":    "masterplan",
+}
+
+
 # Folder stage keyword → folder_stage value
 _STAGE_KEYWORDS: dict[str, str] = {
     "ifc": "IFC",
@@ -436,6 +512,23 @@ class QueryRouter:
             filters.update(self._parse_file_locator_filters_from_concepts(q, tags))
         elif best_mode == "structured":
             filters.update(self._parse_structured_filters(q))
+        elif best_mode in ("semantic", "cross_project"):
+            # Only apply location/typology scope when no specific project_code
+            # is already identified.  If we know it's project 186, it's already
+            # the scope — additional location/typology filters would incorrectly
+            # restrict or widen the search.
+            if not detected_code:
+                sem_filters = self._extract_semantic_filters(q)
+                for k, v in sem_filters.items():
+                    if k not in filters:
+                        filters[k] = v
+            else:
+                # Project is identified — still extract file-type / stage intent
+                # (content_type, folder_stage) but NOT location/typology scope.
+                sem_filters = self._extract_semantic_filters(q)
+                for k, v in sem_filters.items():
+                    if k in ("content_type", "folder_stage") and k not in filters:
+                        filters[k] = v
 
         # Log ambiguous queries
         if confidence < 0.7:
@@ -594,6 +687,52 @@ class QueryRouter:
             if typ in q:
                 f["typology"] = typ
                 break
+        return f
+
+    def _extract_semantic_filters(self, q: str) -> dict[str, Any]:
+        """
+        Extract structured pre-filters from a semantic or cross-project query.
+
+        Returns a dict that the search layer can use to scope the project_cards
+        table BEFORE running BM25 + vector retrieval:
+          - typology:      e.g. "hospitality"  → project_cards.typology_primary
+          - location:      e.g. "Singapore" or "__overseas__" → project_cards.location
+          - content_type:  e.g. "Presentation" → files.content_type
+          - folder_stage:  e.g. "renders"      → files.folder_stage
+
+        This lets a query like "final presentation deck from hospitality projects
+        in Singapore" narrow to the right 3-4 projects before BM25 runs, rather
+        than searching all 30TB worth of chunks.
+        """
+        f: dict[str, Any] = {}
+
+        # Typology — check longer phrases first to avoid partial matches
+        for kw in sorted(_TYPOLOGY_QUERY_MAP, key=len, reverse=True):
+            if kw in q:
+                f["typology"] = _TYPOLOGY_QUERY_MAP[kw]
+                break
+
+        # Location — also longest-match first
+        for kw in sorted(_LOCATION_KEYWORDS, key=len, reverse=True):
+            if kw in q:
+                f["location"] = _LOCATION_KEYWORDS[kw]
+                break
+
+        # File type intent (presentation, renders, etc.) — only set if not
+        # already handled by a file_locator concept
+        if "content_type" not in f:
+            for kw, ct in _CONTENT_TYPE_MAP.items():
+                if kw in q:
+                    f["content_type"] = ct
+                    break
+
+        # Stage / phase detection
+        if "folder_stage" not in f:
+            for kw, stage in _STAGE_KEYWORDS.items():
+                if kw in q:
+                    f["folder_stage"] = stage
+                    break
+
         return f
 
     # ── Project code detection ───────────────────────────────────────────────

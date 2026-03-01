@@ -73,6 +73,7 @@ class SearchResult(TypedDict):
     chunk_id:     str
     file_id:      str
     ref_value:    str
+    file_path:    str   # absolute path on the server filesystem
     rel_path:     str
     file_name:    str
     project_id:   str
@@ -181,6 +182,99 @@ def _make_citation(
 
 
 # ---------------------------------------------------------------------------
+# Vector filter compatibility helper
+# ---------------------------------------------------------------------------
+
+def _vector_compatible_filters(filters: dict[str, Any] | None) -> dict[str, Any] | None:
+    """
+    Strip filter keys that query_vector() / LanceDB doesn't understand.
+
+    LanceDB's WHERE clause only accepts columns in the tiga_chunks schema:
+    project_id, typology, ext.
+
+    Special case for project_scope (list produced by _resolve_project_scope):
+    if exactly one project is in scope, convert to a project_id filter.
+    For multiple projects, skip — BM25 handles the restriction and the
+    hybrid merge down-ranks out-of-scope chunks naturally.
+    """
+    if not filters:
+        return None
+
+    out: dict[str, Any] = {}
+
+    for key in ("project_id", "typology", "ext"):
+        if key in filters:
+            out[key] = filters[key]
+
+    scope = filters.get("project_scope")
+    if scope and len(scope) == 1 and "project_id" not in out:
+        out["project_id"] = scope[0]
+
+    return out if out else None
+
+
+# ---------------------------------------------------------------------------
+# Project scope resolver — converts location/typology → file_id allowlist
+# ---------------------------------------------------------------------------
+
+def _resolve_project_scope(
+    filters: dict[str, Any],
+    conn: sqlite3.Connection,
+) -> list[str] | None:
+    """
+    Translate location and/or typology filters into a list of project_id values
+    drawn from the project_cards table.
+
+    Returns:
+      None         — no location/typology filters present; no scoping applied
+      []           — filters matched zero projects (search will yield no results)
+      [id, ...]    — list of project_id values to restrict BM25 + vector lanes
+
+    This is the key mechanism that lets "hospitality projects in Singapore"
+    search only within the 3-5 matching projects rather than all 30 TB of chunks.
+    """
+    location = filters.get("location") if filters else None
+    typology = filters.get("typology") if filters else None
+
+    if not location and not typology:
+        return None  # no project-level scoping needed
+
+    clauses: list[str] = []
+    params: list[Any] = []
+
+    if typology:
+        clauses.append(
+            "(typology_primary LIKE ? OR typology_secondary LIKE ?)"
+        )
+        params.extend([f"%{typology}%", f"%{typology}%"])
+
+    if location:
+        if location == "__overseas__":
+            clauses.append(
+                "(location IS NOT NULL AND location NOT LIKE '%Singapore%')"
+            )
+        else:
+            clauses.append("location LIKE ?")
+            params.append(f"%{location}%")
+
+    sql = (
+        "SELECT project_code FROM project_cards WHERE "
+        + " AND ".join(clauses)
+    )
+    try:
+        rows = conn.execute(sql, params).fetchall()
+        codes = [r["project_code"] for r in rows if r["project_code"]]
+        logger.debug(
+            "_resolve_project_scope: location=%r typology=%r → %d projects",
+            location, typology, len(codes),
+        )
+        return codes
+    except Exception as e:
+        logger.warning("_resolve_project_scope failed (skipping scope): %s", e)
+        return None
+
+
+# ---------------------------------------------------------------------------
 # BM25 lane
 # ---------------------------------------------------------------------------
 
@@ -235,6 +329,22 @@ def _run_bm25(
             # root_id → prefix match on file_path
             filter_clauses.append("f.file_path LIKE ?")
             params.append(filters["root_id"].rstrip("/") + "/%")
+        if "content_type" in filters:
+            filter_clauses.append("f.content_type = ?")
+            params.append(filters["content_type"])
+        if "folder_stage" in filters:
+            filter_clauses.append("f.folder_stage = ?")
+            params.append(filters["folder_stage"])
+        # project_scope: list of project_id values resolved from location/typology
+        # filters against project_cards.  An empty list means "match nothing".
+        if "project_scope" in filters:
+            scope_ids = filters["project_scope"]
+            if scope_ids:
+                placeholders = ",".join("?" * len(scope_ids))
+                filter_clauses.append(f"f.project_id IN ({placeholders})")
+                params.extend(scope_ids)
+            else:
+                filter_clauses.append("1=0")  # no matching projects → no results
 
     extra = ("AND " + " AND ".join(filter_clauses)) if filter_clauses else ""
 
@@ -350,8 +460,26 @@ def _search_impl(
     db_path = str(_cfg.get_db_path())
     root_paths = [str(r) for r in roots]
 
+    # ── Pre-step: Resolve project scope from location/typology filters ────────
+    # If the router extracted location ("Singapore") or typology ("hospitality")
+    # filters, translate them into a list of project_id values from project_cards
+    # BEFORE running BM25 + vector search.  This scopes both lanes to just the
+    # matching projects rather than the full 30 TB corpus.
+    _active_filters: dict[str, Any] | None = dict(filters) if filters else None
+
+    if _active_filters and (
+        _active_filters.get("location") or _active_filters.get("typology")
+    ):
+        scope = _resolve_project_scope(_active_filters, conn)
+        if scope is not None:
+            _active_filters["project_scope"] = scope
+        # Strip project-level keys — BM25 handles them via project_scope; the
+        # raw location/typology strings are not file-table columns.
+        _active_filters.pop("location", None)
+        _active_filters.pop("typology", None)
+
     # ── Step 1: BM25 (with synonym boosting) ─────────────────────────────────
-    bm25_rows = _run_bm25(query, top_k * 3, filters, conn,
+    bm25_rows = _run_bm25(query, top_k * 3, _active_filters, conn,
                           expanded_terms=expanded_terms)
     bm25_map: dict[str, dict[str, Any]] = {}
     if bm25_rows:
@@ -369,7 +497,12 @@ def _search_impl(
         extra_words = " ".join(expanded_terms[:30])  # keep manageable
         combined = f"{query} {extra_words}"
         vector_query = " ".join(combined.split()[:50])
-    vec_scores = _run_vector(vector_query, top_k * 3, filters, _cfg)
+    # Strip BM25-only filter keys (project_scope, content_type, folder_stage)
+    # before passing to the vector lane — LanceDB only accepts project_id,
+    # typology, ext.  _vector_compatible_filters() handles the conversion.
+    vec_scores = _run_vector(
+        vector_query, top_k * 3, _vector_compatible_filters(_active_filters), _cfg
+    )
 
     # ── Step 3: Merge ─────────────────────────────────────────────────────────
     all_ids = set(bm25_map) | set(vec_scores)
@@ -423,6 +556,24 @@ def _search_impl(
 
     candidates.sort(key=lambda r: (-r["final_score"], r["file_path"]))
 
+    # ── Step 3b: Cross-encoder reranking (optional) ────────────────────────────
+    # When enabled, a cross-encoder reads (query, chunk) together and replaces
+    # the hybrid score with a more accurate relevance score.  This is the single
+    # biggest quality jump toward ChatGPT Projects-style precision.
+    # Enabled via: retrieval.reranker_enabled: true in config.yaml
+    # Install:     pip install sentence-transformers
+    if _cfg.reranker_enabled and candidates:
+        try:
+            from core.reranker import rerank_candidates
+            candidates = rerank_candidates(
+                query,
+                candidates,
+                top_k=_cfg.reranker_top_k,
+                model_name=_cfg.reranker_model,
+            )
+        except Exception as _re_exc:
+            logger.warning("reranker unavailable (using hybrid order): %s", _re_exc)
+
     # ── Steps 4 & 5: Citation generation + validation ─────────────────────────
     results: list[SearchResult] = []
     for cand in candidates[offset:]:
@@ -437,6 +588,7 @@ def _search_impl(
             chunk_id=     cand["chunk_id"],
             file_id=      cand["file_id"],
             ref_value=    cand["ref_value"],
+            file_path=    cand["file_path"],
             rel_path=     rel,
             file_name=    cand["file_name"],
             project_id=   cand["project_id"],

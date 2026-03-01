@@ -43,6 +43,8 @@ from __future__ import annotations
 import logging
 import re
 import sqlite3
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from config import cfg as _module_cfg, Config
@@ -202,9 +204,23 @@ def run_embed(
 
     logger.info("run_embed: embedding %d pending chunks in batches", len(embeddable))
 
+    # Read embed batch size from the scheduler (time-of-day aware) so that
+    # night mode uses 256 (saturate 4090) and day mode uses 16 (leave VRAM
+    # headroom for the chat model serving LAN users).
+    _embed_batch_size: int | None = None
+    try:
+        from core.scheduler import get_schedule_cfg as _get_scfg
+        _embed_batch_size = _get_scfg().embed_batch_size
+        logger.debug("run_embed: scheduler batch_size=%d", _embed_batch_size)
+    except Exception:
+        pass  # scheduler not available — use cfg value
+
     # Batch embed all texts (sanitize control chars that cause Ollama HTTP 400)
     texts = [_sanitize(row["text"]) for row in embeddable]
-    embeddings = _vectors.embed_texts_batched(texts, _cfg) if texts else []
+    embeddings = (
+        _vectors.embed_texts_batched(texts, _cfg, batch_size=_embed_batch_size)
+        if texts else []
+    )
 
     # Open LanceDB once for bulk upsert
     import lancedb as _lancedb
@@ -453,6 +469,110 @@ def _run_path_parse(conn: sqlite3.Connection, cfg_obj: Config) -> dict[str, int]
     return stats
 
 
+# ---------------------------------------------------------------------------
+# Parallel extraction helpers
+# ---------------------------------------------------------------------------
+
+def _run_parallel_extract(
+    conn: sqlite3.Connection,
+    discovered: list,
+    extract_workers: int,
+    cfg_obj: Config,
+) -> dict[str, int]:
+    """
+    Extract text from DISCOVERED files using a ThreadPoolExecutor.
+
+    Each thread gets its own SQLite connection (WAL mode allows concurrent
+    reads and serialises writes automatically).  PDF/DOCX/PPTX parsers
+    (PyMuPDF, python-docx, python-pptx) release the GIL during file I/O,
+    so threads provide real parallelism for the dominant I/O-bound work.
+
+    Architecture:
+      N threads: each calls run_extract() with its own DB connection.
+      SQLite WAL: concurrent writers are serialised by SQLite internally.
+    """
+    from pathlib import Path as _Path
+    from core.extract import run_extract
+    from core.db import get_connection
+
+    stats = {"files_extracted": 0, "files_extract_failed": 0, "chunks_new": 0}
+    total = len(discovered)
+
+    if total == 0:
+        return stats
+
+    db_path = str(cfg_obj.get_db_path())
+    stats_lock = threading.Lock()
+
+    # Thread-local: each thread creates and owns its own connection.
+    _local = threading.local()
+
+    def _get_thread_conn() -> sqlite3.Connection:
+        if not hasattr(_local, "conn"):
+            _local.conn = sqlite3.connect(db_path, check_same_thread=False)
+            _local.conn.row_factory = sqlite3.Row
+            _local.conn.execute("PRAGMA journal_mode=WAL")
+            _local.conn.execute("PRAGMA synchronous=NORMAL")
+        return _local.conn
+
+    # Keep track of thread connections so we can close them after the pool exits.
+    _thread_conns: list[sqlite3.Connection] = []
+    _conns_lock = threading.Lock()
+
+    def _extract_one(row: sqlite3.Row) -> dict[str, int]:
+        thread_conn = _get_thread_conn()
+        with _conns_lock:
+            if thread_conn not in _thread_conns:
+                _thread_conns.append(thread_conn)
+        path = _Path(row["file_path"])
+        lane = row["lane"] or "METADATA_ONLY"
+        return run_extract(thread_conn, row["file_id"], path, lane, cfg_obj)
+
+    logger.info(
+        "parallel_extract: %d files, %d threads", total, extract_workers
+    )
+
+    completed = 0
+    with ThreadPoolExecutor(max_workers=extract_workers) as pool:
+        futures = {pool.submit(_extract_one, row): row for row in discovered}
+        for future in as_completed(futures):
+            completed += 1
+            row = futures[future]
+            try:
+                result = future.result()
+                with stats_lock:
+                    if result.get("failed", 0) == 0:
+                        stats["files_extracted"] += 1
+                        stats["chunks_new"] += result.get("new", 0)
+                    else:
+                        stats["files_extract_failed"] += 1
+            except Exception as exc:
+                logger.error(
+                    "parallel_extract thread failed for %s: %s",
+                    row.get("file_path", "?"), exc,
+                )
+                with stats_lock:
+                    stats["files_extract_failed"] += 1
+            if completed % 100 == 0:
+                logger.info(
+                    "parallel_extract: %d/%d files  chunks_new=%d",
+                    completed, total, stats["chunks_new"],
+                )
+
+    # Close all thread-local connections
+    for tc in _thread_conns:
+        try:
+            tc.close()
+        except Exception:
+            pass
+
+    logger.info(
+        "parallel_extract complete: extracted=%d failed=%d chunks_new=%d",
+        stats["files_extracted"], stats["files_extract_failed"], stats["chunks_new"],
+    )
+    return stats
+
+
 def run_full_pipeline(
     conn: sqlite3.Connection,
     cfg_obj: Config | None = None,
@@ -460,7 +580,7 @@ def run_full_pipeline(
     """
     Complete incremental pipeline:
       Phase 0 — Discover new/changed files → DISCOVERED
-      Phase 1 — Extract text + chunks      → EXTRACTED
+      Phase 1 — Extract text + chunks      → EXTRACTED (parallel if extract_workers > 1)
       Phase 2 — Embed chunks (Ollama)      → EMBEDDED
       Phase 3 — FTS5 keyword index         → INDEXED
 
@@ -470,6 +590,7 @@ def run_full_pipeline(
     from pathlib import Path as _Path
     from core.discover import run_discover
     from core.extract import run_extract
+    from core.scheduler import get_schedule_cfg
 
     _cfg = cfg_obj or _module_cfg
 
@@ -482,6 +603,7 @@ def run_full_pipeline(
     _run_path_parse(conn, _cfg)
 
     # ── Phase 1: extract DISCOVERED files ───────────────────────────────────
+    # Read extract_workers from scheduler (time-of-day aware) or config.
     logger.info("run_full_pipeline: phase 1 — extract")
     e_stats = {"files_extracted": 0, "files_extract_failed": 0, "chunks_new": 0}
 
@@ -490,20 +612,35 @@ def run_full_pipeline(
     ).fetchall()
 
     total_discovered = len(discovered)
-    for idx, row in enumerate(discovered, start=1):
-        path = _Path(row["file_path"])
-        lane = row["lane"] or "METADATA_ONLY"
-        result = run_extract(conn, row["file_id"], path, lane, _cfg)
-        if result.get("failed", 0) == 0:
-            e_stats["files_extracted"] += 1
-            e_stats["chunks_new"] += result.get("new", 0)
-        else:
-            e_stats["files_extract_failed"] += 1
-        if idx % 500 == 0:
-            logger.info(
-                "run_full_pipeline: extract progress %d/%d  chunks_new=%d",
-                idx, total_discovered, e_stats["chunks_new"],
-            )
+
+    try:
+        schedule_cfg = get_schedule_cfg()
+        extract_workers = schedule_cfg.extract_workers
+    except Exception:
+        extract_workers = getattr(_cfg, "extract_workers", 1)
+
+    logger.info(
+        "run_full_pipeline: %d files to extract, workers=%d",
+        total_discovered, extract_workers,
+    )
+
+    if extract_workers > 1 and total_discovered > 0:
+        e_stats.update(_run_parallel_extract(conn, discovered, extract_workers, _cfg))
+    else:
+        for idx, row in enumerate(discovered, start=1):
+            path = _Path(row["file_path"])
+            lane = row["lane"] or "METADATA_ONLY"
+            result = run_extract(conn, row["file_id"], path, lane, _cfg)
+            if result.get("failed", 0) == 0:
+                e_stats["files_extracted"] += 1
+                e_stats["chunks_new"] += result.get("new", 0)
+            else:
+                e_stats["files_extract_failed"] += 1
+            if idx % 500 == 0:
+                logger.info(
+                    "run_full_pipeline: extract progress %d/%d  chunks_new=%d",
+                    idx, total_discovered, e_stats["chunks_new"],
+                )
 
     # ── Phases 2 + 3: embed + FTS ────────────────────────────────────────────
     logger.info("run_full_pipeline: phases 2+3 — embed + FTS")

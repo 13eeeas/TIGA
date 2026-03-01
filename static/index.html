@@ -196,6 +196,8 @@ body{font-family:'Source Serif 4',Georgia,serif;background:var(--page-bg);color:
 .modal-footer{padding:12px 18px;display:flex;gap:8px;border-top:1px solid var(--ink-12)}
 .modal-action{flex:1;padding:10px;border-radius:11px;border:1px solid var(--glass-border);background:var(--glass-bg);backdrop-filter:blur(8px);font-family:'Source Serif 4',Georgia,serif;font-size:13px;cursor:pointer;color:var(--ink);box-shadow:inset 0 1px 0 var(--glass-inner);transition:opacity .15s,background .35s,color .35s}
 .modal-action:hover{opacity:.75}
+.modal-action-primary{background:var(--coral);border-color:var(--coral);color:#fff;font-weight:500}
+.modal-action-primary:hover{opacity:.85}
 
 /* ── FEEDBACK BAR ── */
 .feedback-bar{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(14px);background:var(--glass-bg);backdrop-filter:blur(28px) saturate(1.8);-webkit-backdrop-filter:blur(28px) saturate(1.8);border:1px solid var(--glass-border);border-radius:100px;padding:6px 14px;display:flex;align-items:center;gap:2px;box-shadow:var(--glass-shadow),inset 0 1.5px 0 var(--glass-inner);z-index:50;opacity:0;pointer-events:none;transition:opacity .35s,transform .35s,background .35s}
@@ -379,6 +381,7 @@ body{font-family:'Source Serif 4',Georgia,serif;background:var(--page-bg);color:
     <div class="modal-meta" id="modalMeta"></div>
     <div class="modal-preview" id="modalPreview"></div>
     <div class="modal-footer">
+      <button class="modal-action modal-action-primary" id="modalOpenFolder" onclick="openInFolder()">Open in Folder</button>
       <button class="modal-action" onclick="closeModalDirect()">Dismiss</button>
     </div>
   </div>
@@ -649,19 +652,44 @@ function showError(msg) {
 }
 
 /* ── Preview modal ──────────────────────────────────────── */
+let _previewFilePath = '';
+
 function openPreview(idx) {
   const r = _results[idx];
   if (!r) return;
   const ext = (r.ext || '').replace('.', '').toLowerCase();
+  _previewFilePath = r.file_path || '';
   document.getElementById('modalIcon').textContent = fileIcon(ext);
   document.getElementById('modalTitle').textContent = r.title || r.rel_path.split('/').pop();
   document.getElementById('modalMeta').textContent  =
     [r.rel_path, r.project_id, r.typology].filter(Boolean).join(' · ');
   document.getElementById('modalPreview').textContent = r.snippet || '(No preview available)';
+  // Show/hide open-in-folder button depending on whether we have a path
+  document.getElementById('modalOpenFolder').style.display = _previewFilePath ? '' : 'none';
   document.getElementById('modalOverlay').classList.add('open');
 }
 function closeModal(e)       { if (e.target===document.getElementById('modalOverlay')) closeModalDirect(); }
 function closeModalDirect()  { document.getElementById('modalOverlay').classList.remove('open'); }
+
+async function openInFolder() {
+  if (!_previewFilePath) return;
+  try {
+    const resp = await fetch('/api/open-file', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({file_path: _previewFilePath}),
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({detail: 'Unknown error'}));
+      showToast('Could not open folder: ' + (err.detail || resp.status));
+    } else {
+      showToast('Opening folder…');
+      closeModalDirect();
+    }
+  } catch(e) {
+    showToast('Could not reach server');
+  }
+}
 
 /* ── Per-result feedback ────────────────────────────────── */
 async function voteResult(dir, idx, e) {

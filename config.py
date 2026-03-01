@@ -171,6 +171,15 @@ class Config:
         self.hybrid_alpha: float = ret.get(
             "hybrid_alpha", ret.get("hybrid_weight_vector", 0.6)
         )
+        # Cross-encoder reranker (optional; requires: pip install sentence-transformers)
+        # Reranks the top-N hybrid candidates by reading query+chunk together,
+        # closing the accuracy gap to ChatGPT Projects-style retrieval quality.
+        self.reranker_enabled: bool = ret.get("reranker_enabled", False)
+        self.reranker_model: str = ret.get(
+            "reranker_model", "cross-encoder/ms-marco-MiniLM-L-6-v2"
+        )
+        # How many hybrid candidates to rerank before trimming to top_k_default.
+        self.reranker_top_k: int = ret.get("reranker_top_k", 20)
 
         # --- OCR (opt-in only) ---
         ocr = data.get("ocr", {})
@@ -183,6 +192,34 @@ class Config:
         self.einstein_base_model: str = ein.get("base_model", "mistral")
         _adp = ein.get("adapter_path")
         self.einstein_adapter_path: Path | None = _resolve(_adp) if _adp else None
+
+        # --- Pipeline (parallelism + fingerprinting) ---
+        pipe = data.get("pipeline", {})
+        # Number of parallel workers for text extraction (PDF/DOCX/PPTX parsing).
+        # Each worker is a separate process — set to CPU core count for best throughput.
+        # Recommended: 4-8 on an i9; 1 to disable parallelism.
+        self.extract_workers: int = pipe.get("extract_workers", 4)
+        # Fingerprint strategy for change detection during discovery.
+        #   "full"     — SHA256 of full file content (slowest, most accurate)
+        #   "sampled"  — SHA256 of head+tail 64 KB blocks (~100x faster, 99.9% accurate)
+        #   "metadata" — size + mtime only (fastest; good enough for local/NAS filesystems)
+        self.fingerprint_strategy: str = pipe.get("fingerprint_strategy", "full")
+
+        # --- Scheduler (time-of-day resource balancing) ---
+        # Controls embed_batch_size and extract_workers based on time of day so that
+        # the i9+4090 machine can serve LAN users during the day while running heavy
+        # indexing at night without user-visible lag.
+        sched = data.get("scheduler", {})
+        self.scheduler_day_start_hour: int = sched.get("day_start_hour", 6)    # 06:00
+        self.scheduler_night_start_hour: int = sched.get("night_start_hour", 22)  # 22:00
+        # Day mode (portal is serving users): low background load
+        self.scheduler_day_embed_batch: int = sched.get("day_embed_batch_size", 16)
+        self.scheduler_day_workers: int = sched.get("day_extract_workers", 2)
+        self.scheduler_day_run_indexing: bool = sched.get("day_run_indexing", False)
+        # Night mode (users asleep, 4090 free): saturate the GPU
+        self.scheduler_night_embed_batch: int = sched.get("night_embed_batch_size", 256)
+        self.scheduler_night_workers: int = sched.get("night_extract_workers", 8)
+        self.scheduler_night_run_indexing: bool = sched.get("night_run_indexing", True)
 
     # --- Path helpers ---
 

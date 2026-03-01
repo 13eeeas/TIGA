@@ -1,0 +1,19 @@
+# TIGA Hunt — eval fixture
+# Edit these entries to match your POC archive.
+# Run: python tiga.py eval
+#
+# expected_paths: suffix-match against indexed file_path (partial paths OK)
+# expected_project: optional label (not used in scoring yet)
+
+- query: "hospital brief 2019"
+  expected_paths:
+    - 2019_HOSP/brief.pdf
+  expected_project: "2019_HOSP"
+
+- query: "school competition submission"
+  expected_paths:
+    - Competitions/submission.pdf
+
+- query: "site analysis residential"
+  expected_paths:
+    - site_analysis.pdf

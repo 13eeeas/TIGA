@@ -142,6 +142,25 @@ def test_excluded_file_not_in_db(tmp_path: Path, conn) -> None:
     assert "normal.pdf" in names
 
 
+def test_excluded_directory_is_pruned_from_walk(tmp_path: Path, conn) -> None:
+    """Directory segments in exclude globs are pruned before file processing."""
+    root = tmp_path / "archive"
+    (root / "skipme").mkdir(parents=True)
+    (root / "keepme").mkdir(parents=True)
+    (root / "skipme" / "hidden.pdf").write_bytes(b"x")
+    (root / "keepme" / "visible.pdf").write_bytes(b"y")
+
+    cfg_file = _write_config(tmp_path, [root], exclude_globs=["**/skipme/**"])
+    cfg_obj = load_config(config_file=cfg_file, work_dir=tmp_path)
+
+    stats = run_discover(conn, [root], cfg_obj=cfg_obj)
+
+    names = {r["file_name"] for r in conn.execute("SELECT file_name FROM files").fetchall()}
+    assert "hidden.pdf" not in names
+    assert "visible.pdf" in names
+    assert stats["total"] == 1
+
+
 # ---------------------------------------------------------------------------
 # Lane classification
 # ---------------------------------------------------------------------------
@@ -248,6 +267,31 @@ def test_modified_file_rediscovered(tmp_path: Path, conn) -> None:
     stats = run_discover(conn, [root], cfg_obj=cfg_obj)
     assert stats["discovered"] == 1
     assert stats["unchanged"]  == 0
+
+
+def test_incremental_fast_path_skips_fingerprint(tmp_path: Path, conn) -> None:
+    """Indexed file with unchanged size+mtime skips expensive fingerprint hashing."""
+    root = tmp_path / "archive"
+    root.mkdir()
+    f = root / "stable-fast.pdf"
+    f.write_bytes(b"same")
+
+    cfg_file = _write_config(tmp_path, [root])
+    cfg_obj = load_config(config_file=cfg_file, work_dir=tmp_path)
+
+    # First discover + advance to INDEXED
+    run_discover(conn, [root], cfg_obj=cfg_obj)
+    posix = f.resolve().as_posix()
+    fid = file_id_from_path(posix)
+    conn.execute("UPDATE files SET status='INDEXED' WHERE file_id=?", (fid,))
+    conn.commit()
+
+    # Second discover should not call compute_fingerprint
+    with patch("core.discover.compute_fingerprint", side_effect=AssertionError("should not hash unchanged indexed file")):
+        stats = run_discover(conn, [root], cfg_obj=cfg_obj)
+
+    assert stats["unchanged"] == 1
+    assert stats["discovered"] == 0
 
 
 # ---------------------------------------------------------------------------

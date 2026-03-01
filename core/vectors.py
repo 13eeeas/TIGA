@@ -105,20 +105,30 @@ def embed_texts_batch(
 def embed_texts_batched(
     texts: list[str],
     cfg: Config | None = None,
+    *,
+    batch_size: int | None = None,
 ) -> list[list[float] | None]:
     """
     Embed a list of texts in batches using the fast batch API.
     Falls back to per-item embed_text on batch failure.
     Sleeps cfg.embed_batch_sleep_s between batches.
     Returns None for any text that failed to embed.
+
+    Args:
+        texts:      Texts to embed.
+        cfg:        Config object (defaults to module-level singleton).
+        batch_size: Override batch size (e.g. from scheduler mode).
+                    If None, uses cfg.embed_batch_size directly.
     """
     _cfg = cfg or _module_cfg
     results: list[list[float] | None] = []
-    batch_size = max(_cfg.embed_batch_size, 64)  # at least 64 per batch
+    # Respect caller-supplied override (e.g. from scheduler night/day mode).
+    # No forced minimum — the scheduler controls this deliberately.
+    _batch_size = batch_size if batch_size is not None else _cfg.embed_batch_size
     sleep_s = _cfg.embed_batch_sleep_s
 
-    for i in range(0, len(texts), batch_size):
-        batch = texts[i : i + batch_size]
+    for i in range(0, len(texts), _batch_size):
+        batch = texts[i : i + _batch_size]
         try:
             batch_results = embed_texts_batch(batch, _cfg)
             results.extend(batch_results)
@@ -130,7 +140,7 @@ def embed_texts_batched(
                 except EmbedError as e2:
                     logger.warning("Embed failed: %s", e2)
                     results.append(None)
-        if i + batch_size < len(texts):
+        if i + _batch_size < len(texts):
             time.sleep(sleep_s)
 
     return results

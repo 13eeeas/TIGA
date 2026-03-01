@@ -12,6 +12,38 @@ run.bat          # start server + UI
 
 Then open **http://localhost:8501** in any browser on the LAN.
 
+## Product Ambition
+
+TIGA is designed to become a **local, large-scale archive intelligence system** for architecture firms.
+
+### North Star
+- Index and understand **30TB+ of NAS project data** across 100+ projects.
+- Let teams ask plain-English questions and get **relevant, cited answers** like ChatGPT Projects.
+- Keep the system **lean and efficient** on local hardware (e.g. RTX 4090 + i9), with optional low-cost API augmentation.
+
+### Design Principles
+- **Local-first**: default operation on-prem/LAN with no required external API.
+- **Represent, don't replicate**: index compact metadata/chunks/embeddings instead of duplicating raw archive size.
+- **Evidence-first answers**: every answer should map back to files/chunks with citations.
+- **Incremental by default**: changed-only indexing, resumable pipelines, and fast warm scans.
+
+### Roadmap Language
+- **TIGA Hunt**: ingestion, indexing, retrieval, and cited answering over live archives.
+- **TIGA Atlas**: project memory graph ("grokopedia" for your archive) that tracks entities, decisions, revisions, and cross-project patterns.
+- **TIGA Einstein**: expert reasoning layer that combines domain know-how with Atlas evidence to answer like a senior architect/director.
+
+
+### Search Performance Goal
+- **Ideal**: return results and answer in **~5 seconds** for normal queries.
+- **Hard upper bound**: **10 seconds max** for the common path (degraded mode should still return cited results).
+
+### Scale Guardrails
+To avoid needing 30TB+ extra storage to operate on 30TB archives:
+- Tiered indexing (metadata-only vs text extraction vs selective OCR).
+- Aggressive dedupe (content hashes, revision/latest logic).
+- Embedding budgets and priority queues per project/stage.
+- Optional API rerank/assist behind feature flags, timeout, and local fallback.
+
 ## CLI Reference
 
 ```
