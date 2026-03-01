@@ -19,7 +19,7 @@ TIGA is designed to become a **local, large-scale archive intelligence system** 
 ### North Star
 - Index and understand **30TB+ of NAS project data** across 100+ projects.
 - Let teams ask plain-English questions and get **relevant, cited answers** like ChatGPT Projects.
-- Keep the system **lean and efficient** on local hardware (e.g. RTX 4090 + i7), with optional low-cost API augmentation.
+- Keep the system **lean and efficient** on local hardware (e.g. RTX 4090 + i9), with optional low-cost API augmentation.
 
 ### Design Principles
 - **Local-first**: default operation on-prem/LAN with no required external API.
@@ -31,6 +31,11 @@ TIGA is designed to become a **local, large-scale archive intelligence system** 
 - **TIGA Hunt**: ingestion, indexing, retrieval, and cited answering over live archives.
 - **TIGA Atlas**: project memory graph ("grokopedia" for your archive) that tracks entities, decisions, revisions, and cross-project patterns.
 - **TIGA Einstein**: expert reasoning layer that combines domain know-how with Atlas evidence to answer like a senior architect/director.
+
+
+### Search Performance Goal
+- **Ideal**: return results and answer in **~5 seconds** for normal queries.
+- **Hard upper bound**: **10 seconds max** for the common path (degraded mode should still return cited results).
 
 ### Scale Guardrails
 To avoid needing 30TB+ extra storage to operate on 30TB archives:

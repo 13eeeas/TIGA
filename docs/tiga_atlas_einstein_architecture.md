@@ -21,7 +21,7 @@ Stable domain knowledge and reasoning style:
 - authority workflows (BCA/URA/CAAS/etc.)
 - firm conventions and writing style
 
-Implementation on 4090+i7:
+Implementation on 4090+i9:
 - local instruct model (7B–14B quantized)
 - prompt/system memory for policy and style
 - optional adapter/LoRA later

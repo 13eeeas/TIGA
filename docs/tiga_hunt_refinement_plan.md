@@ -70,6 +70,7 @@ This plan focuses on scaling discovery/index/query for very large architecture a
 ---
 
 ## Suggested success targets
+- Query user-facing latency target: **ideal 5s, max 10s** for normal archive queries.
 - Warm incremental discover on 200k-file project: < 3 minutes
 - Query P95 latency (hybrid): < 2.5s
 - Top-5 citation relevance (human eval): +20% from current baseline
