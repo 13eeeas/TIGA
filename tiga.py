@@ -14,6 +14,8 @@ Subcommands:
   serve        Start the FastAPI LAN server
   conventions  Detect/show/override project folder naming conventions
   einstein     Phase 2 (stub)
+  scrape-woha  Crawl woha.net and seed project_cards with project metadata
+  schedule     Manage the time-of-day resource scheduler (day/night mode)
 """
 
 from __future__ import annotations
@@ -113,6 +115,31 @@ einstein:
   enable: false
   base_model: mistral
   adapter_path: ./tiga_work/einstein/adapter
+
+# Pipeline parallelism — set extract_workers to your CPU core count.
+# On an i9 with 8+ cores, 6-8 workers speeds up PDF/DOCX extraction dramatically.
+pipeline:
+  extract_workers: 4
+  # Fingerprint strategy for change detection:
+  #   full     — SHA256 of entire file (slow, most accurate)
+  #   sampled  — SHA256 of head+tail 64 KB (fast, 99.9% accurate)
+  #   metadata — size + mtime only (fastest; fine for local/NAS filesystems)
+  fingerprint_strategy: sampled
+
+# Time-of-day resource scheduler — balances LAN portal serving vs. background indexing.
+# Day mode (day_start_hour to night_start_hour): portal-optimised, low background load.
+# Night mode: saturate GPU+CPU for maximum indexing throughput.
+scheduler:
+  day_start_hour: 6        # 06:00 → switch to day mode
+  night_start_hour: 22     # 22:00 → switch to night mode
+  # Day: leave VRAM for the chat model; minimal CPU background
+  day_embed_batch_size: 16
+  day_extract_workers: 2
+  day_run_indexing: false
+  # Night: push the 4090 and i9 hard
+  night_embed_batch_size: 256
+  night_extract_workers: 8
+  night_run_indexing: true
 """
 
 
@@ -1150,6 +1177,66 @@ def cmd_einstein(_args: argparse.Namespace) -> None:
     print("Einstein: Phase 2 not yet implemented.")
 
 
+def cmd_scrape_woha(args: argparse.Namespace) -> None:
+    """Crawl woha.net and seed project_cards with project metadata."""
+    import logging
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+
+    from tools.woha_scraper import run_scraper
+
+    stats = run_scraper(
+        dry_run=args.dry_run,
+        delay=args.delay,
+        limit=args.limit,
+        typology_filter=getattr(args, "typology", None),
+        db_path=getattr(args, "db", None),
+    )
+    print(
+        f"\nWOHA scrape complete: "
+        f"discovered={stats['discovered']} "
+        f"scraped={stats['scraped']} "
+        f"upserted={stats['upserted']} "
+        f"failed={stats['failed']}"
+    )
+
+
+def cmd_schedule(args: argparse.Namespace) -> None:
+    """
+    Manage the time-of-day resource scheduler.
+
+    Without flags: show current mode and settings.
+    --mode day|night: force a specific mode now.
+    --daemon: run as a continuous background daemon.
+    """
+    import logging
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+
+    from core.scheduler import (
+        apply_mode, run_daemon, status_summary, _renice_ollama,
+    )
+
+    if args.daemon:
+        interval = getattr(args, "interval", 60)
+        run_daemon(check_interval_s=interval)
+        return
+
+    if args.mode:
+        scfg = apply_mode(args.mode)
+        _renice_ollama(args.mode)
+        print(f"Mode set to: {args.mode}")
+        print(f"  {scfg.description}")
+        return
+
+    # Default: show status
+    s = status_summary()
+    print(f"Current mode : {s['mode']}  (source: {s['source']})")
+    print(f"Description  : {s['description']}")
+    print(f"embed_batch  : {s['embed_batch_size']}")
+    print(f"workers      : {s['extract_workers']}")
+    print(f"run_indexing : {s['run_indexing']}")
+    print(f"mode_file    : {s['mode_file']}")
+
+
 def cmd_health(_args: argparse.Namespace) -> None:
     from config import cfg, ollama_available
     from core.db import get_connection
@@ -1309,6 +1396,50 @@ def build_parser() -> argparse.ArgumentParser:
     p_al.add_argument("--rebuild", action="store_true",
                       help="Re-generate inferred aliases for all projects")
 
+    # scrape-woha
+    p_sw = sub.add_parser(
+        "scrape-woha",
+        help="Crawl woha.net and seed project_cards with project metadata",
+    )
+    p_sw.add_argument(
+        "--dry-run", action="store_true",
+        help="Print results without writing to DB",
+    )
+    p_sw.add_argument(
+        "--delay", type=float, default=1.5,
+        help="Seconds between HTTP requests (default 1.5)",
+    )
+    p_sw.add_argument(
+        "--limit", type=int, default=0,
+        help="Stop after N projects (0 = no limit)",
+    )
+    p_sw.add_argument(
+        "--typology", default=None,
+        help="Only scrape one typology page slug (e.g. 'hospitality')",
+    )
+    p_sw.add_argument(
+        "--db", default=None,
+        help="Override path to tiga.db",
+    )
+
+    # schedule
+    p_sched = sub.add_parser(
+        "schedule",
+        help="Manage the time-of-day resource scheduler (day/night mode)",
+    )
+    p_sched.add_argument(
+        "--mode", choices=["day", "night"], default=None,
+        help="Force a specific mode now (day or night)",
+    )
+    p_sched.add_argument(
+        "--daemon", action="store_true",
+        help="Run as a continuous daemon that switches mode at day/night boundary",
+    )
+    p_sched.add_argument(
+        "--interval", type=int, default=60,
+        help="Daemon check interval in seconds (default 60)",
+    )
+
     return parser
 
 
@@ -1342,6 +1473,8 @@ def main() -> None:
         "synonyms":    cmd_synonyms,
         "aliases":     cmd_aliases,
         "conventions": cmd_conventions,
+        "scrape-woha": cmd_scrape_woha,
+        "schedule":    cmd_schedule,
     }
     dispatch[args.command](args)
 

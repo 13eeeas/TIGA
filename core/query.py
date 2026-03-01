@@ -181,6 +181,67 @@ def _make_citation(
 
 
 # ---------------------------------------------------------------------------
+# Project scope resolver — converts location/typology → file_id allowlist
+# ---------------------------------------------------------------------------
+
+def _resolve_project_scope(
+    filters: dict[str, Any],
+    conn: sqlite3.Connection,
+) -> list[str] | None:
+    """
+    Translate location and/or typology filters into a list of project_id values
+    drawn from the project_cards table.
+
+    Returns:
+      None         — no location/typology filters present; no scoping applied
+      []           — filters matched zero projects (search will yield no results)
+      [id, ...]    — list of project_id values to restrict BM25 + vector lanes
+
+    This is the key mechanism that lets "hospitality projects in Singapore"
+    search only within the 3-5 matching projects rather than all 30 TB of chunks.
+    """
+    location = filters.get("location") if filters else None
+    typology = filters.get("typology") if filters else None
+
+    if not location and not typology:
+        return None  # no project-level scoping needed
+
+    clauses: list[str] = []
+    params: list[Any] = []
+
+    if typology:
+        clauses.append(
+            "(typology_primary LIKE ? OR typology_secondary LIKE ?)"
+        )
+        params.extend([f"%{typology}%", f"%{typology}%"])
+
+    if location:
+        if location == "__overseas__":
+            clauses.append(
+                "(location IS NOT NULL AND location NOT LIKE '%Singapore%')"
+            )
+        else:
+            clauses.append("location LIKE ?")
+            params.append(f"%{location}%")
+
+    sql = (
+        "SELECT project_code FROM project_cards WHERE "
+        + " AND ".join(clauses)
+    )
+    try:
+        rows = conn.execute(sql, params).fetchall()
+        codes = [r["project_code"] for r in rows if r["project_code"]]
+        logger.debug(
+            "_resolve_project_scope: location=%r typology=%r → %d projects",
+            location, typology, len(codes),
+        )
+        return codes
+    except Exception as e:
+        logger.warning("_resolve_project_scope failed (skipping scope): %s", e)
+        return None
+
+
+# ---------------------------------------------------------------------------
 # BM25 lane
 # ---------------------------------------------------------------------------
 
@@ -235,6 +296,22 @@ def _run_bm25(
             # root_id → prefix match on file_path
             filter_clauses.append("f.file_path LIKE ?")
             params.append(filters["root_id"].rstrip("/") + "/%")
+        if "content_type" in filters:
+            filter_clauses.append("f.content_type = ?")
+            params.append(filters["content_type"])
+        if "folder_stage" in filters:
+            filter_clauses.append("f.folder_stage = ?")
+            params.append(filters["folder_stage"])
+        # project_scope: list of project_id values resolved from location/typology
+        # filters against project_cards.  An empty list means "match nothing".
+        if "project_scope" in filters:
+            scope_ids = filters["project_scope"]
+            if scope_ids:
+                placeholders = ",".join("?" * len(scope_ids))
+                filter_clauses.append(f"f.project_id IN ({placeholders})")
+                params.extend(scope_ids)
+            else:
+                filter_clauses.append("1=0")  # no matching projects → no results
 
     extra = ("AND " + " AND ".join(filter_clauses)) if filter_clauses else ""
 
@@ -350,8 +427,26 @@ def _search_impl(
     db_path = str(_cfg.get_db_path())
     root_paths = [str(r) for r in roots]
 
+    # ── Pre-step: Resolve project scope from location/typology filters ────────
+    # If the router extracted a location ("Singapore") or typology ("hospitality")
+    # from the query, translate those into a list of project_id values so that
+    # BM25 and vector search operate on a scoped subset of chunks rather than
+    # the full 30 TB corpus.  This is the single biggest relevancy improvement
+    # for cross-project queries like "hospitality renders in Singapore".
+    _active_filters = dict(filters) if filters else {}
+    if _active_filters.get("location") or _active_filters.get("typology"):
+        scope = _resolve_project_scope(_active_filters, conn)
+        if scope is not None:
+            _active_filters["project_scope"] = scope
+        # Don't pass raw location/typology to BM25 — those are project-level fields
+        # not file-level columns; the scope list handles the restriction.
+        _active_filters.pop("location", None)
+        _active_filters.pop("typology", None)
+    else:
+        _active_filters = _active_filters or None  # type: ignore[assignment]
+
     # ── Step 1: BM25 (with synonym boosting) ─────────────────────────────────
-    bm25_rows = _run_bm25(query, top_k * 3, filters, conn,
+    bm25_rows = _run_bm25(query, top_k * 3, _active_filters, conn,
                           expanded_terms=expanded_terms)
     bm25_map: dict[str, dict[str, Any]] = {}
     if bm25_rows:
@@ -369,7 +464,7 @@ def _search_impl(
         extra_words = " ".join(expanded_terms[:30])  # keep manageable
         combined = f"{query} {extra_words}"
         vector_query = " ".join(combined.split()[:50])
-    vec_scores = _run_vector(vector_query, top_k * 3, filters, _cfg)
+    vec_scores = _run_vector(vector_query, top_k * 3, _active_filters, _cfg)
 
     # ── Step 3: Merge ─────────────────────────────────────────────────────────
     all_ids = set(bm25_map) | set(vec_scores)
