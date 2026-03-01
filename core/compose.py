@@ -77,6 +77,7 @@ _FOLLOWUP_PROMPT = (
 class ResultView:
     title:       str    # filename stem
     rel_path:    str
+    file_path:   str    # absolute path on server filesystem (for open-in-folder)
     citation:    str
     snippet:     str
     project_id:  str
@@ -91,6 +92,7 @@ class ResultView:
         return cls(
             title       = Path(fn).stem if fn else "",
             rel_path    = rel,
+            file_path   = r.get("file_path", ""),
             citation    = r.get("citation", ""),
             snippet     = r.get("snippet", ""),
             project_id  = r.get("project_id", "Unknown"),

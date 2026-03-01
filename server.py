@@ -381,12 +381,17 @@ class QueryRequest(BaseModel):
 class ResultItem(BaseModel):
     title:       str
     rel_path:    str
+    file_path:   str = ""   # absolute path for open-in-folder
     citation:    str
     snippet:     str
     project_id:  str
     typology:    str
     ext:         str
     final_score: float
+
+
+class OpenFileRequest(BaseModel):
+    file_path: str
 
 
 class QueryResponse(BaseModel):
@@ -626,6 +631,7 @@ def _aggregate_dirs(views: list) -> list:
         dir_views.append(ResultView(
             title       = dir_name + "/",
             rel_path    = dir_path,
+            file_path   = str(Path(members[0].file_path).parent) if members[0].file_path else "",
             citation    = dir_path,
             snippet     = f"Folder with {len(members)} matching files — {names}",
             project_id  = members[0].project_id,
@@ -820,6 +826,7 @@ async def api_query(
             ResultItem(
                 title       = v.title,
                 rel_path    = v.rel_path,
+                file_path   = v.file_path,
                 citation    = v.citation,
                 snippet     = v.snippet,
                 project_id  = v.project_id,
@@ -1569,6 +1576,80 @@ async def export_audit(conn: sqlite3.Connection = Depends(get_db)) -> StreamingR
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=tiga_audit.csv"},
     )
+
+
+@app.get("/api/scan")
+async def api_scan_folder(
+    path: str = Query(..., description="Absolute path to scan"),
+    phases: bool = Query(False, description="Scan sub-folders as projects"),
+    depth: int = Query(1, description="Sub-folder depth for --phases mode"),
+    top: int = Query(20, description="Top-N file types to return"),
+) -> dict[str, Any]:
+    """
+    Windirstat-style quick scan of a directory.
+    Returns file type breakdown + size, and (optionally) phase recommendations.
+    """
+    from tools.scanner import scan_folder, scan_for_phases
+
+    target = Path(path)
+    if not target.exists():
+        raise HTTPException(status_code=404, detail=f"Path not found: {path}")
+
+    if phases:
+        return scan_for_phases(target, depth=depth)
+    else:
+        scan = scan_folder(target, top_files=top)
+        return scan.to_dict()
+
+
+@app.post("/api/open-file")
+async def open_file_in_folder(req: OpenFileRequest) -> dict:
+    """
+    Open the containing folder of a file in the OS file explorer.
+
+    Security: only opens paths that exist inside a configured index_root.
+    This endpoint is intentionally restricted to the LAN server machine
+    (the same machine that holds the files).
+    """
+    import platform
+    import subprocess
+
+    raw = req.file_path.strip()
+    if not raw:
+        raise HTTPException(status_code=400, detail="file_path is required")
+
+    target = Path(raw)
+
+    # Security: path must exist under one of the configured index roots
+    allowed = False
+    for root in cfg.index_roots:
+        try:
+            target.resolve().relative_to(root.resolve())
+            allowed = True
+            break
+        except ValueError:
+            continue
+    if not allowed:
+        raise HTTPException(status_code=403, detail="Path not within any configured index root")
+
+    if not target.exists():
+        raise HTTPException(status_code=404, detail="File not found")
+
+    try:
+        system = platform.system()
+        if system == "Windows":
+            # Opens Explorer and selects the file
+            subprocess.Popen(["explorer", "/select,", str(target)])
+        elif system == "Darwin":
+            # Opens Finder and reveals the file
+            subprocess.Popen(["open", "-R", str(target)])
+        else:
+            # Linux: open the parent directory
+            subprocess.Popen(["xdg-open", str(target.parent)])
+        return {"status": "ok", "path": str(target)}
+    except Exception as exc:
+        logger.warning("open-file failed for %s: %s", target, exc)
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 @app.post("/api/audit/log")

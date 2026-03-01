@@ -14,6 +14,7 @@ Subcommands:
   serve        Start the FastAPI LAN server
   conventions  Detect/show/override project folder naming conventions
   einstein     Phase 2 (stub)
+  scan         Windirstat-style file type / size scan of a project folder
   scrape-woha  Crawl woha.net and seed project_cards with project metadata
   schedule     Manage the time-of-day resource scheduler (day/night mode)
 """
@@ -1183,6 +1184,31 @@ def cmd_einstein(_args: argparse.Namespace) -> None:
     print("Einstein: Phase 2 not yet implemented.")
 
 
+def cmd_scan(args: argparse.Namespace) -> None:
+    """Windirstat-style file type / size scan of a folder."""
+    import json as _json
+    from tools.scanner import scan_folder, scan_for_phases, render_text, render_phases_text
+
+    from pathlib import Path
+    target = Path(args.path)
+    if not target.exists():
+        print(f"[ERROR] Path does not exist: {target}", file=sys.stderr)
+        sys.exit(1)
+
+    if args.phases:
+        result = scan_for_phases(target, depth=args.depth)
+        if args.as_json:
+            print(_json.dumps(result, indent=2))
+        else:
+            print(render_phases_text(result))
+    else:
+        scan = scan_folder(target, top_files=args.top)
+        if args.as_json:
+            print(_json.dumps(scan.to_dict(), indent=2))
+        else:
+            print(render_text(scan, top=args.top))
+
+
 def cmd_scrape_woha(args: argparse.Namespace) -> None:
     """Crawl woha.net and seed project_cards with project metadata."""
     import logging
@@ -1428,6 +1454,29 @@ def build_parser() -> argparse.ArgumentParser:
         help="Override path to tiga.db",
     )
 
+    # scan
+    p_scan = sub.add_parser(
+        "scan",
+        help="Windirstat-style file type / size scan of a folder",
+    )
+    p_scan.add_argument("path", help="Folder to scan")
+    p_scan.add_argument(
+        "--phases", action="store_true",
+        help="Scan sub-folders as separate projects and recommend test phases",
+    )
+    p_scan.add_argument(
+        "--depth", type=int, default=1,
+        help="Sub-folder depth for --phases mode (default 1)",
+    )
+    p_scan.add_argument(
+        "--json", dest="as_json", action="store_true",
+        help="Output machine-readable JSON",
+    )
+    p_scan.add_argument(
+        "--top", type=int, default=20,
+        help="Show top-N file types (default 20)",
+    )
+
     # schedule
     p_sched = sub.add_parser(
         "schedule",
@@ -1479,6 +1528,7 @@ def main() -> None:
         "synonyms":    cmd_synonyms,
         "aliases":     cmd_aliases,
         "conventions": cmd_conventions,
+        "scan":        cmd_scan,
         "scrape-woha": cmd_scrape_woha,
         "schedule":    cmd_schedule,
     }

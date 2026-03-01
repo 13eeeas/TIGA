@@ -73,6 +73,7 @@ class SearchResult(TypedDict):
     chunk_id:     str
     file_id:      str
     ref_value:    str
+    file_path:    str   # absolute path on the server filesystem
     rel_path:     str
     file_name:    str
     project_id:   str
@@ -587,6 +588,7 @@ def _search_impl(
             chunk_id=     cand["chunk_id"],
             file_id=      cand["file_id"],
             ref_value=    cand["ref_value"],
+            file_path=    cand["file_path"],
             rel_path=     rel,
             file_name=    cand["file_name"],
             project_id=   cand["project_id"],
