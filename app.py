@@ -310,6 +310,11 @@ with tabs[3]:
                 st.write(f"**Path:** `{f.get('file_path','')}`")
                 st.write(f"**Status:** {f.get('status')}  |  **Lane:** {f.get('lane')}")
                 st.write(f"**Project:** {f.get('project_id','—')}  |  **Typology:** {f.get('typology','—')}")
+                st.write(
+                    f"**Topic:** {f.get('topic','—')}  |  "
+                    f"**Speaker:** {f.get('speaker','—')}  |  "
+                    f"**Event:** {f.get('event_name','—')}"
+                )
                 st.write(f"**Chunks:** {f.get('chunks',0)}")
                 fb = f.get("feedback", {})
                 st.write(f"**Feedback:** 👍 {fb.get('positive',0)}  👎 {fb.get('negative',0)}")

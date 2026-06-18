@@ -83,6 +83,13 @@ class SearchResult(TypedDict):
     vector_score: float
     final_score:  float
     citation:     str
+    title:        str
+    speaker:      str
+    event_name:   str
+    event_type:   str
+    event_date:   str
+    file_type:    str
+    topic:        str
 
 
 # ---------------------------------------------------------------------------
@@ -335,6 +342,27 @@ def _run_bm25(
         if "folder_stage" in filters:
             filter_clauses.append("f.folder_stage = ?")
             params.append(filters["folder_stage"])
+        if "topic" in filters:
+            filter_clauses.append("f.topic = ?")
+            params.append(filters["topic"])
+        if "speaker" in filters:
+            filter_clauses.append("f.speaker LIKE ?")
+            params.append(f"%{filters['speaker']}%")
+        if "event_name" in filters:
+            filter_clauses.append("f.event_name LIKE ?")
+            params.append(f"%{filters['event_name']}%")
+        if "event_type" in filters:
+            filter_clauses.append("f.event_type = ?")
+            params.append(filters["event_type"])
+        if "file_type" in filters:
+            filter_clauses.append("f.file_type = ?")
+            params.append(filters["file_type"])
+        if "date_from" in filters:
+            filter_clauses.append("(f.event_date >= ? OR f.event_date IS NULL OR f.event_date = '')")
+            params.append(filters["date_from"])
+        if "date_to" in filters:
+            filter_clauses.append("(f.event_date <= ? OR f.event_date IS NULL OR f.event_date = '')")
+            params.append(filters["date_to"])
         # project_scope: list of project_id values resolved from location/typology
         # filters against project_cards.  An empty list means "match nothing".
         if "project_scope" in filters:
@@ -356,6 +384,13 @@ def _run_bm25(
             COALESCE(f.typology,   'Unknown') AS typology,
             COALESCE(f.extension,  '')        AS extension,
             COALESCE(f.file_name,  '')        AS file_name,
+            COALESCE(f.knowledge_title, f.file_name, '') AS title,
+            COALESCE(f.speaker, '')           AS speaker,
+            COALESCE(f.event_name, '')        AS event_name,
+            COALESCE(f.event_type, '')        AS event_type,
+            COALESCE(f.event_date, '')        AS event_date,
+            COALESCE(f.file_type, '')         AS file_type,
+            COALESCE(f.topic, '')             AS topic,
             bm25(chunks_fts)                  AS bm25_raw,
             snippet(chunks_fts, 0, '', '', ' ... ', {_SNIPPET_TOKENS}) AS snippet
         FROM chunks_fts
@@ -517,7 +552,14 @@ def _search_impl(
             f"COALESCE(f.project_id,'Unknown') AS project_id, "
             f"COALESCE(f.typology,'Unknown')   AS typology, "
             f"COALESCE(f.extension,'')         AS extension, "
-            f"COALESCE(f.file_name,'')         AS file_name "
+            f"COALESCE(f.file_name,'')         AS file_name, "
+            f"COALESCE(f.knowledge_title, f.file_name, '') AS title, "
+            f"COALESCE(f.speaker,'')           AS speaker, "
+            f"COALESCE(f.event_name,'')        AS event_name, "
+            f"COALESCE(f.event_type,'')        AS event_type, "
+            f"COALESCE(f.event_date,'')        AS event_date, "
+            f"COALESCE(f.file_type,'')         AS file_type, "
+            f"COALESCE(f.topic,'')             AS topic "
             f"FROM chunks c "
             f"JOIN files f ON f.file_id = c.file_id "
             f"WHERE c.chunk_id IN ({placeholders})",
@@ -548,6 +590,13 @@ def _search_impl(
             "file_name":  meta.get("file_name", Path(meta["file_path"]).name),
             "project_id": meta.get("project_id", "Unknown"),
             "typology":   meta.get("typology", "Unknown"),
+            "title":      meta.get("title", ""),
+            "speaker":    meta.get("speaker", ""),
+            "event_name": meta.get("event_name", ""),
+            "event_type": meta.get("event_type", ""),
+            "event_date": meta.get("event_date", ""),
+            "file_type":  meta.get("file_type", ""),
+            "topic":      meta.get("topic", ""),
             "snippet":    meta.get("snippet", meta.get("text", ""))[:_SNIPPET_MAX],
             "bm25_score": bs,
             "vector_score": vs,
@@ -598,6 +647,13 @@ def _search_impl(
             vector_score= round(cand["vector_score"],  4),
             final_score=  round(cand["final_score"],   4),
             citation=     citation,
+            title=        cand.get("title", ""),
+            speaker=      cand.get("speaker", ""),
+            event_name=   cand.get("event_name", ""),
+            event_type=   cand.get("event_type", ""),
+            event_date=   cand.get("event_date", ""),
+            file_type=    cand.get("file_type", ""),
+            topic=        cand.get("topic", ""),
         ))
 
         if len(results) >= top_k:

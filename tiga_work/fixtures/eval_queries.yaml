@@ -1,19 +1,33 @@
-# TIGA Hunt — eval fixture
-# Edit these entries to match your POC archive.
-# Run: python tiga.py eval
-#
-# expected_paths: suffix-match against indexed file_path (partial paths OK)
-# expected_project: optional label (not used in scoring yet)
+# TIGA Hunt - Knowledge Corpus eval fixture
+# Replace expected_paths / expected_citations with real files after first indexing.
+# Expand this to 30-50 real questions for a useful regression suite.
 
-- query: "hospital brief 2019"
+- query: "What recurring themes were discussed across seminars?"
   expected_paths:
-    - 2019_HOSP/brief.pdf
-  expected_project: "2019_HOSP"
+    - ""
+  answer_must_include: []
 
-- query: "school competition submission"
+- query: "Which talks mentioned AI in architecture workflows?"
   expected_paths:
-    - Competitions/submission.pdf
+    - ""
+  answer_must_include: [AI]
 
-- query: "site analysis residential"
+- query: "Summarize what this corpus says about design process and collaboration."
   expected_paths:
-    - site_analysis.pdf
+    - ""
+  answer_must_include: [design, collaboration]
+
+- query: "Which speaker discussed fire safety, regulations, or compliance?"
+  expected_paths:
+    - ""
+  answer_must_include: [fire, regulation, compliance]
+
+- query: "What are the differences between two seminars on the same topic?"
+  expected_paths:
+    - ""
+  answer_must_include: []
+
+- query: "What are the most repeated ideas across all training material?"
+  expected_paths:
+    - ""
+  answer_must_include: []

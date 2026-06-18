@@ -258,6 +258,26 @@ _FILE_EXTRA_COLS = [
     ("canonical_category", "TEXT"),          # normalised category: renders_3d | meetings | cad | bim | ...
     ("folder_date",        "TEXT"),          # ISO date extracted from folder name (e.g. "186 20130322 Presentation")
     ("is_received",        "INTEGER DEFAULT 0"),  # 1 if file is in a "Received" / "From Client" folder
+    # Knowledge Corpus Mode - seminar/training corpus metadata
+    ("knowledge_title",          "TEXT"),
+    ("speaker",                  "TEXT"),
+    ("event_name",               "TEXT"),
+    ("event_type",               "TEXT"),
+    ("event_date",               "TEXT"),
+    ("source_file_path",         "TEXT"),
+    ("file_type",                "TEXT"),
+    ("topic",                    "TEXT"),
+    ("subtopic",                 "TEXT"),
+    ("organization",             "TEXT"),
+    ("people_mentioned",         "TEXT"),  # JSON array
+    ("keywords",                 "TEXT"),  # JSON array
+    ("summary",                  "TEXT"),
+    ("metadata_confidence",      "REAL"),
+    ("extraction_method",        "TEXT"),
+    ("language",                 "TEXT"),
+    ("duplicate_group",          "TEXT"),
+    ("parent_document_id",       "TEXT"),
+    ("document_relationship",    "TEXT"),
 ]
 
 _FILE_EXTRA_INDEXES = [
@@ -270,6 +290,14 @@ _FILE_EXTRA_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_files_discipline         ON files(discipline)",
     "CREATE INDEX IF NOT EXISTS idx_files_canonical_category ON files(canonical_category)",
     "CREATE INDEX IF NOT EXISTS idx_files_folder_date        ON files(folder_date)",
+    "CREATE INDEX IF NOT EXISTS idx_files_knowledge_topic    ON files(topic)",
+    "CREATE INDEX IF NOT EXISTS idx_files_speaker            ON files(speaker)",
+    "CREATE INDEX IF NOT EXISTS idx_files_event_name         ON files(event_name)",
+    "CREATE INDEX IF NOT EXISTS idx_files_event_type         ON files(event_type)",
+    "CREATE INDEX IF NOT EXISTS idx_files_event_date         ON files(event_date)",
+    "CREATE INDEX IF NOT EXISTS idx_files_file_type          ON files(file_type)",
+    "CREATE INDEX IF NOT EXISTS idx_files_duplicate_group    ON files(duplicate_group)",
+    "CREATE INDEX IF NOT EXISTS idx_files_parent_document    ON files(parent_document_id)",
 ]
 
 
@@ -362,6 +390,61 @@ def upsert_file(conn: sqlite3.Connection, f: dict[str, Any]) -> None:
         "error_code":          f.get("error_code"),
         "error_detail":        f.get("error_detail"),
     })
+    conn.commit()
+
+
+def update_knowledge_metadata(
+    conn: sqlite3.Connection,
+    file_id: str,
+    metadata: dict[str, Any],
+) -> None:
+    """Persist knowledge-corpus metadata for a file."""
+    conn.execute(
+        """UPDATE files SET
+              knowledge_title       = ?,
+              speaker               = ?,
+              event_name            = ?,
+              event_type            = ?,
+              event_date            = ?,
+              source_file_path      = ?,
+              file_type             = ?,
+              topic                 = ?,
+              subtopic              = ?,
+              organization          = ?,
+              people_mentioned      = ?,
+              keywords              = ?,
+              summary               = ?,
+              metadata_confidence   = ?,
+              extraction_method     = ?,
+              language              = ?,
+              duplicate_group       = ?,
+              parent_document_id    = ?,
+              document_relationship = ?,
+              updated_at            = datetime('now')
+           WHERE file_id = ?""",
+        (
+            metadata.get("title"),
+            metadata.get("speaker"),
+            metadata.get("event_name"),
+            metadata.get("event_type"),
+            metadata.get("date"),
+            metadata.get("source_file_path"),
+            metadata.get("file_type"),
+            metadata.get("topic"),
+            metadata.get("subtopic"),
+            metadata.get("organization"),
+            metadata.get("people_mentioned"),
+            metadata.get("keywords"),
+            metadata.get("summary"),
+            metadata.get("confidence"),
+            metadata.get("extraction_method"),
+            metadata.get("language"),
+            metadata.get("duplicate_group"),
+            metadata.get("parent_document_id"),
+            metadata.get("relationship"),
+            file_id,
+        ),
+    )
     conn.commit()
 
 

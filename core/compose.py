@@ -56,10 +56,12 @@ _FALLBACK_MAX    = 600     # max chars for raw-excerpt fallback
 _FALLBACK_PREFIX = "[Ollama unavailable — showing raw excerpts] "
 
 _SYSTEM_PROMPT = (
-    "You are TIGA Hunt, an architecture firm research assistant. "
-    "Answer using ONLY the provided context. "
-    "If the context does not contain the answer, say so. "
-    "Do not invent facts. Cite sources by filename."
+    "You are TIGA Hunt in Knowledge Corpus Mode. "
+    "Answer using ONLY the provided cited context from the local corpus. "
+    "Prefer factual synthesis over generic summary. "
+    "If evidence is thin or missing, say what is uncertain. "
+    "Do not invent speakers, dates, events, or claims. "
+    "Cite sources by the citation labels provided in context."
 )
 
 _FOLLOWUP_PROMPT = (
@@ -75,15 +77,21 @@ _FOLLOWUP_PROMPT = (
 
 @dataclass
 class ResultView:
-    title:       str    # filename stem
-    rel_path:    str
-    file_path:   str    # absolute path on server filesystem (for open-in-folder)
-    citation:    str
-    snippet:     str
-    project_id:  str
-    typology:    str
-    ext:         str
-    final_score: float
+    title:       str = ""    # filename stem
+    rel_path:    str = ""
+    file_path:   str = ""    # absolute path on server filesystem (for open-in-folder)
+    citation:    str = ""
+    snippet:     str = ""
+    project_id:  str = ""
+    typology:    str = ""
+    ext:         str = ""
+    final_score: float = 0.0
+    speaker:     str = ""
+    event_name:  str = ""
+    event_type:  str = ""
+    event_date:  str = ""
+    file_type:   str = ""
+    topic:       str = ""
 
     @classmethod
     def from_search_result(cls, r: dict[str, Any]) -> "ResultView":
@@ -99,6 +107,12 @@ class ResultView:
             typology    = r.get("typology", "Unknown"),
             ext         = Path(rel).suffix.lower() if rel else "",
             final_score = float(r.get("final_score", 0.0)),
+            speaker     = r.get("speaker", ""),
+            event_name  = r.get("event_name", ""),
+            event_type  = r.get("event_type", ""),
+            event_date  = r.get("event_date", ""),
+            file_type   = r.get("file_type", ""),
+            topic       = r.get("topic", ""),
         )
 
 
@@ -146,7 +160,19 @@ def _build_context(views: list[ResultView]) -> str:
         return "No relevant documents found."
     parts = []
     for i, v in enumerate(views[:_CONTEXT_RESULTS], 1):
-        parts.append(f"[{i}] {v.citation}\n{v.snippet}")
+        meta = " | ".join(
+            p for p in [
+                v.event_name,
+                v.speaker and f"Speaker: {v.speaker}",
+                v.topic and f"Topic: {v.topic}",
+                v.event_date and f"Date: {v.event_date}",
+                v.file_type and f"Type: {v.file_type}",
+            ] if p
+        )
+        header = f"[{i}] {v.citation}"
+        if meta:
+            header += f"\nMetadata: {meta}"
+        parts.append(f"{header}\n{v.snippet}")
     return "\n\n".join(parts)
 
 

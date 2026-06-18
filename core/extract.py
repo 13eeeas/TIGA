@@ -45,8 +45,10 @@ from core.db import (
     upsert_project,
     set_file_status,
     log_event,
+    update_knowledge_metadata,
 )
 from core.infer import infer_project, infer_typology
+from core.knowledge import infer_metadata, build_contextual_header
 
 logger = logging.getLogger(__name__)
 
@@ -386,6 +388,7 @@ def run_extract(
 
     try:
         _cfg = cfg_obj or _module_cfg
+        chunk_pairs: list[tuple[str, str]] = []
 
         # --- Inference (always, regardless of lane) ---
         project_id, proj_confidence, signals = infer_project(path, cfg_obj=_cfg)
@@ -406,6 +409,15 @@ def run_extract(
             "typology_guess": typology,
             "signals":        json.dumps(signals),
         })
+
+        # --- Knowledge Corpus Mode metadata (non-LLM, path + text preview) ---
+        extraction_method = "metadata"
+        if lane == "TEXT_EXTRACTABLE":
+            chunk_pairs = extract_chunks(path)
+            extraction_method = "text" if chunk_pairs else "path"
+        preview = "\n".join(text for _, text in chunk_pairs[:3])[:6000]
+        kmeta = infer_metadata(path, _cfg, preview, extraction_method=extraction_method)
+        update_knowledge_metadata(conn, file_id, kmeta.to_db())
 
         # --- METADATA_ONLY: create a surrogate meta chunk ---
         if lane != "TEXT_EXTRACTABLE":
@@ -439,20 +451,48 @@ def run_extract(
             return stats
 
         # --- TEXT_EXTRACTABLE: extract chunks ---
-        chunk_pairs = extract_chunks(path)
-
         if not chunk_pairs:
             # Extraction returned nothing (e.g. scanned PDF with no text)
-            set_file_status(conn, file_id, "FAILED", "EXTRACT_EMPTY",
-                            "extract_chunks returned no chunks")
-            log_event(conn, "EXTRACT_FAILED", detail="no chunks produced", file_id=file_id)
-            stats["failed"] += 1
+            surrogate = _build_surrogate(path, "no embedded text; metadata fallback")
+            header = build_contextual_header(kmeta, "meta")
+            indexed_text = f"{header}\n\n{surrogate}".strip() if header else surrogate
+            chunk_id = _make_chunk_id(file_id, "meta")
+            c_hash = _content_hash(indexed_text)
+            existing = conn.execute(
+                "SELECT content_hash FROM chunks WHERE chunk_id=?", (chunk_id,)
+            ).fetchone()
+            if existing:
+                if existing["content_hash"] == c_hash:
+                    stats["unchanged"] += 1
+                else:
+                    _upsert_chunk(conn, {
+                        "chunk_id": chunk_id, "file_id": file_id,
+                        "ref_value": "meta", "text": indexed_text,
+                        "token_estimate": _token_estimate(indexed_text),
+                        "content_hash": c_hash, "embedded": 0,
+                    })
+                    stats["updated"] += 1
+            else:
+                _upsert_chunk(conn, {
+                    "chunk_id": chunk_id, "file_id": file_id,
+                    "ref_value": "meta", "text": indexed_text,
+                    "token_estimate": _token_estimate(indexed_text),
+                    "content_hash": c_hash,
+                })
+                stats["new"] += 1
+            set_file_status(conn, file_id, "EXTRACTED")
+            log_event(conn, "EXTRACTED", detail="metadata fallback", file_id=file_id)
             return stats
 
         for ref, text in chunk_pairs:
             chunk_id = _make_chunk_id(file_id, ref)
-            c_hash = _content_hash(text)
-            tok_est = _token_estimate(text)
+            indexed_text = text
+            if getattr(_cfg, "contextual_chunk_headers", True):
+                header = build_contextual_header(kmeta, ref)
+                if header:
+                    indexed_text = f"{header}\n\n{text}".strip()
+            c_hash = _content_hash(indexed_text)
+            tok_est = _token_estimate(indexed_text)
 
             existing = conn.execute(
                 "SELECT content_hash FROM chunks WHERE chunk_id=?", (chunk_id,)
@@ -464,7 +504,7 @@ def run_extract(
                 else:
                     _upsert_chunk(conn, {
                         "chunk_id": chunk_id, "file_id": file_id,
-                        "ref_value": ref, "text": text,
+                        "ref_value": ref, "text": indexed_text,
                         "token_estimate": tok_est,
                         "content_hash": c_hash, "embedded": 0,
                     })
@@ -472,7 +512,7 @@ def run_extract(
             else:
                 _upsert_chunk(conn, {
                     "chunk_id": chunk_id, "file_id": file_id,
-                    "ref_value": ref, "text": text,
+                    "ref_value": ref, "text": indexed_text,
                     "token_estimate": tok_est, "content_hash": c_hash,
                 })
                 stats["new"] += 1

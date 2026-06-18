@@ -1,122 +1,192 @@
 # TIGA Hunt
 
-RAG-powered archive search for architecture firms.
-Plain English queries → top-5 cited results in under 5 seconds.
+TIGA Hunt is a local-first archive intelligence system. The current pilot is
+focused on a seminar, talks, presentation, training, and exhibition corpus, not
+project-document indexing.
+
+Pilot corpus:
+
+```text
+F:\Shared\Non Project Image\02 Talks Presentation Training Exhibitions\000 Out of Office Seminars
+```
+
+The product goal is to let a user ask factual or synthesis questions about this
+corpus and receive grounded answers with citations to retrieved evidence.
 
 ## Quick Start
 
-```
-setup.bat        # first time only
-run.bat          # start server + UI
-```
-
-Then open **http://localhost:8501** in any browser on the LAN.
-
-## Product Ambition
-
-TIGA is designed to become a **local, large-scale archive intelligence system** for architecture firms.
-
-### North Star
-- Index and understand **30TB+ of NAS project data** across 100+ projects.
-- Let teams ask plain-English questions and get **relevant, cited answers** like ChatGPT Projects.
-- Keep the system **lean and efficient** on local hardware (e.g. RTX 4090 + i9), with optional low-cost API augmentation.
-
-### Design Principles
-- **Local-first**: default operation on-prem/LAN with no required external API.
-- **Represent, don't replicate**: index compact metadata/chunks/embeddings instead of duplicating raw archive size.
-- **Evidence-first answers**: every answer should map back to files/chunks with citations.
-- **Incremental by default**: changed-only indexing, resumable pipelines, and fast warm scans.
-
-### Roadmap Language
-- **TIGA Hunt**: ingestion, indexing, retrieval, and cited answering over live archives.
-- **TIGA Atlas**: project memory graph ("grokopedia" for your archive) that tracks entities, decisions, revisions, and cross-project patterns.
-- **TIGA Einstein**: expert reasoning layer that combines domain know-how with Atlas evidence to answer like a senior architect/director.
-
-
-### Search Performance Goal
-- **Ideal**: return results and answer in **~5 seconds** for normal queries.
-- **Hard upper bound**: **10 seconds max** for the common path (degraded mode should still return cited results).
-
-### Scale Guardrails
-To avoid needing 30TB+ extra storage to operate on 30TB archives:
-- Tiered indexing (metadata-only vs text extraction vs selective OCR).
-- Aggressive dedupe (content hashes, revision/latest logic).
-- Embedding budgets and priority queues per project/stage.
-- Optional API rerank/assist behind feature flags, timeout, and local fallback.
-
-## CLI Reference
-
-```
-python tiga.py init         # create default config.yaml
-python tiga.py discover     # preview what would be indexed
-python tiga.py index        # incremental index (skip unchanged)
-python tiga.py rebuild      # force full re-index
-python tiga.py query <q>    # search from terminal
-python tiga.py status       # index stats
-python tiga.py eval         # search quality test
-python tiga.py serve        # start FastAPI server (port 7860)
-python tiga.py ui           # start Streamlit UI (port 8501)
-python tiga.py health       # check Ollama + DB
-python tiga.py extract <f>  # test extraction on a file
-python tiga.py embed <q>    # test Ollama embedding
+```bat
+setup.bat
+run.bat
 ```
 
-## Configuration
+Then open:
 
-Edit `tiga_work/config.yaml` to set:
-- `index_roots` — directories to scan
-- `ollama.chat_model` — LLM (default: mistral)
-- `retrieval.top_k_default` — results per query
-
-Override work directory:
-```
-set TIGA_WORK_DIR=D:\tiga_data
+```text
+http://localhost:8501
 ```
 
-## Stack
+Useful CLI commands:
 
-| Component | Role |
-|-----------|------|
-| Ollama + mistral | Local LLM (zero external API) |
-| nomic-embed-text | Embeddings |
-| ChromaDB | Vector search lane |
-| SQLite + FTS5 | BM25 keyword lane |
-| FastAPI | LAN API server |
-| Streamlit | Browser UI |
-
-## Project Structure
-
-```
-tiga/
-├── tiga.py          CLI entrypoint
-├── config.py        Config loader
-├── server.py        FastAPI LAN server
-├── app.py           Streamlit UI
-├── core/
-│   ├── db.py        SQLite + FTS5
-│   ├── discover.py  File discovery
-│   ├── extract.py   Text extraction
-│   ├── infer.py     Project / typology inference
-│   ├── vectors.py   ChromaDB + embeddings
-│   ├── index.py     Indexing pipeline
-│   ├── query.py     Hybrid search
-│   ├── compose.py   Answer composer
-│   ├── ocr.py       Gated OCR (opt-in)
-│   └── eval.py      Search quality eval
-├── tests/
-│   └── test_config.py
-└── tiga_work/       (gitignored — local data)
-    ├── config.yaml
-    ├── db/
-    ├── vectors/
-    ├── logs/
-    └── reports/
+```bat
+python tiga.py init
+python tiga.py discover
+python tiga.py index
+python tiga.py query "Which talks mentioned AI in architecture workflows?"
+python tiga.py eval
+python tiga.py wiki
+python tiga.py status
+python tiga.py health
+python tiga.py serve
+python tiga.py ui
 ```
 
-## Phase 2 — TIGA Einstein
+## Knowledge Corpus Mode
 
-Planned. Locally-trained model with two layers:
-- Trained "senior architect/director" knowledge core
-- Live indexed archive (built by Hunt)
+Knowledge Corpus Mode indexes knowledge documents rather than project archives.
+It assumes the most important entities are topics, speakers, events, training
+material, transcripts, slide decks, and recurring concepts.
 
-Enable in config: `einstein.enable: true`
+The active config profile is in:
+
+```text
+tiga_work/config.yaml
+```
+
+Key settings:
+
+```yaml
+corpus:
+  mode: knowledge_corpus
+  name: Out of Office Seminars
+  metadata_first: true
+  contextual_chunk_headers: true
+```
+
+Expected inputs are directories containing PDFs, PowerPoint decks, Word files,
+plain text, Markdown, spreadsheets, images, and media exports. Text extraction
+is preferred. OCR is opt-in and should be enabled only when needed.
+
+Supported text extraction:
+
+- PDF: page chunks
+- PPTX: slide chunks
+- DOCX: heading/section chunks
+- TXT/MD: section chunks
+- XLSX/XLS: sheet chunks when spreadsheet dependencies are installed
+
+Metadata-only indexing:
+
+- Images
+- Video/audio exports
+- CAD/BIM files
+- Unsupported binary files
+
+## Retrieval Philosophy
+
+TIGA should not brute-force large raw contexts into an LLM. The intended path is:
+
+1. Discover and classify files using filesystem metadata.
+2. Extract text where practical.
+3. Infer low-cost metadata such as title, event, speaker, topic, file type, date,
+   duplicate group, and parent document relationship.
+4. Retrieve with metadata filters first.
+5. Search with BM25/FTS and dense embeddings.
+6. Fuse ranks and optionally rerank a small candidate pool.
+7. Send only a small, high-quality evidence pack to the LLM.
+8. Answer with citations and explicit uncertainty.
+
+The LLM is late in the pipeline. It synthesizes retrieved evidence; it is not
+the primary search engine.
+
+## Metadata Schema
+
+Knowledge Corpus Mode adds these file-level fields:
+
+- title
+- speaker
+- event name
+- event type
+- date
+- source file path
+- file type
+- topic
+- subtopic
+- organization
+- people mentioned
+- keywords
+- summary
+- confidence
+- extraction method
+- language
+- duplicate group
+- parent document / slide deck / transcript relationship
+
+Every chunk preserves source file path, chunk reference, and citation.
+Contextual chunk headers add document-level metadata before chunk text so dense
+retrieval has parent context.
+
+## Output Artifacts
+
+Runtime artifacts are written under `tiga_work/`:
+
+```text
+tiga_work/
+  config.yaml
+  db/tiga.db
+  vectors/
+  reports/
+  wiki/
+  fixtures/eval_queries.yaml
+```
+
+The wiki pipeline writes durable Markdown pages:
+
+- `wiki/topics/*.md`
+- `wiki/speakers/*.md`
+- `wiki/events/*.md`
+- `wiki/concepts/*.md`
+- `wiki/index.md`
+
+Pages include source citations and backlinks. Thin-evidence pages are marked as
+provisional.
+
+## Evaluation Flow
+
+Start with:
+
+```bat
+python tiga.py eval
+```
+
+The eval fixture lives at:
+
+```text
+tiga_work/fixtures/eval_queries.yaml
+```
+
+The harness reports:
+
+- retrieval hit@k
+- MRR
+- citation correctness
+- latency p50/p95
+- groundedness proxy when `answer_must_include` is supplied
+- explicit placeholders for hallucination/fabrication rate and wiki usefulness
+
+For a rigorous corpus eval, expand the fixture to 30-50 real questions after the
+first full index. Use questions that test recurring themes, AI workflows,
+design process, collaboration, fire safety, regulations, speaker attribution,
+and comparisons between seminars.
+
+## Current Limitations
+
+- Speaker, event, topic, and date metadata are heuristic and may need manual
+  correction for ambiguous filenames.
+- OCR remains opt-in and is not yet part of a selective OCR queue.
+- Near-duplicate detection is hash-based and practical, not semantic clustering.
+- Wiki pages are deterministic evidence maps, not polished LLM essays.
+- Hallucination rate and wiki usefulness require a human or LLM-judge rubric
+  once a gold evaluation set exists.
+- Some project-era commands remain for compatibility and are not central to
+  Knowledge Corpus Mode.

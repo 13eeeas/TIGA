@@ -388,6 +388,12 @@ class ResultItem(BaseModel):
     typology:    str
     ext:         str
     final_score: float
+    speaker:     str = ""
+    event_name:  str = ""
+    event_type:  str = ""
+    event_date:  str = ""
+    file_type:   str = ""
+    topic:       str = ""
 
 
 class OpenFileRequest(BaseModel):
@@ -833,6 +839,12 @@ async def api_query(
                 typology    = v.typology,
                 ext         = v.ext,
                 final_score = v.final_score,
+                speaker     = getattr(v, "speaker", ""),
+                event_name  = getattr(v, "event_name", ""),
+                event_type  = getattr(v, "event_type", ""),
+                event_date  = getattr(v, "event_date", ""),
+                file_type   = getattr(v, "file_type", ""),
+                topic       = getattr(v, "topic", ""),
             )
             for v in results_page
         ],
@@ -1142,6 +1154,13 @@ async def index_file_search(
             "lane":       r["lane"],
             "project_id": r["project_id"],
             "typology":   r["typology"],
+            "title":      r["knowledge_title"],
+            "speaker":    r["speaker"],
+            "event_name": r["event_name"],
+            "event_type": r["event_type"],
+            "event_date": r["event_date"],
+            "file_type":  r["file_type"],
+            "topic":      r["topic"],
             "updated_at": r["updated_at"],
             "chunks":     chunk_count,
             "feedback":   {

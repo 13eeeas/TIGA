@@ -7,6 +7,7 @@ __pycache__/
 dist/
 build/
 .eggs/
+.venv/
 
 # TIGA work directories (contain DB, vectors, logs — not source)
 # Ignore data/runtime files but keep committable YAML templates
@@ -14,6 +15,7 @@ tiga_work/db/
 tiga_work/vectors/
 tiga_work/logs/
 tiga_work/reports/
+tiga_work/wiki/
 tiga_work/config.yaml
 tiga_work/corrections.json
 tiga_work/project_conventions.yml

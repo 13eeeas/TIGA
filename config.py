@@ -162,6 +162,17 @@ class Config:
             "keyword_map", {}
         )
 
+        # --- Knowledge Corpus Mode ---
+        corpus = data.get("corpus", {})
+        self.corpus_mode: str = corpus.get("mode", "project_archive")
+        self.corpus_name: str = corpus.get("name", "TIGA corpus")
+        self.corpus_description: str = corpus.get("description", "")
+        self.contextual_chunk_headers: bool = corpus.get("contextual_chunk_headers", True)
+        self.chunk_max_chars: int = corpus.get("chunk_max_chars", 3000)
+        self.chunk_overlap_chars: int = corpus.get("chunk_overlap_chars", 250)
+        self.metadata_first: bool = corpus.get("metadata_first", True)
+        self.wiki_min_sources: int = corpus.get("wiki_min_sources", 2)
+
         # --- Retrieval ---
         ret = data.get("retrieval", {})
         self.top_k: int = ret.get("top_k_default", 5)
@@ -180,6 +191,7 @@ class Config:
         )
         # How many hybrid candidates to rerank before trimming to top_k_default.
         self.reranker_top_k: int = ret.get("reranker_top_k", 20)
+        self.candidate_pool_multiplier: int = ret.get("candidate_pool_multiplier", 4)
 
         # --- OCR (opt-in only) ---
         ocr = data.get("ocr", {})

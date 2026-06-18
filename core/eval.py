@@ -133,6 +133,7 @@ def _percentile(values: list[float], p: float) -> float:
 # ---------------------------------------------------------------------------
 
 def _has_hit(returned_paths: list[str], expected_paths: list[str]) -> bool:
+    expected_paths = [p for p in expected_paths if p]
     if not expected_paths:
         return False
     for ep in expected_paths:
@@ -142,6 +143,19 @@ def _has_hit(returned_paths: list[str], expected_paths: list[str]) -> bool:
             if fp_norm.endswith(ep_norm) or ep_norm in fp_norm:
                 return True
     return False
+
+
+def _reciprocal_rank(returned_paths: list[str], expected_paths: list[str]) -> float:
+    expected_paths = [p for p in expected_paths if p]
+    if not expected_paths:
+        return 0.0
+    for idx, fp in enumerate(returned_paths, start=1):
+        fp_norm = fp.replace("\\", "/")
+        for ep in expected_paths:
+            ep_norm = ep.replace("\\", "/")
+            if fp_norm.endswith(ep_norm) or ep_norm in fp_norm:
+                return 1.0 / idx
+    return 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -184,12 +198,15 @@ def run_eval(
     query_reports: list[dict[str, Any]] = []
     latencies_ms: list[float] = []
     hits = 0
+    reciprocal_ranks: list[float] = []
     total_citations = 0
     invalid_count = 0
 
     for entry in fixture:
         query_str = entry.get("query", "")
         expected_paths: list[str] = entry.get("expected_paths", [])
+        expected_paths = [p for p in expected_paths if p]
+        answer_must_include: list[str] = entry.get("answer_must_include", [])
 
         # Run query — empty result is OK pre-Phase 4
         t0 = time.perf_counter()
@@ -206,23 +223,39 @@ def run_eval(
         hit = _has_hit(returned_paths, expected_paths)
         if hit:
             hits += 1
+        rr = _reciprocal_rank(returned_paths, expected_paths)
+        reciprocal_ranks.append(rr)
 
         # Citations — collected from results once query engine returns them
         q_citations: list[str] = []
         for r in results:
-            q_citations.extend(r.get("citations", []))
+            if r.get("citation"):
+                q_citations.append(r["citation"])
         q_invalid = [c for c in q_citations if not validate_citation(c, db_path, root_paths)]
         total_citations += len(q_citations)
         invalid_count  += len(q_invalid)
 
+        snippet_blob = " ".join((r.get("snippet") or "") for r in results).lower()
+        required_terms = [str(t).lower() for t in answer_must_include if str(t).strip()]
+        grounded_terms_found = [t for t in required_terms if t in snippet_blob]
+        groundedness_proxy = (
+            round(len(grounded_terms_found) / len(required_terms), 4)
+            if required_terms else None
+        )
+
         q_report: dict[str, Any] = {
             "query":             query_str,
             "hit":               hit,
+            "reciprocal_rank":    rr,
             "elapsed_ms":        elapsed_ms,
             "returned_paths":    returned_paths[:k],
             "expected_paths":    expected_paths,
             "citations":         q_citations,
             "invalid_citations": q_invalid,
+            "answer_groundedness_proxy": groundedness_proxy,
+            "grounded_terms_found": grounded_terms_found,
+            "hallucination_fabrication_rate": None,
+            "wiki_usefulness": None,
         }
         query_reports.append(q_report)
 
@@ -237,6 +270,7 @@ def run_eval(
     # Aggregate
     n = len(fixture)
     top5_recall = round(hits / n, 4) if n else 0.0
+    mrr = round(sum(reciprocal_ranks) / n, 4) if n else 0.0
     citation_valid_pct = (
         round((1 - invalid_count / total_citations) * 100, 2)
         if total_citations > 0 else 100.0
@@ -249,11 +283,17 @@ def run_eval(
         "ts":                 ts,
         "total_queries":      n,
         "top5_recall":        top5_recall,
+        "hit_at_k":           top5_recall,
+        "mrr":                mrr,
         "citation_valid_pct": citation_valid_pct,
+        "citation_correctness_pct": citation_valid_pct,
         "invalid_citations":  invalid_count,
         "total_citations":    total_citations,
         "latency_p50_ms":     p50,
         "latency_p95_ms":     p95,
+        "answer_groundedness": "proxy_scored_per_question_when answer_must_include is set",
+        "hallucination_fabrication_rate": "manual_or_llm_judge_required",
+        "wiki_usefulness":    "manual_rubric_required",
         "exit_code":          exit_code,
         "queries":            query_reports,
     }
@@ -269,6 +309,7 @@ def run_eval(
     print(f"\n{'-' * 52}")
     print(f"  Queries:          {n}")
     print(f"  Top-5 recall:     {top5_recall * 100:.0f}%")
+    print(f"  MRR:              {mrr:.2f}")
     print(f"  Citation valid:   {citation_valid_pct:.0f}%  [{gate}]")
     print(f"  Latency p50/p95:  {p50:.0f} / {p95:.0f} ms")
     print(f"  Report:           {report_path}")
