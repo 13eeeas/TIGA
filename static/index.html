@@ -100,8 +100,11 @@ body{font-family:'Source Serif 4',Georgia,serif;background:var(--page-bg);color:
 .user-bubble{background:var(--btn-bg);color:var(--page-bg);border:none;border-radius:20px 20px 4px 20px;padding:10px 18px;max-width:min(85%,520px);font-family:'Source Serif 4',Georgia,serif;font-size:15px;font-weight:300;line-height:1.45;text-align:left;cursor:pointer;transition:opacity .15s,transform .12s;box-shadow:0 2px 8px rgba(0,0,0,.12)}
 .user-bubble:hover{opacity:.88;transform:translateY(-1px)}
 .assistant-bubble{width:100%}
-.turn-summary{font-size:15px;line-height:1.72;font-weight:300;color:var(--ink);margin-bottom:10px}
+.turn-label{font-size:10px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:var(--coral);margin-bottom:6px}
+.turn-summary{font-size:15px;line-height:1.72;font-weight:300;color:var(--ink);margin-bottom:4px}
 .turn-summary.loading{opacity:.55}
+.turn-files-header{font-size:10px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:var(--coral);margin:16px 0 8px}
+.turn-files-header.hidden{display:none}
 .turn-meta{font-size:11px;color:var(--ink-60);font-weight:300;margin-top:12px;display:flex;flex-wrap:wrap;gap:6px}
 .turn-followups{display:flex;flex-wrap:wrap;gap:7px;margin-top:12px}
 .turn-error{margin-top:4px}
@@ -177,6 +180,7 @@ body{font-family:'Source Serif 4',Georgia,serif;background:var(--page-bg);color:
 .result-item{background:var(--glass-bg);border:1px solid var(--glass-border);border-bottom-color:var(--glass-border-lo);border-radius:14px;padding:13px 16px;display:flex;align-items:center;gap:13px;cursor:pointer;box-shadow:var(--glass-shadow),inset 0 1px 0 var(--glass-inner);transition:opacity .22s ease,transform .22s ease,box-shadow .2s,border-color .2s,background .35s;opacity:0;transform:translateY(6px)}
 .result-item.show{opacity:1;transform:none}
 .result-item:hover{border-color:rgba(201,100,66,.35);box-shadow:0 6px 24px var(--coral-glow),0 2px 8px rgba(0,0,0,.06),inset 0 1.5px 0 var(--glass-inner)}
+.result-item.opening{opacity:.65;pointer-events:none}
 .result-item.is-dir{border-left:3px solid var(--coral);background:rgba(201,100,66,0.04)}
 .result-side{display:flex;align-items:center;gap:8px;flex-shrink:0;margin-left:auto}
 .file-icon{width:38px;height:38px;border-radius:9px;background:var(--glass-inner);border:1px solid var(--glass-border);box-shadow:inset 0 1px 0 var(--glass-border),0 1px 4px rgba(0,0,0,.06);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
@@ -444,7 +448,7 @@ body{font-family:'Source Serif 4',Georgia,serif;background:var(--page-bg);color:
           </div>
           <div class="search-status" id="searchStatus" aria-live="polite"></div>
         </div>
-        <p class="kbd-hint" id="kbdHint">Enter to send · click a past query to reuse it</p>
+        <p class="kbd-hint" id="kbdHint">Enter to send · click a file to open in explorer</p>
       </div>
     </div>
   </div>
@@ -579,7 +583,11 @@ const LOADING_STAGES = [
     if (document.getElementById('chatThread').children.length && !isTyping(e)) {
       if (e.key === 'ArrowDown') { e.preventDefault(); focusResult(_focusedIdx + 1); }
       if (e.key === 'ArrowUp')   { e.preventDefault(); focusResult(_focusedIdx - 1); }
-      if (e.key === 'Enter' && _focusedIdx >= 0 && !e.shiftKey) { e.preventDefault(); openPreview(_focusedIdx); }
+      if (e.key === 'Enter' && _focusedIdx >= 0 && !e.shiftKey) {
+        e.preventDefault();
+        const r = _results[_focusedIdx];
+        if (r && r.file_path) openInExplorer(_focusedIdx);
+      }
     }
   });
 
@@ -722,7 +730,9 @@ function startAssistantTurn() {
   turn.id = 'turn-' + (++_turnCounter);
   turn.innerHTML = `
     <div class="assistant-bubble">
+      <div class="turn-label">Answer</div>
       <div class="turn-summary loading">${skeletonSummaryHtml()}</div>
+      <div class="turn-files-header hidden">Top files</div>
       <div class="turn-results" role="list">${skeletonHtml(3)}</div>
     </div>`;
   document.getElementById('chatThread').appendChild(turn);
@@ -738,6 +748,16 @@ function getActiveResultsList() {
 function getActiveSummaryEl() {
   if (!_activeTurnEl) return null;
   return _activeTurnEl.querySelector('.turn-summary');
+}
+
+function setFilesHeaderVisible(show) {
+  const hdr = _activeTurnEl && _activeTurnEl.querySelector('.turn-files-header');
+  if (hdr) hdr.classList.toggle('hidden', !show);
+}
+
+function getActiveFilesHeader() {
+  if (!_activeTurnEl) return null;
+  return _activeTurnEl.querySelector('.turn-files-header');
 }
 
 /* ── Search ─────────────────────────────────────────────── */
@@ -819,10 +839,16 @@ function showResults(data, append) {
 
   if (!append && newResults.length === 0) {
     summaryEl.style.display = 'none';
+    const lbl = _activeTurnEl.querySelector('.turn-label');
+    if (lbl) lbl.style.display = 'none';
+    setFilesHeaderVisible(false);
     listEl.innerHTML = renderEmptyState(data);
   } else {
     summaryEl.style.display = '';
+    const lbl = _activeTurnEl.querySelector('.turn-label');
+    if (lbl) lbl.style.display = '';
     if (!append) summaryEl.textContent = data.answer_summary || '—';
+    setFilesHeaderVisible(true);
     if (append) {
       renderResultItems(newResults, startIdx, true, listEl);
     } else {
@@ -951,8 +977,8 @@ function renderResultItems(newResults, startIdx, append, list) {
       <div class="result-side">
         <div class="file-meta" aria-label="Relevance score">${score}%</div>
         <div class="result-actions">
-          <button class="action-btn" title="Preview"
-            onclick="openPreview(${idx})" aria-label="Preview">
+          <button class="action-btn" title="Preview snippet"
+            onclick="openPreview(${idx}, event)" aria-label="Preview snippet">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
               <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
             </svg>
@@ -966,14 +992,24 @@ function renderResultItems(newResults, startIdx, append, list) {
 
     el.innerHTML = `
       <div class="file-icon" aria-hidden="true">${fileIcon(ext)}</div>
-      <div class="file-info" onclick="${isDir ? '' : `openPreview(${idx})`}" style="cursor:${isDir ? 'default' : 'pointer'}">
+      <div class="file-info">
         <div class="file-name">${esc(nameOnly)}</div>
         <div class="file-path">${esc(isDir ? r.snippet : r.rel_path)}${!isDir && meta ? ' · ' + esc(meta) : ''}</div>
       </div>
       ${sideHtml}`;
 
+    el.title = r.file_path ? 'Open in file explorer' : '';
+    el.style.cursor = r.file_path ? 'pointer' : 'default';
+    el.onclick = (e) => {
+      if (e.target.closest('.result-actions')) return;
+      if (r.file_path) openInExplorer(idx, el);
+    };
+
     el.addEventListener('keydown', e => {
-      if (e.key === 'Enter') { e.preventDefault(); if (!isDir) openPreview(idx); }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        if (r.file_path) openInExplorer(idx, el);
+      }
     });
     el.addEventListener('focus', () => { _focusedIdx = idx; highlightFocused(); });
     list.appendChild(el);
@@ -1030,7 +1066,34 @@ function showError(msg) {
 /* ── Preview modal ──────────────────────────────────────── */
 let _previewFilePath = '';
 
-function openPreview(idx) {
+async function openInExplorer(idx, rowEl) {
+  const r = _results[idx];
+  if (!r || !r.file_path) {
+    showToast('No file path available');
+    return;
+  }
+  if (rowEl) rowEl.classList.add('opening');
+  try {
+    const resp = await fetch('/api/open-file', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({file_path: r.file_path}),
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({detail: 'Unknown error'}));
+      showToast('Could not open folder: ' + (err.detail || resp.status));
+    } else {
+      showToast('Opening in file explorer…');
+    }
+  } catch(e) {
+    showToast('Could not reach server');
+  } finally {
+    if (rowEl) rowEl.classList.remove('opening');
+  }
+}
+
+function openPreview(idx, e) {
+  if (e) e.stopPropagation();
   const r = _results[idx];
   if (!r) return;
   const ext = (r.ext || '').replace('.', '').toLowerCase();
