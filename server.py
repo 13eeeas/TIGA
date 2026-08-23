@@ -234,21 +234,41 @@ def _pipeline_run(fn_name: str, kwargs: dict | None = None) -> None:
                 stats = run_discover(conn, cfg.index_roots, cfg)
                 _ps_append(f"Discover complete: {stats}")
             elif fn_name == "extract":
-                from core.extract import run_extract
-                from pathlib import Path as _P
+                from core.index import _run_parallel_extract
+                from core.scheduler import get_schedule_cfg
                 discovered = conn.execute(
                     "SELECT file_id, file_path, lane FROM files WHERE status='DISCOVERED'"
                 ).fetchall()
-                for row in discovered:
-                    if _pipeline_state.get("cancelled"):
-                        break
-                    run_extract(conn, row["file_id"], _P(row["file_path"]),
-                                row["lane"] or "METADATA_ONLY", cfg)
-                    with _pipeline_lock:
-                        _pipeline_state["processed"] += 1
-                _ps_append("Extract complete")
+                try:
+                    workers = get_schedule_cfg().extract_workers
+                except Exception:
+                    workers = getattr(cfg, "extract_workers", 4)
+                _ps_append(f"Extract: {len(discovered)} files, workers={workers}")
+                with _pipeline_lock:
+                    _pipeline_state["total"] = len(discovered)
+                if workers > 1 and discovered:
+                    stats = _run_parallel_extract(conn, discovered, workers, cfg)
+                else:
+                    from core.extract import run_extract
+                    from pathlib import Path as _P
+                    stats = {"files_extracted": 0, "files_extract_failed": 0, "chunks_new": 0}
+                    for row in discovered:
+                        if _pipeline_state.get("cancelled"):
+                            break
+                        result = run_extract(
+                            conn, row["file_id"], _P(row["file_path"]),
+                            row["lane"] or "METADATA_ONLY", cfg,
+                        )
+                        if result.get("failed", 0) == 0:
+                            stats["files_extracted"] += 1
+                            stats["chunks_new"] += result.get("new", 0)
+                        else:
+                            stats["files_extract_failed"] += 1
+                        with _pipeline_lock:
+                            _pipeline_state["processed"] += 1
+                _ps_append(f"Extract complete: {stats}")
             elif fn_name == "ocr":
-                _ps_append("OCR not implemented — skipped")
+                _ps_append("OCR is planned (Atlas Tier C) — not enabled yet")
             elif fn_name == "index":
                 from core.index import run_index as _run_index
                 stats = _run_index(conn, cfg)
@@ -1351,7 +1371,111 @@ async def kill_process(req: ProcessActionRequest) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Auto-brain endpoints
+# Schedule (real day/night workers — powers Hunt indexing)
+# ---------------------------------------------------------------------------
+
+class ScheduleModeRequest(BaseModel):
+    mode: str   # "day" | "night"
+
+
+@app.get("/api/schedule/status")
+async def schedule_status() -> dict:
+    """Current day/night mode and active worker settings."""
+    from core.scheduler import status_summary
+    return status_summary()
+
+
+@app.post("/api/schedule/mode")
+async def schedule_set_mode(req: ScheduleModeRequest) -> dict:
+    """Force day or night mode (writes mode.txt; pipeline reads on next batch)."""
+    mode = req.mode.strip().lower()
+    if mode not in ("day", "night"):
+        raise HTTPException(status_code=400, detail="mode must be 'day' or 'night'")
+    from core.scheduler import apply_mode, status_summary
+    apply_mode(mode)
+    _audit(f"Schedule mode set to {mode}")
+    return status_summary()
+
+
+# ---------------------------------------------------------------------------
+# Atlas — project cards (foundation for TIGA Atlas)
+# ---------------------------------------------------------------------------
+
+@app.get("/api/atlas/cards")
+async def atlas_list_cards(
+    missing_only: bool = False,
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict:
+    """List project cards with completeness signals for Atlas admin."""
+    from core.project_card import list_project_cards, get_missing_fields
+    cards = list_project_cards(conn=conn)
+    items = []
+    for c in cards:
+        code = c.get("project_code") or ""
+        missing = get_missing_fields(code, conn=conn)
+        if missing_only and not missing:
+            continue
+        items.append({
+            "project_code": code,
+            "name": c.get("name"),
+            "typology_primary": c.get("typology_primary"),
+            "location": c.get("location"),
+            "stage": c.get("stage"),
+            "client": c.get("client"),
+            "missing_fields": missing,
+            "completeness": max(0, 100 - int(100 * len(missing) / max(len(missing) or 1, 7)))
+                if missing else 100,
+        })
+    # Fix completeness: 7 required fields
+    for it in items:
+        n_miss = len(it["missing_fields"])
+        it["completeness"] = int(round(100 * (7 - min(n_miss, 7)) / 7))
+    return {
+        "total": len(items),
+        "cards": items,
+        "roadmap": "Atlas v1 — project-centric retrieval memory",
+    }
+
+
+@app.get("/api/product/status")
+async def product_status(
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict:
+    """High-level Hunt / Atlas / Einstein product readiness for admin Overview."""
+    from core.scheduler import status_summary
+    stats = get_stats(conn)
+    n_cards = conn.execute("SELECT COUNT(*) FROM project_cards").fetchone()[0]
+    try:
+        sched = status_summary()
+    except Exception:
+        sched = {}
+    return {
+        "hunt": {
+            "status": "live",
+            "label": "TIGA Hunt",
+            "detail": "Search portal, indexing, cited answers",
+            "files_indexed": stats.get("INDEXED", 0),
+            "files_discovered": stats.get("DISCOVERED", 0),
+            "schedule_mode": sched.get("mode"),
+            "extract_workers": sched.get("extract_workers"),
+        },
+        "atlas": {
+            "status": "building",
+            "label": "TIGA Atlas",
+            "detail": "Project cards + archive memory (v1 foundation)",
+            "project_cards": n_cards,
+        },
+        "einstein": {
+            "status": "planned",
+            "label": "TIGA Einstein",
+            "detail": "Expert reasoning over Atlas evidence — Phase 2",
+            "enabled": getattr(cfg, "einstein_enable", False),
+        },
+    }
+
+
+# ---------------------------------------------------------------------------
+# Auto-brain endpoints (legacy UI state — prefer /api/schedule/*)
 # ---------------------------------------------------------------------------
 
 @app.get("/api/autobrain/status")
