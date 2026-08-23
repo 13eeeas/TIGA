@@ -9,6 +9,7 @@ Run via: python tiga.py ui
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import requests
@@ -26,22 +27,8 @@ st.set_page_config(
     layout="wide",
 )
 
-# Shared brand mark (slender cat — matches search portal)
-CAT_SVG = """
-<svg class="tiga-cat-svg" viewBox="0 0 24 32" fill="none" aria-hidden="true">
-  <g>
-    <path d="M6.2 28.8 C1.8 26.2 2.2 20.8 4.4 17.2 C5.2 21.5 5.8 25.8 7.4 27.6" stroke="#C96442" stroke-width="1.65" fill="none" stroke-linecap="round"/>
-    <path d="M12 13.8 C9.4 13.8 8.8 16.8 8.8 21.8 C8.8 27.2 9.8 29.8 12 29.8 C14.2 29.8 15.2 27.2 15.2 21.8 C15.2 16.8 14.6 13.8 12 13.8 Z" fill="#C96442"/>
-    <circle cx="12" cy="9.2" r="4.9" fill="#C96442"/>
-    <path d="M8.4 6.2 L6.8 0.8 L10.6 5.4 Z" fill="#C96442"/>
-    <path d="M15.6 6.2 L17.2 0.8 L13.4 5.4 Z" fill="#C96442"/>
-    <ellipse cx="10.35" cy="9.5" rx=".95" ry="1.65" fill="white" opacity=".92"/>
-    <ellipse cx="13.65" cy="9.5" rx=".95" ry="1.65" fill="white" opacity=".92"/>
-    <ellipse cx="10.35" cy="9.5" rx=".38" ry="1.35" fill="#1A1410" opacity=".88"/>
-    <ellipse cx="13.65" cy="9.5" rx=".38" ry="1.35" fill="#1A1410" opacity=".88"/>
-  </g>
-</svg>
-"""
+# Shared brand mark (Flow-inspired cat — matches search portal)
+CAT_SVG = (Path(__file__).resolve().parent / "static" / "cat-mark.svg").read_text(encoding="utf-8")
 
 # ── Design system: match main UI fonts + coral accents ──────────────────────
 st.markdown("""
@@ -79,8 +66,8 @@ h1, h2, h3, h4, .stSubheader, div[data-testid="stHeading"] {
 .tiga-blob-2 {width: 340px; height: 340px; background: rgba(255,200,170,0.10); bottom: -60px; right: -40px;}
 .tiga-admin-header {position: relative; z-index: 1; display: flex; align-items: center; justify-content: space-between; padding: 8px 0 20px; margin-bottom: 4px; border-bottom: 1px solid var(--tiga-border);}
 .tiga-brand {display: flex; align-items: center; gap: 10px; color: var(--tiga-ink);}
-.tiga-cat-wrap {width: 26px; height: 34px; flex-shrink: 0;}
-.tiga-cat-svg {width: 26px; height: 34px; display: block;}
+.tiga-cat-wrap {width: 30px; height: 44px; flex-shrink: 0;}
+.tiga-cat-svg {width: 30px; height: 44px; display: block;}
 .tiga-brand-name {font-family: 'Lora', Georgia, serif; font-size: 1.35rem; font-weight: 500;}
 .tiga-brand-sub {font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--tiga-coral); margin-top: 1px;}
 .tiga-portal-link {font-size: 13px; color: var(--tiga-ink-60); text-decoration: none; padding: 7px 14px; border: 1px solid var(--tiga-border); border-radius: 100px; background: var(--tiga-surface);}
