@@ -34,6 +34,8 @@
 
 ### Discovery & fingerprint
 - [x] Incremental discover (`core/discover.py`)
+- [x] Architecture-firm lane defaults (PDF/docs/email full text; CAD/BIM/images metadata; junk globs)
+- [x] Empty-text fallback to path index (scanned PDFs no longer hard-fail)
 - [x] SHA256 fingerprint + metadata skip
 - [ ] Run `discover` + `index` on project 1; record files/sec and error count
 - [ ] Repeat for all 3–5 projects; fix permission / path errors
