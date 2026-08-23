@@ -672,7 +672,9 @@ def _run_image_indexing(conn: sqlite3.Connection, cfg_obj: Config) -> dict[str, 
         from core.extract import classify_image, build_image_synthetic_description
         import hashlib as _hash
 
-        image_exts = {".jpg", ".jpeg", ".png", ".gif", ".tif", ".tiff", ".bmp"}
+        image_exts = {
+            ".jpg", ".jpeg", ".png", ".gif", ".tif", ".tiff", ".bmp", ".webp",
+        }
         # Find image files that are EXTRACTED (have meta chunk) but no image_type set
         rows = conn.execute(
             "SELECT f.file_id, f.file_path, f.extension "
@@ -693,6 +695,7 @@ def _run_image_indexing(conn: sqlite3.Connection, cfg_obj: Config) -> dict[str, 
             try:
                 path = Path(row["file_path"])
                 img_cls = classify_image(path)
+                ocr_on = bool(getattr(cfg_obj, "ocr_enabled", False))
 
                 # Update image_type in files table
                 conn.execute(
@@ -700,8 +703,8 @@ def _run_image_indexing(conn: sqlite3.Connection, cfg_obj: Config) -> dict[str, 
                     (img_cls.image_type, row["file_id"]),
                 )
 
-                # For renders: generate synthetic description as chunk text
-                if not img_cls.needs_ocr:
+                # Path-based synthetic chunk: renders always; scans when OCR off
+                if not img_cls.needs_ocr or not ocr_on:
                     desc = build_image_synthetic_description(path, img_cls)
                     if desc:
                         # Upsert a synthetic text chunk for this image

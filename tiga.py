@@ -54,12 +54,33 @@ exclude_globs:
   - '**/*.tmp'
   - '**/node_modules/**'
   - '**/__pycache__/**'
+  - '**/Thumbs.db'
+  - '**/desktop.ini'
+  - '**/.DS_Store'
+  - '**/*.bak'
+  - '**/backup/**'
+  - '**/Backup/**'
+  - '**/_backup/**'
+  - '**/temp/**'
+  - '**/Temp/**'
+  - '**/_temp/**'
+  - '**/.tmp/**'
 
 max_file_mb: 2048
 
 lane_rules:
-  text_extractable_exts: [.pdf, .docx, .pptx, .txt, .md, .doc]
-  metadata_only_exts: [.dwg, .rvt, .ifc, .skp, .3dm, .jpg, .jpeg, .png, .mp4, .mov, .avi]
+  text_extractable_exts:
+    [.pdf, .docx, .doc, .pptx, .ppt, .txt, .md, .csv, .xlsx, .xls, .msg, .eml]
+  metadata_only_exts:
+    [.dwg, .dxf, .dwf, .dgn, .rvt, .rfa, .rte, .ifc, .nwd, .nwc,
+     .skp, .3dm, .jpg, .jpeg, .png, .gif, .bmp, .tif, .tiff, .webp,
+     .svg, .psd, .mp4, .mov, .avi, .wmv, .mkv, .m4v, .zip, .rar, .7z]
+
+email:
+  internal_domains: [woha.com]
+
+extract:
+  empty_fallback_metadata: true
 
 ollama:
   base_url: http://localhost:11434
@@ -145,6 +166,7 @@ compose:
 
 ocr:
   enabled: false
+  on_empty_pdf: false
   tesseract_cmd: tesseract
 
 einstein:

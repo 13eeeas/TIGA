@@ -122,6 +122,66 @@ def _content_hash(text: str) -> str:
     return hashlib.sha256(text.encode()).hexdigest()
 
 
+def _filter_nonempty_pairs(pairs: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    """Drop blank chunks — saves embed cost and avoids empty FTS rows."""
+    return [(ref, text) for ref, text in pairs if text and text.strip()]
+
+
+def _persist_surrogate_chunk(
+    conn: sqlite3.Connection,
+    file_id: str,
+    path: Path,
+    note: str,
+    stats: dict[str, int],
+) -> None:
+    """Write a single path-based meta chunk (shared by METADATA_ONLY and fallbacks)."""
+    surrogate = _build_surrogate(path, note)
+    chunk_id = _make_chunk_id(file_id, "meta")
+    c_hash = _content_hash(surrogate)
+    existing = conn.execute(
+        "SELECT content_hash FROM chunks WHERE chunk_id=?", (chunk_id,)
+    ).fetchone()
+    if existing:
+        if existing["content_hash"] == c_hash:
+            stats["unchanged"] += 1
+        else:
+            _upsert_chunk(conn, {
+                "chunk_id": chunk_id, "file_id": file_id,
+                "ref_value": "meta", "text": surrogate,
+                "token_estimate": _token_estimate(surrogate),
+                "content_hash": c_hash, "embedded": 0,
+            })
+            stats["updated"] += 1
+    else:
+        _upsert_chunk(conn, {
+            "chunk_id": chunk_id, "file_id": file_id,
+            "ref_value": "meta", "text": surrogate,
+            "token_estimate": _token_estimate(surrogate),
+            "content_hash": c_hash,
+        })
+        stats["new"] += 1
+
+
+def _try_ocr_pdf_chunks(path: Path, cfg_obj: Config) -> list[tuple[str, str]]:
+    """Optional OCR when a PDF has no extractable text layer."""
+    if not cfg_obj.ocr_enabled or not cfg_obj.ocr_on_empty_pdf:
+        return []
+    if path.suffix.lower() != ".pdf":
+        return []
+    try:
+        from core.ocr import ocr_pdf_pages
+        text = ocr_pdf_pages(path).strip()
+    except Exception as exc:
+        logger.warning("OCR fallback failed for %s: %s", path.name, exc)
+        return []
+    if not text:
+        return []
+    parts = _split_text(text, MAX_PDF_CHARS)
+    if len(parts) == 1:
+        return [("ocr01", parts[0])]
+    return [(f"ocr{i:02d}", p) for i, p in enumerate(parts, start=1)]
+
+
 # ---------------------------------------------------------------------------
 # extract_chunks — low-level, per-format
 # ---------------------------------------------------------------------------
@@ -148,11 +208,13 @@ def extract_chunks(path: Path) -> list[tuple[str, str]]:
             pairs = _chunks_xlsx(path)
         elif ext == ".xls":
             pairs = _chunks_xls(path)
-        elif ext in (".txt", ".md"):
+        elif ext in (".txt", ".md", ".csv"):
             pairs = _chunks_txt(path)
+        elif ext in (".msg", ".eml"):
+            pairs = _chunks_email(path)
         else:
             return []
-        return _token_safe(pairs)
+        return _token_safe(_filter_nonempty_pairs(pairs))
     except Exception as e:
         logger.warning("extract_chunks failed for %s: %s", path.name, e)
         return []
@@ -169,6 +231,8 @@ def _chunks_pdf(path: Path) -> list[tuple[str, str]]:
         except Exception:
             text = ""
         ref = f"p{page_num}"
+        if not text:
+            continue
         if len(text) > MAX_PDF_CHARS:
             parts = _split_text(text, MAX_PDF_CHARS)
             pairs.extend(_apply_suffix(ref, parts))
@@ -229,7 +293,8 @@ def _chunks_pptx(path: Path) -> list[tuple[str, str]]:
                     if line:
                         parts.append(line)
         text = "\n".join(parts).strip()
-        pairs.append((ref, text))
+        if text:
+            pairs.append((ref, text))
     return pairs
 
 
@@ -381,7 +446,8 @@ def run_extract(
     Never raises.
     """
     stats: dict[str, int] = {
-        "new": 0, "updated": 0, "unchanged": 0, "skipped": 0, "failed": 0
+        "new": 0, "updated": 0, "unchanged": 0, "skipped": 0, "failed": 0,
+        "fallback_metadata": 0,
     }
 
     try:
@@ -409,31 +475,7 @@ def run_extract(
 
         # --- METADATA_ONLY: create a surrogate meta chunk ---
         if lane != "TEXT_EXTRACTABLE":
-            surrogate = _build_surrogate(path, "metadata only")
-            chunk_id = _make_chunk_id(file_id, "meta")
-            c_hash = _content_hash(surrogate)
-            existing = conn.execute(
-                "SELECT content_hash FROM chunks WHERE chunk_id=?", (chunk_id,)
-            ).fetchone()
-            if existing:
-                if existing["content_hash"] == c_hash:
-                    stats["unchanged"] += 1
-                else:
-                    _upsert_chunk(conn, {
-                        "chunk_id": chunk_id, "file_id": file_id,
-                        "ref_value": "meta", "text": surrogate,
-                        "token_estimate": _token_estimate(surrogate),
-                        "content_hash": c_hash, "embedded": 0,
-                    })
-                    stats["updated"] += 1
-            else:
-                _upsert_chunk(conn, {
-                    "chunk_id": chunk_id, "file_id": file_id,
-                    "ref_value": "meta", "text": surrogate,
-                    "token_estimate": _token_estimate(surrogate),
-                    "content_hash": c_hash,
-                })
-                stats["new"] += 1
+            _persist_surrogate_chunk(conn, file_id, path, "metadata only", stats)
             set_file_status(conn, file_id, "EXTRACTED")
             log_event(conn, "EXTRACTED", detail="metadata only", file_id=file_id)
             return stats
@@ -442,7 +484,26 @@ def run_extract(
         chunk_pairs = extract_chunks(path)
 
         if not chunk_pairs:
-            # Extraction returned nothing (e.g. scanned PDF with no text)
+            chunk_pairs = _try_ocr_pdf_chunks(path, _cfg)
+
+        if not chunk_pairs and _cfg.extract_empty_fallback_metadata:
+            _persist_surrogate_chunk(
+                conn, file_id, path, "no text extracted — path index only", stats
+            )
+            stats["fallback_metadata"] += 1
+            set_file_status(
+                conn, file_id, "EXTRACTED",
+                "EXTRACT_EMPTY_FALLBACK",
+                "no text; indexed path/filename surrogate",
+            )
+            log_event(
+                conn, "EXTRACTED",
+                detail="empty text — metadata fallback",
+                file_id=file_id,
+            )
+            return stats
+
+        if not chunk_pairs:
             set_file_status(conn, file_id, "FAILED", "EXTRACT_EMPTY",
                             "extract_chunks returned no chunks")
             log_event(conn, "EXTRACT_FAILED", detail="no chunks produced", file_id=file_id)
@@ -798,6 +859,41 @@ def get_email_content_tags(email_data: EmailExtract) -> list[str]:
         tags.append("meeting_correspondence")
 
     return tags
+
+
+def _chunks_email(path: Path) -> list[tuple[str, str]]:
+    """Index .msg / .eml as searchable correspondence chunks."""
+    data = extract_email(path)
+    if not data:
+        return []
+
+    tags = get_email_content_tags(data)
+    header_lines = [
+        f"Subject: {data.subject}",
+        f"From: {data.sender} <{data.sender_email}>",
+        f"To: {', '.join(data.recipients[:12])}",
+        f"Date: {data.date}",
+        f"Direction: {data.direction}",
+    ]
+    if data.attachments:
+        header_lines.append(
+            f"Attachments: {', '.join(data.attachments[:20])}"
+        )
+    if tags:
+        header_lines.append(f"Tags: {', '.join(tags)}")
+
+    body = data.body_text.strip()
+    full = "\n".join(header_lines)
+    if body:
+        full = f"{full}\n\n{body}"
+    full = full.strip()
+    if not full:
+        return []
+
+    if len(full) <= MAX_TXT_CHARS:
+        return [("email01", full)]
+    parts = _split_text(full, MAX_TXT_CHARS)
+    return [(f"email{i:02d}", p) for i, p in enumerate(parts, start=1)]
 
 
 # ---------------------------------------------------------------------------

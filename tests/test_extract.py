@@ -280,3 +280,58 @@ def test_extract_chunks_xls_returns_sheet_refs(tmp_path: Path) -> None:
     assert "sheet01" in refs, f"Expected sheet01 in {refs}"
     combined_text = " ".join(t for _, t in pairs)
     assert "2023_HOSP" in combined_text
+
+
+def test_extract_chunks_eml_correspondence(tmp_path: Path) -> None:
+    """EML files index subject, parties, and body text."""
+    eml = tmp_path / "tender_followup.eml"
+    eml.write_text(
+        "From: pm@woha.com\n"
+        "To: client@example.com\n"
+        "Subject: Tender submission follow-up\n"
+        "Date: Mon, 1 Jan 2024 10:00:00 +0800\n"
+        "\n"
+        "Please find the revised tender package attached.\n",
+        encoding="utf-8",
+    )
+    pairs = extract_chunks(eml)
+    assert pairs, "EML should produce at least one chunk"
+    text = pairs[0][1]
+    assert "Tender submission follow-up" in text
+    assert "revised tender package" in text
+
+
+def test_run_extract_scanned_pdf_metadata_fallback(tmp_path: Path, conn) -> None:
+    """PDF with no text layer falls back to path index instead of FAILED."""
+    import pypdf
+
+    pdf_path = tmp_path / "scanned.pdf"
+    writer = pypdf.PdfWriter()
+    writer.add_blank_page(width=200, height=200)
+    with pdf_path.open("wb") as f:
+        writer.write(f)
+
+    cfg_obj = _cfg(tmp_path)
+    cfg_obj.extract_empty_fallback_metadata = True
+    posix = pdf_path.resolve().as_posix()
+    file_id = file_id_from_path(posix)
+    conn.execute(
+        "INSERT INTO files (file_id, file_path, file_name, extension, status, lane) "
+        "VALUES (?, ?, ?, '.pdf', 'DISCOVERED', 'TEXT_EXTRACTABLE')",
+        (file_id, posix, pdf_path.name),
+    )
+    conn.commit()
+
+    stats = run_extract(conn, file_id, pdf_path, "TEXT_EXTRACTABLE", cfg_obj=cfg_obj)
+    row = conn.execute(
+        "SELECT status, error_code FROM files WHERE file_id=?", (file_id,)
+    ).fetchone()
+
+    assert row["status"] == "EXTRACTED"
+    assert row["error_code"] == "EXTRACT_EMPTY_FALLBACK"
+    assert stats["fallback_metadata"] == 1
+    chunk = conn.execute(
+        "SELECT text FROM chunks WHERE file_id=?", (file_id,)
+    ).fetchone()
+    assert chunk is not None
+    assert "scanned" in chunk["text"].lower()

@@ -32,6 +32,45 @@ class ConfigError(Exception):
     """Raised when config.yaml is missing required fields or is malformed."""
 
 
+# Default ingest policy — architecture-firm NAS (override in config.yaml)
+DEFAULT_TEXT_EXTRACTABLE_EXTS: list[str] = [
+    ".pdf", ".docx", ".doc", ".pptx", ".ppt",
+    ".txt", ".md", ".csv",
+    ".xlsx", ".xls",
+    ".msg", ".eml",
+]
+DEFAULT_METADATA_ONLY_EXTS: list[str] = [
+    # CAD / BIM
+    ".dwg", ".dxf", ".dwf", ".dgn",
+    ".rvt", ".rfa", ".rte", ".ifc", ".nwd", ".nwc",
+    ".skp", ".3dm",
+    # Images (path + synthetic description; OCR optional)
+    ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tif", ".tiff", ".webp", ".svg", ".psd",
+    # Video
+    ".mp4", ".mov", ".avi", ".wmv", ".mkv", ".m4v",
+    # Archives (not unpacked — findable by path/name)
+    ".zip", ".rar", ".7z", ".tar", ".gz",
+]
+DEFAULT_EXCLUDE_GLOBS: list[str] = [
+    "**/.git/**",
+    "**/~$*",
+    "**/*.tmp",
+    "**/node_modules/**",
+    "**/__pycache__/**",
+    "**/Thumbs.db",
+    "**/desktop.ini",
+    "**/.DS_Store",
+    "**/*.bak",
+    "**/backup/**",
+    "**/Backup/**",
+    "**/_backup/**",
+    "**/temp/**",
+    "**/Temp/**",
+    "**/_temp/**",
+    "**/.tmp/**",
+]
+
+
 # ---------------------------------------------------------------------------
 # Path helpers
 # ---------------------------------------------------------------------------
@@ -92,7 +131,9 @@ class Config:
 
         # --- glob filters ---
         self.include_globs: list[str] = data.get("include_globs", ["**/*"])
-        self.exclude_globs: list[str] = data.get("exclude_globs", [])
+        self.exclude_globs: list[str] = data.get(
+            "exclude_globs", list(DEFAULT_EXCLUDE_GLOBS)
+        )
 
         # --- file size limit ---
         max_mb: int = data.get("max_file_mb", 2048)
@@ -104,17 +145,26 @@ class Config:
             e.lower()
             for e in lane.get(
                 "text_extractable_exts",
-                [".pdf", ".docx", ".pptx", ".txt", ".md"],
+                DEFAULT_TEXT_EXTRACTABLE_EXTS,
             )
         }
         self.metadata_only_exts: set[str] = {
             e.lower()
             for e in lane.get(
                 "metadata_only_exts",
-                [".dwg", ".rvt", ".ifc", ".skp", ".jpg", ".jpeg", ".png",
-                 ".mp4", ".mov", ".avi"],
+                DEFAULT_METADATA_ONLY_EXTS,
             )
         }
+
+        # --- Email / extract behaviour ---
+        email = data.get("email", {})
+        self.email_internal_domains: list[str] = email.get(
+            "internal_domains", ["woha.com"]
+        )
+        ext_cfg = data.get("extract", {})
+        self.extract_empty_fallback_metadata: bool = ext_cfg.get(
+            "empty_fallback_metadata", True
+        )
 
         # --- Ollama ---
         oll = data.get("ollama", {})
@@ -228,6 +278,7 @@ class Config:
         # --- OCR (opt-in only) ---
         ocr = data.get("ocr", {})
         self.ocr_enabled: bool = ocr.get("enabled", False)
+        self.ocr_on_empty_pdf: bool = ocr.get("on_empty_pdf", False)
         self.tesseract_cmd: str = ocr.get("tesseract_cmd", "tesseract")
 
         # --- Einstein (Phase 2) ---
