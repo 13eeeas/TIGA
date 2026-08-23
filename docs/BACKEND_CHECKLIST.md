@@ -263,7 +263,7 @@ Week 4   Track D + Track F (cards, 100-Q run, memo)
 | Only 3 snippets to LLM | `compose.py` | **Fixed — evidence pack 12** |
 | Eval = path recall only | `core/eval.py` | Still TODO |
 | Latest boost query-triggered only | `core/query.py` | **Fixed — soft default** |
-| Near-dup suppression missing | — | TODO |
+| Near-dup suppression missing | — | **Partial:** exact fingerprint dedupe at discover |
 | Index 3–5 POC projects | your NAS + config | **Your next step** |
 
 ---
