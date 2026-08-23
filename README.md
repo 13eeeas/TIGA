@@ -21,7 +21,7 @@ Build a **company-knowledge search layer** that runs on firm hardware on the off
 
 - **Search first, AI second** — retrieve the right pages/chunks, then synthesize only from that evidence.
 - **LAN-first** — ingest, hybrid search, local rerank, and citations must work without internet; external APIs are optional and firm-approved only.
-- **Prove before scale** — ~5 representative projects and a 100-question benchmark before expanding toward 50–200 projects or 30TB+.
+- **Prove before scale** — **Gateway 1:** a POC product on **3–5 projects** that works super well (100-Q benchmark); then expand.
 - **Lean resources** — two-person build, POC aimed under ~S$1,000; spend on retrieval quality before premium models.
 
 ### Design principles

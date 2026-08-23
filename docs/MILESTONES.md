@@ -5,35 +5,58 @@ Binding principles: [`CONSTITUTION.md`](CONSTITUTION.md).
 
 **Decided:** Einstein (answer synthesis) uses a **firm-approved enterprise AI API** (evidence-pack only, zero retention). Hunt (search) stays on the **office LAN host**. Local LLM remains fallback only.
 
-**Final product goal:** One LAN-hosted service where staff ask plain-English questions, get **Hunt** retrieval + **Atlas** project memory + **Einstein** synthesis — all cited, permission-aware, and faster than hunting NAS folders — proven on a growing slice of the archive, not on a demo chatbot.
+**Final product goal:** One LAN-hosted service where staff ask plain-English questions, get **Hunt** retrieval + **Atlas** project memory + **Einstein** synthesis — all cited, permission-aware, and faster than hunting NAS folders.
 
 ---
 
-## How funding works (read this first)
+## Gateways at a glance
 
-Each phase has:
+| Gateway | What it is | Corpus | Budget cap | Unlocks |
+|---------|------------|--------|------------|---------|
+| **Prep** | Build setup, vendor shortlist | 0–1 project smoke test | ≤ S$100 | Permission to build POC |
+| **Gateway 1 — POC product** | **Shipped LAN product that works super well** | **3–5 projects** | **≤ S$1,000** | **Pilot funding** |
+| Gateway 2 — Pilot | Prove habit + security in principle | 5–10 projects | ≤ S$2,500 | Scale-test funding |
+| Gateway 3 — Scale test | Firm-wide slice, ACL + SSO | 50–200 projects | ≤ S$10,000 | Production budget |
+| Gateway 4 — Product | Earned expansion | Usage-driven | Ongoing opex | — |
 
-1. **Build goal** — what we ship  
-2. **Budget cap** — planning ceiling (not a quote)  
-3. **Proof required** — objective metrics, not vibes  
-4. **Funding ask** — what to request *after* the gate passes  
-
-**Rule:** the next tranche of money is earned by measured results, not by roadmap slides.
-
-| Phase | Corpus | Budget cap (planning) | Funding ask after gate |
-|-------|--------|------------------------|-------------------------|
-| 0 Charter | — | S$0 | — (alignment only) |
-| 1 Spike | 1 project | ≤ S$100 | — |
-| 2 POC | 3 projects | ≤ S$500–1,000 | Pilot tranche |
-| 3 Pilot | 5–10 projects | ≤ S$2,500 | Scale-test tranche |
-| 4 Scale test | 50–200 projects | ≤ S$10,000 | Production tranche |
-| 5 Product | Earned expansion | Firm-defined | Ongoing ops budget |
-
-POC stays **cheap** by design: existing office machine (3070/i9), self-hosted index, tight evidence packs, small API allowance, no new hardware.
+**First real gate = Gateway 1.**  
+Not a spike. Not a deck. A **POC product** on **3–5 indexed projects** that staff can use on the LAN and that **measurably works super well**.
 
 ---
 
-## Architecture (fixed for all phases)
+## What “works super well” means (Gateway 1 bar)
+
+Subjective “feels good” is not enough. Gateway 1 passes when **all** of these are true:
+
+### Product shape
+- One **LAN host** (your office machine is fine); staff open a **browser**
+- **Hunt** — hybrid search, local rerank, validated citations
+- **Atlas** — project cards + aliases + cross-project queries across the indexed set
+- **Einstein** — enterprise API synthesis over an **8–15 chunk evidence pack** only
+- Local fallback if API is down (cited results, not a blank screen)
+
+### Quality (100-question benchmark on those 3–5 projects)
+| Metric | Gateway 1 target |
+|--------|------------------|
+| Correct source in top 5 | **>90%** |
+| Correct final answer | **>85%** |
+| Citation supports claim | **>95%** |
+| Major hallucinations | **<3%** |
+| Typical latency | **<10 s** (ideal ~5 s) |
+
+### Human proof
+- ≥ **3 staff** use it unprompted and would choose it over NAS folder hunting on tested questions
+- Sponsor can watch a **live LAN demo** and agree: “this is good enough to fund the next stage”
+
+### Cost proof
+- Total POC spend **≤ S$1,000** (mostly enterprise API credits; self-hosted index)
+- Logged **median cost per query** so pilot opex is predictable
+
+**If Gateway 1 fails:** stop or fix retrieval — do not ask for pilot money, more projects, SSO, or Atlas graph work.
+
+---
+
+## Architecture (fixed)
 
 ```
 [NAS] → [LAN host: Hunt index + rerank + Atlas cards]
@@ -43,236 +66,154 @@ POC stays **cheap** by design: existing office machine (3070/i9), self-hosted in
         [Cited answer in browser on LAN]
 ```
 
-| Layer | Runs where | Phase 1+ |
-|-------|------------|----------|
-| **Hunt** | LAN host | Ingest, hybrid search, rerank, citations |
-| **Atlas** | LAN host (DB) | Project cards, aliases, cross-project filters |
-| **Einstein** | Enterprise API | Answer synthesis; local = fallback snippets only |
+| Layer | Runs where |
+|-------|------------|
+| **Hunt** | LAN host — ingest, search, rerank, citations |
+| **Atlas** | LAN host — project memory on indexed projects |
+| **Einstein** | Enterprise API — synthesis; local = fallback only |
 
 ---
 
-## Phase 0 — Charter & vendor path
+## Prep (not a gateway — internal setup)
 
-**Goal:** Align scope, security, and funding story before spend.
+**Goal:** Get ready to build Gateway 1 without burning budget.
 
-**Deliverables**
-- Constitution + milestones (this doc)
-- One-page pitch: problem → LAN Hunt → API Einstein → gates
-- Shortlist **one** enterprise vendor path (e.g. Azure OpenAI enterprise, Anthropic enterprise, OpenAI enterprise — whichever IT/legal can approve)
-- Draft data-flow diagram: what leaves the building (excerpts only)
+- Constitution + milestones aligned
+- Pick **3–5 completed projects** staff can judge (mix of typologies if possible)
+- Shortlist one **enterprise API** path for IT/legal
+- Optional: 1-project smoke test to verify ingest → search → API compose pipe
 
-**Budget:** S$0  
-**Gate to Phase 1:** Sponsor agrees POC is worth ≤ S$1k and a named person can judge answers on 1 project.
-
-**Funding ask:** None yet — approval to proceed in spare time.
+**Budget:** ≤ S$100 API smoke test · S$0 hosting  
+**Not a funding moment.** Just don’t start Gateway 1 without a sponsor nod that ≤ S$1k POC is acceptable if the gate passes.
 
 ---
 
-## Phase 1 — Spike (1 project, prove the pipe)
+## Gateway 1 — POC product (3–5 projects)
 
-**Duration:** ~1–2 weeks part-time  
-**Host:** Your office machine on LAN (3070 + i9)  
-**Corpus:** 1 completed project staff know well  
+**This is the first gateway.** Everything before it is setup; everything after it is earned.
 
-### Build
-- [ ] Index 1 project (dedupe, junk skip, basic version fields)
-- [ ] Hybrid search + local reranker **on**
-- [ ] LAN UI reachable from office browser
-- [ ] Enterprise API wired for Einstein (evidence pack only, kill switch)
-- [ ] Local fallback: cited search if API off/down
-- [ ] Audit log stub: query + source ids + model used
+**Duration:** ~4–6 weeks part-time  
+**Host:** Office LAN machine (3070 + i9 is fine)  
+**Corpus:** **3–5 representative completed projects** with known-good answers  
 
-### Hunt / Atlas / Einstein at this phase
-| Product | Scope |
-|---------|--------|
-| Hunt | End-to-end search + citations |
-| Atlas | Minimal project card for that 1 code |
-| Einstein | API synthesis over top evidence pack |
+### Build checklist
+- [ ] Index 3–5 projects: dedupe, junk skip, **version-aware** (prefer latest by default)
+- [ ] Hybrid search + local reranker **on** (full chunk text, not tiny snippets)
+- [ ] Evidence pack **8–15 chunks** → enterprise API
+- [ ] LAN UI + API; kill switch + audit log (query, source ids, model)
+- [ ] **Atlas:** project cards, aliases, stage for every indexed project
+- [ ] **Atlas:** cross-project queries work on the indexed set (typology, waivers, scale, etc.)
+- [ ] **100-question benchmark** built from real firm questions + proving docs/pages
+- [ ] **POC results memo** (1–2 pages for funders)
 
-### Proof (checkpoint 1)
-| Check | Target |
-|-------|--------|
-| End-to-end demo | 10 hand-picked questions answered with valid citations |
-| Latency | < 15 s typical (spike tolerance) |
-| Security | Written note: excerpts only; vendor enterprise terms cited |
-| Cost | Log actual API spend for 10–20 queries |
+### Hunt / Atlas / Einstein in Gateway 1
+| Product | Gateway 1 scope |
+|---------|-----------------|
+| Hunt | The core — must feel sharp |
+| Atlas | Thin but real — cards + cross-project on 3–5 only |
+| Einstein | Enterprise API — quality bar for answers |
 
-**Budget cap:** ≤ S$100 API + S$0 hosting  
-**Gate to Phase 2:** Sponsor watches live demo; ≥ 8/10 questions cite the right file/page in top 5.
+### Deliverable (what you show to unlock funding)
+1. Live product on LAN over **3–5 projects**  
+2. Benchmark report hitting the table above  
+3. API cost actuals (total + per query)  
+4. 3 staff quotes or a short screen recording  
+5. One-page security note: excerpts only, enterprise terms  
 
-**Funding ask after gate:** **POC tranche ≤ S$1,000** (API credits + optional small embed contingency; no hardware).
+**Budget cap:** ≤ **S$1,000** total  
+Suggested: S$150–400 API · small embed/OCR contingency · rest buffer  
 
----
-
-## Phase 2 — POC (3 projects, prove retrieval)
-
-**Duration:** ~3–4 weeks part-time  
-**Corpus:** 3 representative **completed** projects (staff can mark ground truth)  
-
-### Build
-- [ ] Index all 3 projects with version-aware ranking (prefer latest by default)
-- [ ] Evidence pack → 8–15 chunks to enterprise API
-- [ ] Rerank on **full chunk text**, not tiny snippets
-- [ ] Atlas: project cards + aliases + stage for all 3
-- [ ] Cross-project queries that work on 3 (e.g. typology, waivers list)
-- [ ] Benchmark harness: 50 questions → grow to **100**
-- [ ] One-page **POC results memo** for funders
-
-### Proof (checkpoint 2 — main funding gate)
-
-| Metric | POC target | Funder cares because |
-|--------|------------|----------------------|
-| Correct source in top 5 | **>85%** on 50 Q (then **>90%** on 100 Q) | Search actually works |
-| Correct final answer | **>80%** (then **>85%**) | Not just pretty text |
-| Citation supports claim | **>95%** | Auditable / low risk |
-| Major hallucinations | **<5%** (then **<3%**) | Trust |
-| Typical latency | **<10 s** | Daily usability |
-| API cost per query | Logged median | Predictable opex |
-| User signal | ≥ 3 staff try it twice unprompted | Real demand |
-
-**Budget cap:** ≤ S$500–1,000 total (incl. Phase 1 spend)  
-Suggested split: S$150–300 API · S$0–50 embed/OCR contingency · rest unspent buffer  
-
-**Gate to Phase 3 (Pilot funding):**  
-All of:
-- 100-question benchmark at POC targets  
-- POC memo + cost actuals  
-- IT/legal **in principle** OK with enterprise evidence-pack flow  
-- Sponsor statement: faster than manual file hunting on tested questions  
-
-**Funding ask after gate:** **Pilot tranche ~S$1,500–2,500**  
-- Dedicated always-on LAN host (or firm VM) — optional if office PC is bottleneck  
-- Expanded API monthly cap  
-- Part-time build capacity (if internal time isn’t enough)  
+**Funding ask after Gateway 1 passes:** **Pilot tranche ~S$1,500–2,500**  
+- Dedicated always-on LAN host (if needed)  
+- Higher API monthly cap  
+- Build time if internal capacity is tight  
 
 ---
 
-## Phase 3 — Pilot (5–10 projects, prove habit)
+## Gateway 2 — Pilot (5–10 projects, prove habit)
 
 **Duration:** ~6–8 weeks  
-**Corpus:** 5–10 projects; mix of typologies  
+**Corpus:** Grow from POC set to **5–10 projects**  
 
 ### Build
-- [ ] Move host to dedicated LAN machine if needed
-- [ ] Atlas: richer cards, cross-project compare, “authoritative doc” hints
-- [ ] Einstein: mid-tier default, escalate to top-tier on low confidence only
-- [ ] Feedback loop (thumbs + wrong-source flag)
-- [ ] Basic project-level permissions (even if SSO comes later)
-- [ ] Monthly usage + quality report auto-generated
+- [ ] Dedicated LAN host if office PC was the bottleneck
+- [ ] Feedback loop (thumbs, wrong-source flag)
+- [ ] Einstein: mid-tier default; top-tier only on low confidence
+- [ ] Richer Atlas (authoritative doc hints, compare views)
+- [ ] Basic project-level permissions (SSO can wait)
+- [ ] Monthly usage + quality report
 
-### Proof (checkpoint 3)
-
-| Metric | Pilot target |
-|--------|----------------|
-| Correct source in top 5 | >90% maintained on expanded set |
+### Proof
+| Metric | Target |
+|--------|--------|
+| Benchmark | >90% top-5 source on expanded set |
 | Weekly active users | ≥ 5 staff |
-| Repeat usage | Same users return ≥ 3× in 4 weeks |
-| Time saved (sample) | Self-reported or timed: beat NAS hunt on ≥ 70% of tasks |
-| Incidents | Zero bulk file egress; zero ACL bypass |
+| Repeat usage | Same users ≥ 3× in 4 weeks |
+| Security | IT/legal **in principle** OK with evidence-pack flow |
+| Incidents | Zero bulk egress |
 
 **Budget cap:** ≤ S$2,500 cumulative  
-**Gate to Phase 4:** Usage + benchmark hold; security path **signed off**; sponsor wants 50+ projects.
 
-**Funding ask after gate:** **Scale-test tranche ~S$5,000–10,000**  
-- SSO integration  
-- Postgres migration if SQLite limits hit  
-- Higher API cap + monitoring  
-- Optional private VPC endpoint (if firm requires)  
+**Funding ask after Gateway 2:** **Scale-test ~S$5,000–10,000** (SSO, ACL, 50+ projects, monitoring)
 
 ---
 
-## Phase 4 — Scale test (50–200 projects)
+## Gateway 3 — Scale test (50–200 projects)
 
 **Duration:** ~3–6 months  
-**Corpus:** 50–200 projects; automation where manual metadata failed  
 
 ### Build
-- [ ] Automated metadata classification (cheap model, scoped)
-- [ ] ACL before retrieval (SSO-linked)
-- [ ] Full audit export for compliance
-- [ ] Index economics dashboard (DB size, embed queue, cost/query)
+- [ ] SSO + ACL before retrieval
+- [ ] Automated metadata where manual tagging failed
+- [ ] Full audit export; index economics dashboard
 - [ ] Near-duplicate linking at scale
-- [ ] Atlas: cross-project patterns staff actually use (not graph science)
 
-### Proof (checkpoint 4)
+### Proof
+- Benchmark holds on stratified sample  
+- Formal security sign-off  
+- Leadership names budget owner  
+- Documented $/query and uptime  
 
-| Metric | Scale-test target |
-|--------|-------------------|
-| Benchmark | Holds on stratified sample across project types |
-| Uptime | LAN service ≥ 99% during office hours |
-| Cost | Documented $/query and $/project indexed |
-| Security review | Formal sign-off complete |
-| Demand | Leadership names owner + ongoing budget line |
+**Budget cap:** ≤ S$10,000 cumulative  
 
-**Budget cap:** ≤ S$10,000 cumulative planning envelope  
-**Gate to Phase 5:** Proven ROI + signed security + budget owner.
-
-**Funding ask after gate:** **Production / enterprise line item** — hosting, API opex, maintenance headcount.
+**Funding ask after Gateway 3:** **Production line item** — hosting, API opex, maintenance
 
 ---
 
-## Phase 5 — Product (earned scale)
+## Gateway 4 — Product (earned)
 
-**Goal:** Firm-wide LAN knowledge service — not “index everything.”
+Expand corpus by **usage and retrieval quality**, not raw TB.  
+Hunt stays core; Atlas = memory staff rely on; Einstein = enterprise API with firm tone.
 
-- Expand corpus based on **usage and retrieval quality**, not raw TB count  
-- Hunt: always the core  
-- Atlas: project memory layer staff rely on  
-- Einstein: enterprise API synthesis with firm tone + escalation rules  
-- No agents / CAD multimodal / fine-tuning on archive unless a separate funded initiative passes its own gate  
-
-**Ongoing gates:** quarterly benchmark sample + cost review + security re-check when vendor or policy changes.
+Quarterly benchmark sample + cost review when vendor or policy changes.
 
 ---
 
-## What to show funders at each ask
+## Explicit non-goals until Gateway 1 passes
 
-### POC tranche (after Phase 1)
-- 2-minute LAN demo (1 project)
-- Architecture one-pager (LAN Hunt + enterprise Einstein)
-- Estimated POC cost ≤ S$1k
-- Risk: “We stop if benchmark fails”
-
-### Pilot tranche (after Phase 2)
-- **100-question benchmark report** (the killer slide)
-- Cost actuals vs estimate
-- 3-user anecdotal wins (“found Rev F tender in 8s”)
-- IT one-pager: excerpts only, enterprise DPA
-
-### Scale tranche (after Phase 3)
-- Usage graph + repeat users
-- Security sign-off
-- Index size vs archive size (prove represent-don’t-replicate)
-- Opex model: $/month at current query volume
+- Indexing beyond **5 projects**  
+- SSO, full ACL, Postgres migration  
+- Knowledge graphs, agents, BIM/CAD multimodal  
+- Training or fine-tuning on the archive  
+- Consumer ChatGPT project uploads  
 
 ---
 
-## Explicit non-goals until gates pass
-
-| Until | Do not |
-|-------|--------|
-| Phase 2 gate | Index >3 projects, build graph DB, train models |
-| Phase 3 gate | SSO, 50 projects, dashboards |
-| Phase 4 gate | Full archive, BIM/CAD understanding, agents |
-| Any phase | Upload folders to consumer ChatGPT / Claude projects |
-
----
-
-## Suggested immediate next 30 days (you, 3070 host)
+## Next 30 days → Gateway 1
 
 | Week | Focus |
 |------|--------|
-| 1 | Pick 1 project + enterprise vendor paperwork started |
-| 2 | Phase 1 spike live on LAN + API Einstein wired |
-| 3 | Add 2 more projects; turn on rerank + version defaults |
-| 4 | 50-question benchmark draft; POC memo v0 |
+| 1 | Lock **3–5 projects** + enterprise vendor paperwork |
+| 2 | Index first 2; Hunt + rerank + API Einstein on LAN |
+| 3 | Index remainder; Atlas cards + cross-project queries |
+| 4 | 100-Q benchmark run + POC memo |
 
-**Spend so far target:** < S$100 API until checkpoint 1 passes.
+**Spend target until benchmark:** stay inside **S$1,000**.
 
 ---
 
-## One-line pitch for sponsorship
+## One-line pitch (Gateway 1)
 
-> **For under S$1,000 we prove on 3 projects that staff can ask questions on the LAN and get cited, enterprise-grade answers from our own archive — measured on 100 real questions. If it fails, we stop. If it works, we fund a pilot.**
+> **We ship a LAN product on 3–5 projects. If it doesn’t score >90% on finding the right source and >85% on answers — for under S$1,000 — we stop. If it works super well, fund the pilot.**
 
-That is the funding story. Everything else is earned.
+That is Gateway 1. Everything else is earned.

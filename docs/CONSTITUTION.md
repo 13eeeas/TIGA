@@ -20,15 +20,15 @@ Success is measured by retrieval accuracy and daily usefulness — not by chatbo
 
 ### North star (near term)
 
-| Phase | Scope | Gate to continue |
-|-------|--------|------------------|
-| Spike | 1 project, end-to-end on LAN | Ingest + search + cited answer + enterprise API wired |
-| POC | **3** projects (expand to 5–10 in Pilot), ≤ ~S$1,000 | 100-question benchmark strong; staff return to the tool |
-| Pilot | 5–10 projects | Usage + IT in-principle security OK |
-| Scale test | 50–200 projects, ≤ ~S$10,000 | Security signed off; usage justifies spend |
-| Product | Only if earned | Proven demand + ongoing budget owner |
+| Stage | Scope | Gate |
+|-------|--------|------|
+| **Gateway 1 — POC product** | **3–5 projects**, LAN Hunt + thin Atlas + enterprise Einstein, ≤ ~S$1,000 | **Works super well** on 100-Q benchmark + staff would use it |
+| Gateway 2 — Pilot | 5–10 projects | Habit + IT in-principle security OK |
+| Gateway 3 — Scale test | 50–200 projects, ≤ ~S$10,000 | Security signed off; usage justifies spend |
+| Gateway 4 — Product | Earned expansion | Ongoing budget owner |
 
-Full checkpoints and funding asks: [`MILESTONES.md`](MILESTONES.md).
+**First funding gate = Gateway 1** — a shipped POC product on 3–5 indexed projects, not a spike or slide deck.  
+Full checkpoints: [`MILESTONES.md`](MILESTONES.md).
 
 **Rule:** do not scale corpus size, Atlas, Einstein, or multimodal CAD/BIM until retrieval quality and usage justify it.
 
