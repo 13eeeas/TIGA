@@ -1,7 +1,9 @@
 # TIGA Hunt
 
-RAG-powered archive search for architecture firms.
-Plain English queries → top-5 cited results in under 5 seconds.
+Office-LAN archive search for architecture firms.
+Plain English → cited evidence first, then a short grounded answer.
+
+**Charter:** see [`docs/CONSTITUTION.md`](docs/CONSTITUTION.md) — objectives, LAN constraints, API security options, and POC gates. Where this README and older docs disagree, the constitution wins.
 
 ## Quick Start
 
@@ -10,39 +12,41 @@ setup.bat        # first time only
 run.bat          # start server + UI
 ```
 
-Then open **http://localhost:8501** in any browser on the LAN.
+Then open the UI from any browser **on the office LAN**.
 
-## Product Ambition
+## Project objective
 
-TIGA is designed to become a **local, large-scale archive intelligence system** for architecture firms.
+Build a **company-knowledge search layer** that runs on firm hardware on the office LAN, keeps raw NAS files in place, and returns **auditable, cited answers**.
 
-### North Star
-- Index and understand **30TB+ of NAS project data** across 100+ projects.
-- Let teams ask plain-English questions and get **relevant, cited answers** like ChatGPT Projects.
-- Keep the system **lean and efficient** on local hardware (e.g. RTX 4090 + i9), with optional low-cost API augmentation.
+- **Search first, AI second** — retrieve the right pages/chunks, then synthesize only from that evidence.
+- **LAN-first** — ingest, hybrid search, local rerank, and citations must work without internet; external APIs are optional and firm-approved only.
+- **Prove before scale** — ~5 representative projects and a 100-question benchmark before expanding toward 50–200 projects or 30TB+.
+- **Lean resources** — two-person build, POC aimed under ~S$1,000; spend on retrieval quality before premium models.
 
-### Design Principles
-- **Local-first**: default operation on-prem/LAN with no required external API.
-- **Represent, don't replicate**: index compact metadata/chunks/embeddings instead of duplicating raw archive size.
-- **Evidence-first answers**: every answer should map back to files/chunks with citations.
-- **Incremental by default**: changed-only indexing, resumable pipelines, and fast warm scans.
+### Design principles
+- **Represent, don't replicate**: metadata / chunks / embeddings only — not a second copy of the archive.
+- **Evidence-first answers**: factual claims map to files/chunks with validated citations.
+- **Version-aware retrieval**: prefer authoritative / latest; duplicates must not outvote the real source.
+- **Permissions before retrieval**: never fetch restricted data and rely on the model to hide it.
+- **Incremental by default**: changed-only indexing, resumable pipelines, fast warm scans.
+- **Degrade gracefully**: if an API or local LLM is down, still return cited search results.
 
-### Roadmap Language
-- **TIGA Hunt**: ingestion, indexing, retrieval, and cited answering over live archives.
-- **TIGA Atlas**: project memory graph ("grokopedia" for your archive) that tracks entities, decisions, revisions, and cross-project patterns.
-- **TIGA Einstein**: expert reasoning layer that combines domain know-how with Atlas evidence to answer like a senior architect/director.
+### Answer model posture
+Local GPU is for the **search system** (and optional local synthesis). A stronger **approved API** may compose answers over a small evidence pack only — see constitution §7–§8 for Options A–E (LAN-only, evidence-pack API, private VPC endpoint, on-prem appliance, embeddings-only).
 
+### Roadmap language
+- **TIGA Hunt** (now): ingestion, indexing, retrieval, cited answering on the LAN.
+- **TIGA Atlas** / **TIGA Einstein** (later): only after Hunt clears the retrieval + usage gate.
 
-### Search Performance Goal
-- **Ideal**: return results and answer in **~5 seconds** for normal queries.
-- **Hard upper bound**: **10 seconds max** for the common path (degraded mode should still return cited results).
+### Performance targets
+- Ideal ~5 s; hard upper bound **10 s** for the common path.
+- Degraded mode: cited results without full LLM synthesis.
 
-### Scale Guardrails
-To avoid needing 30TB+ extra storage to operate on 30TB archives:
-- Tiered indexing (metadata-only vs text extraction vs selective OCR).
-- Aggressive dedupe (content hashes, revision/latest logic).
-- Embedding budgets and priority queues per project/stage.
-- Optional API rerank/assist behind feature flags, timeout, and local fallback.
+### Scale guardrails
+- Tiered indexing (metadata-only vs text vs selective OCR).
+- Aggressive dedupe + revision / latest logic.
+- Embedding budgets and night-priority queues.
+- Optional external assist only behind feature flags, token caps, timeout, and local fallback.
 
 ## CLI Reference
 
@@ -77,12 +81,13 @@ set TIGA_WORK_DIR=D:\tiga_data
 
 | Component | Role |
 |-----------|------|
-| Ollama + mistral | Local LLM (zero external API) |
-| nomic-embed-text | Embeddings |
-| ChromaDB | Vector search lane |
+| Ollama (+ optional approved API) | Answer synthesis; local is default / fallback |
+| nomic-embed-text (local) | Embeddings |
+| Vector store | Semantic retrieval lane |
 | SQLite + FTS5 | BM25 keyword lane |
+| Local cross-encoder | Rerank (when enabled) |
 | FastAPI | LAN API server |
-| Streamlit | Browser UI |
+| Web UI | Browser UI on the office LAN |
 
 ## Project Structure
 
@@ -91,13 +96,15 @@ tiga/
 ├── tiga.py          CLI entrypoint
 ├── config.py        Config loader
 ├── server.py        FastAPI LAN server
-├── app.py           Streamlit UI
+├── app.py           Streamlit UI (legacy / admin)
+├── docs/
+│   └── CONSTITUTION.md   Binding objectives & security options
 ├── core/
 │   ├── db.py        SQLite + FTS5
 │   ├── discover.py  File discovery
 │   ├── extract.py   Text extraction
 │   ├── infer.py     Project / typology inference
-│   ├── vectors.py   ChromaDB + embeddings
+│   ├── vectors.py   Vector store + embeddings
 │   ├── index.py     Indexing pipeline
 │   ├── query.py     Hybrid search
 │   ├── compose.py   Answer composer
@@ -113,10 +120,8 @@ tiga/
     └── reports/
 ```
 
-## Phase 2 — TIGA Einstein
+## Later — Atlas / Einstein
 
-Planned. Locally-trained model with two layers:
-- Trained "senior architect/director" knowledge core
-- Live indexed archive (built by Hunt)
+Deferred until Hunt clears the constitution POC gate. Einstein (if built) reasons over Hunt evidence and may use a firm-approved API under constitution §8 — not a requirement to train on the archive.
 
-Enable in config: `einstein.enable: true`
+Enable local Einstein experiments only behind config: `einstein.enable: true`.

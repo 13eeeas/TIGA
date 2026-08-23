@@ -1,7 +1,11 @@
 # TIGA Atlas + TIGA Einstein Architecture (Local-First, 30TB Scale)
 
+> **Status:** deferred design notes. Binding product rules live in [`CONSTITUTION.md`](CONSTITUTION.md).  
+> Do not implement Atlas/Einstein until Hunt clears the POC retrieval + usage gate.  
+> Answer synthesis may use a firm-approved API under constitution §8; search remains LAN-first.
+
 ## Goal
-Build a ChatGPT-Projects-like experience over 30TB NAS archives **without** duplicating archive size in index storage.
+Build a ChatGPT-Projects-like experience over large NAS archives **without** duplicating archive size in index storage — only after Hunt proves retrieval quality on a small corpus.
 
 ## Core principle: Represent, don't copy
 - Keep archive files in place on NAS.

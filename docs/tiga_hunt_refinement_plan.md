@@ -1,6 +1,8 @@
 # TIGA Hunt Refinement Plan (30TB Local Archive Vision)
 
-This plan focuses on scaling discovery/index/query for very large architecture archives while staying local-first and cost-conscious.
+> Binding rules: [`CONSTITUTION.md`](CONSTITUTION.md). This plan is implementation detail for Hunt; scale to 30TB only after the POC gate.
+
+This plan focuses on scaling discovery/index/query for large architecture archives while staying **LAN-first**, cost-conscious, and aligned with evidence-pack API options when firm policy allows.
 
 ## 1) Discovery throughput (highest priority)
 
@@ -49,17 +51,19 @@ This plan focuses on scaling discovery/index/query for very large architecture a
 3. Storage budgeting dashboard:
    - SQLite size, vector size, chunks per project, embed queue depth
 
-## 4) Local-first + optional API assist
+## 4) LAN-first + optional API assist
 
 ### Strategy
-- Keep baseline fully local and deterministic.
-- Add optional remote reranker/expander API as an enhancement layer only.
+- Keep baseline fully on the office LAN and deterministic (constitution Option A).
+- Optional answer synthesis via evidence-pack API / private VPC / on-prem appliance (Options B–D) only after firm approval.
+- Prefer **local** reranker; do not send candidates off-LAN for rerank unless policy explicitly allows.
 
 ### Guardrails
-- Feature flag per capability.
-- Request/response caching.
-- Hard timeout + local fallback.
-- No archive content exfiltration unless explicitly enabled.
+- Feature flag per capability; kill switch.
+- Evidence pack only (≈8–15 chunks); hard token cap.
+- Request/response caching; hard timeout + local fallback.
+- ACL before retrieval; audit source ids used.
+- No archive folder upload or unapproved SaaS (see constitution §8).
 
 ## 5) Operational hardening
 
