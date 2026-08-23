@@ -210,6 +210,8 @@ Quarterly benchmark sample + cost review when vendor or policy changes.
 
 **Spend target until benchmark:** stay inside **S$1,000**.
 
+**Backend checklist:** [`BACKEND_CHECKLIST.md`](BACKEND_CHECKLIST.md) — engineering tasks for Gateway 1.
+
 ---
 
 ## One-line pitch (Gateway 1)

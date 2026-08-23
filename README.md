@@ -4,7 +4,9 @@ Office-LAN archive search for architecture firms.
 Plain English → cited evidence first, then a short grounded answer.
 
 **Charter:** [`docs/CONSTITUTION.md`](docs/CONSTITUTION.md) — objectives, LAN constraints, enterprise API security.  
-**Milestones:** [`docs/MILESTONES.md`](docs/MILESTONES.md) — phases, funding gates, proof metrics. Where docs disagree, the constitution wins.
+**Milestones:** [`docs/MILESTONES.md`](docs/MILESTONES.md) — phases, funding gates, proof metrics.  
+**Backend work:** [`docs/BACKEND_CHECKLIST.md`](docs/BACKEND_CHECKLIST.md) — Gateway 1 engineering checklist.  
+Where docs disagree, the constitution wins.
 
 ## Quick Start
 
