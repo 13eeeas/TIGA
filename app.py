@@ -443,7 +443,7 @@ with tabs[1]:
     st.caption("OCR (selective, on-demand) is on the Atlas roadmap — not available as a Hunt stage yet.")
 
     section_label("Control")
-    ctrl_cols = st.columns(2)
+    ctrl_cols = st.columns(3)
     with ctrl_cols[0]:
         pipeline_trigger("Pause / Resume", "/api/pipeline/pause", "Pipeline: Pause/Resume", key="hunt_pause")
     with ctrl_cols[1]:
@@ -455,6 +455,12 @@ with tabs[1]:
             "Pipeline: Cancel",
             btn_key="hunt_cancel",
         )
+    with ctrl_cols[2]:
+        if st.button("Reset stuck UI", use_container_width=True, key="hunt_reset"):
+            api("post", "/api/pipeline/reset", json={"force": True})
+            api("post", "/api/audit/log", json={"action": "Pipeline: Reset stuck state"})
+            st.toast("Pipeline state cleared.")
+            st.rerun()
 
     section_label("Danger zone")
     confirm_and_run(

@@ -44,8 +44,10 @@ import logging
 import re
 import sqlite3
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
+from typing import Callable
 
 from config import cfg as _module_cfg, Config
 from core.db import (
@@ -478,6 +480,11 @@ def _run_parallel_extract(
     discovered: list,
     extract_workers: int,
     cfg_obj: Config,
+    *,
+    on_progress: Callable[[int, int], None] | None = None,
+    should_cancel: Callable[[], bool] | None = None,
+    should_pause: Callable[[], bool] | None = None,
+    file_timeout_sec: float = 300.0,
 ) -> dict[str, int]:
     """
     Extract text from DISCOVERED files using a ThreadPoolExecutor.
@@ -526,16 +533,63 @@ def _run_parallel_extract(
                 _thread_conns.append(thread_conn)
         path = _Path(row["file_path"])
         lane = row["lane"] or "METADATA_ONLY"
-        return run_extract(thread_conn, row["file_id"], path, lane, cfg_obj)
+
+        if file_timeout_sec <= 0:
+            return run_extract(thread_conn, row["file_id"], path, lane, cfg_obj)
+
+        result_box: dict[str, int] = {}
+        error_box: list[BaseException] = []
+
+        def _worker() -> None:
+            try:
+                result_box["result"] = run_extract(
+                    thread_conn, row["file_id"], path, lane, cfg_obj
+                )
+            except BaseException as exc:
+                error_box.append(exc)
+
+        worker = threading.Thread(target=_worker, daemon=True)
+        worker.start()
+        worker.join(timeout=file_timeout_sec)
+        if worker.is_alive():
+            logger.error(
+                "parallel_extract timeout (%.0fs) for %s",
+                file_timeout_sec, row.get("file_path", "?"),
+            )
+            return {"failed": 1, "new": 0}
+        if error_box:
+            raise error_box[0]
+        return result_box.get("result", {"failed": 1, "new": 0})
 
     logger.info(
         "parallel_extract: %d files, %d threads", total, extract_workers
     )
 
+    def _abort_pool(pool: ThreadPoolExecutor, futures: dict) -> None:
+        for fut in futures:
+            fut.cancel()
+        pool.shutdown(wait=False, cancel_futures=True)
+
     completed = 0
     with ThreadPoolExecutor(max_workers=extract_workers) as pool:
         futures = {pool.submit(_extract_one, row): row for row in discovered}
         for future in as_completed(futures):
+            while should_pause and should_pause():
+                if should_cancel and should_cancel():
+                    _abort_pool(pool, futures)
+                    logger.info("parallel_extract: cancelled while paused")
+                    if on_progress:
+                        on_progress(completed, total)
+                    return stats
+                time.sleep(0.25)
+
+            if should_cancel and should_cancel():
+                _abort_pool(pool, futures)
+                logger.info("parallel_extract: cancelled")
+                if on_progress:
+                    on_progress(completed, total)
+                return stats
+
             completed += 1
             row = futures[future]
             try:
@@ -553,6 +607,9 @@ def _run_parallel_extract(
                 )
                 with stats_lock:
                     stats["files_extract_failed"] += 1
+
+            if on_progress:
+                on_progress(completed, total)
             if completed % 100 == 0:
                 logger.info(
                     "parallel_extract: %d/%d files  chunks_new=%d",

@@ -755,11 +755,6 @@ function setFilesHeaderVisible(show) {
   if (hdr) hdr.classList.toggle('hidden', !show);
 }
 
-function getActiveFilesHeader() {
-  if (!_activeTurnEl) return null;
-  return _activeTurnEl.querySelector('.turn-files-header');
-}
-
 /* ── Search ─────────────────────────────────────────────── */
 async function doSearch(offset) {
   offset = offset || 0;

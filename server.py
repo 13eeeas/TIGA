@@ -30,9 +30,17 @@ Endpoints
   GET  /api/processes
   POST /api/processes/restart|kill
 
-  Workers & Auto-Brain
+  Workers & Auto-Brain (legacy)
   GET  /api/autobrain/status
   POST /api/autobrain/toggle|override|limits
+
+  Schedule (real day/night workers)
+  GET  /api/schedule/status
+  POST /api/schedule/mode
+
+  Atlas
+  GET  /api/atlas/cards
+  GET  /api/product/status
 
   Feedback
   POST /api/feedback
@@ -105,6 +113,7 @@ def get_db() -> Generator[sqlite3.Connection, None, None]:
 # ---------------------------------------------------------------------------
 
 _pipeline_lock = threading.Lock()
+_pipeline_thread: threading.Thread | None = None
 _pipeline_state: dict[str, Any] = {
     "running":    False,
     "stage":      "",
@@ -206,6 +215,22 @@ def _list_config_history() -> list[dict]:
 # Pipeline runner helper
 # ---------------------------------------------------------------------------
 
+def _pipeline_should_cancel() -> bool:
+    with _pipeline_lock:
+        return bool(_pipeline_state.get("cancelled"))
+
+
+def _pipeline_should_pause() -> bool:
+    with _pipeline_lock:
+        return bool(_pipeline_state.get("paused"))
+
+
+def _pipeline_on_progress(done: int, total: int) -> None:
+    with _pipeline_lock:
+        _pipeline_state["processed"] = done
+        _pipeline_state["total"] = total
+
+
 def _pipeline_run(fn_name: str, kwargs: dict | None = None) -> None:
     """Run a pipeline function in background, updating _pipeline_state."""
     global _pipeline_state
@@ -247,7 +272,12 @@ def _pipeline_run(fn_name: str, kwargs: dict | None = None) -> None:
                 with _pipeline_lock:
                     _pipeline_state["total"] = len(discovered)
                 if workers > 1 and discovered:
-                    stats = _run_parallel_extract(conn, discovered, workers, cfg)
+                    stats = _run_parallel_extract(
+                        conn, discovered, workers, cfg,
+                        on_progress=_pipeline_on_progress,
+                        should_cancel=_pipeline_should_cancel,
+                        should_pause=_pipeline_should_pause,
+                    )
                 else:
                     from core.extract import run_extract
                     from pathlib import Path as _P
@@ -973,9 +1003,16 @@ async def api_index(
 # ---------------------------------------------------------------------------
 
 def _trigger_pipeline(stage: str, kwargs: dict | None = None) -> dict[str, str]:
-    if _pipeline_state["running"]:
-        return {"status": "already_running", "stage": _pipeline_state["stage"]}
+    global _pipeline_thread
+    with _pipeline_lock:
+        if _pipeline_state["running"]:
+            if _pipeline_thread is not None and not _pipeline_thread.is_alive():
+                _pipeline_state["running"] = False
+                _pipeline_state["stage"] = ""
+            else:
+                return {"status": "already_running", "stage": _pipeline_state["stage"]}
     t = threading.Thread(target=_pipeline_run, args=(stage, kwargs), daemon=True)
+    _pipeline_thread = t
     t.start()
     return {"status": "started", "stage": stage}
 
@@ -1031,6 +1068,37 @@ async def pipeline_cancel() -> dict:
         _pipeline_state["cancelled"] = True
     _audit("Pipeline: Cancelled")
     return {"status": "cancelled"}
+
+
+class PipelineResetRequest(BaseModel):
+    force: bool = False
+
+
+@app.post("/api/pipeline/reset")
+async def pipeline_reset(req: PipelineResetRequest | None = None) -> dict:
+    """Clear stuck pipeline UI state when the background thread has died."""
+    force = req.force if req else False
+    with _pipeline_lock:
+        alive = _pipeline_thread is not None and _pipeline_thread.is_alive()
+        if _pipeline_state["running"] and alive and not force:
+            return {
+                "status": "running",
+                "message": "Pipeline is still active. Cancel first, or pass force=true if the UI is stuck.",
+            }
+        _pipeline_state.update({
+            "running":    False,
+            "stage":      "",
+            "processed":  0,
+            "total":      0,
+            "eta":        None,
+            "throughput": 0.0,
+            "errors":     [],
+            "paused":     False,
+            "cancelled":  False,
+            "started_at": None,
+        })
+    _audit("Pipeline: Reset stuck state" if force else "Pipeline: Reset state")
+    return {"status": "reset"}
 
 
 @app.post("/api/pipeline/re-embed")
@@ -1423,13 +1491,8 @@ async def atlas_list_cards(
             "stage": c.get("stage"),
             "client": c.get("client"),
             "missing_fields": missing,
-            "completeness": max(0, 100 - int(100 * len(missing) / max(len(missing) or 1, 7)))
-                if missing else 100,
+            "completeness": int(round(100 * (7 - min(len(missing), 7)) / 7)),
         })
-    # Fix completeness: 7 required fields
-    for it in items:
-        n_miss = len(it["missing_fields"])
-        it["completeness"] = int(round(100 * (7 - min(n_miss, 7)) / 7))
     return {
         "total": len(items),
         "cards": items,
