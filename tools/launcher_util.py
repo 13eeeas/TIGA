@@ -128,8 +128,8 @@ def _desktop_dir() -> Path:
     return home / "Desktop"
 
 
-def _shortcut_names() -> tuple[str, str, str]:
-    return ("TIGA Hunt", "TIGA Admin", "Uninstall TIGA")
+def _shortcut_names() -> tuple[str, str, str, str]:
+    return ("TIGA Start Here", "TIGA Hunt", "TIGA Admin", "Uninstall TIGA")
 
 
 def create_shortcuts() -> list[str]:
@@ -147,11 +147,12 @@ def create_shortcuts() -> list[str]:
 
 
 def _create_windows_shortcuts(desktop: Path) -> list[str]:
+    start_here = REPO_ROOT / "START-HERE.bat"
     launcher = REPO_ROOT / "launcher.bat"
     uninstall = REPO_ROOT / "uninstall.bat"
     open_admin = REPO_ROOT / "open-admin.bat"
     names = _shortcut_names()
-    targets = [launcher, open_admin, uninstall]
+    targets = [start_here, launcher, open_admin, uninstall]
     icons = ["", "", ""]
 
     ps_lines = []
@@ -178,10 +179,12 @@ def _create_windows_shortcuts(desktop: Path) -> list[str]:
 
 
 def _create_desktop_entries(desktop: Path) -> list[str]:
+    start_here = REPO_ROOT / "START-HERE.sh"
     launcher = REPO_ROOT / "launcher.sh"
     open_admin = REPO_ROOT / "open-admin.sh"
     uninstall = REPO_ROOT / "uninstall.sh"
     entries = [
+        ("TIGA Start Here", start_here, "Setup + POC retrieval test"),
         ("TIGA Hunt", launcher, "Open TIGA Hunt launcher portal"),
         ("TIGA Admin", open_admin, "Open TIGA admin panel"),
         ("Uninstall TIGA", uninstall, "Remove TIGA shortcuts and optional local data"),

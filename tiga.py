@@ -253,7 +253,11 @@ def cmd_init(args: argparse.Namespace) -> None:
         print("Use --force to overwrite.")
         return
 
-    config_file.write_text(_CONFIG_TEMPLATE, encoding="utf-8")
+    poc_template = Path(__file__).resolve().parent / "docs" / "config.poc.example.yaml"
+    if poc_template.exists():
+        config_file.write_text(poc_template.read_text(encoding="utf-8"), encoding="utf-8")
+    else:
+        config_file.write_text(_CONFIG_TEMPLATE, encoding="utf-8")
     print(f"Created: {config_file}")
 
     # Eval fixture (always written; non-destructive)
@@ -272,6 +276,17 @@ def cmd_init(args: argparse.Namespace) -> None:
     print("  5. Run: python tiga.py index")
     print("  6. Run: python tiga.py serve   (in one terminal)")
     print("          python tiga.py ui      (in another)")
+
+
+def cmd_configure(args: argparse.Namespace) -> None:
+    """Interactive setup of index_roots before first POC test."""
+    from tools.office_setup import configure_interactive, ensure_config, ensure_work_dirs
+
+    ensure_config()
+    code = configure_interactive(force=args.force)
+    if code == 0:
+        ensure_work_dirs()
+    sys.exit(code)
 
 
 def cmd_discover(args: argparse.Namespace) -> None:
@@ -1650,6 +1665,14 @@ def build_parser() -> argparse.ArgumentParser:
     p_init = sub.add_parser("init", help="Create default config.yaml")
     p_init.add_argument("--force", action="store_true", help="Overwrite existing config")
 
+    p_cfg = sub.add_parser(
+        "configure",
+        help="Set index_roots interactively (office POC setup)",
+    )
+    p_cfg.add_argument(
+        "--force", action="store_true", help="Re-prompt even if paths exist"
+    )
+
     # discover
     p_disc = sub.add_parser("discover", help="List files that would be indexed")
     p_disc.add_argument("--list", action="store_true", help="Print all file paths")
@@ -1963,6 +1986,7 @@ def main() -> None:
 
     dispatch = {
         "init":      cmd_init,
+        "configure": cmd_configure,
         "discover":  cmd_discover,
         "extract":   cmd_extract,
         "embed":     cmd_embed,

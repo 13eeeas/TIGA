@@ -53,8 +53,7 @@
 
 ## Code / test health (at audit)
 
-- **163 passed / 2 failed / 1 skipped** (166 tests)
-- Failures: missing `fpdf` test dep; batch sleep test drift
+- **166/166 tests passing** (1 skipped)
 - Untested critical paths: reranker, project_card, router, scheduler
 
 ---
@@ -110,4 +109,5 @@ Do **not** enable firm-wide OCR or index all 40 TB for Gateway 1.
 
 | Date | Entry |
 |------|-------|
+| 2026-08-23 | Package cleanup: START-HERE.bat one-click install + configure + POC test |
 | 2026-08-23 | Initial audit + pre-test hardening (dedupe, admin env, test fixes, rerank default) |

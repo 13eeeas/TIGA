@@ -156,30 +156,25 @@ echo ============================================================
 echo   Setup Complete!
 echo ============================================================
 echo.
-echo  NEXT STEPS:
+echo  NEXT STEPS (Gateway 1 POC):
 echo.
-echo  1. Edit your archive paths in:
-echo       tiga_work\config.yaml
-echo     Set index_roots to your project drive, e.g.:
-echo       index_roots:
-echo         - "Z:/Projects"
+echo  Double-click:
+echo       START-HERE.bat
+echo     Installs ^(if needed^), sets your project folders, runs POC test.
 echo.
-echo  2. Start TIGA Hunt:
+echo  After POC test passes, daily use:
 echo       launcher.bat
-echo     Or run POC test after indexing roots:
+echo.
+echo  Re-run retrieval test only:
 echo       poc-test.bat
 echo.
-echo  3. Open the launcher portal: http://localhost:7860/launcher
-echo     Hunt search: http://localhost:7860/
-echo     Admin panel: http://localhost:7861/
+echo  URLs when services are running:
+echo     Launcher: http://localhost:7860/launcher
+echo     Hunt:     http://localhost:7860/
+echo     Admin:    http://localhost:7861/
 echo.
-echo  4. Desktop shortcuts installed:
+echo  Desktop shortcuts:
 python tiga.py shortcuts 2>nul
 echo.
-echo  5. (Optional) Run a quick folder scan before indexing:
-echo       python tiga.py scan "Z:/Projects" --phases
-echo.
-echo  5. (Optional) Run the WOHA project seeder:
-echo       python tiga.py scrape-woha
-echo.
+if /i "%~1"=="--nopause" goto :eof
 pause
