@@ -1,0 +1,5 @@
+# Project 261 — Tender Set
+
+This folder contains the final tender documentation for Project 261 Tianmu.
+The tender set includes architectural drawings, specifications, and BOQ for contractor pricing.
+Issue date: Rev F tender submission March 2024.

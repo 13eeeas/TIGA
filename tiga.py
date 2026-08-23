@@ -10,7 +10,8 @@ Subcommands:
   rebuild      Force full re-index
   query        Search the archive from terminal
   status       Show index stats
-  eval         Run search quality evaluation
+  eval         Run search quality evaluation (Hunt only — no API by default)
+  validate     Dry-run full index on fixtures + search benchmark
   serve        Start the FastAPI LAN server
   conventions  Detect/show/override project folder naming conventions
   einstein     Phase 2 (stub)
@@ -444,8 +445,31 @@ def cmd_eval(args: argparse.Namespace) -> None:
 
     from core.eval import run_eval
 
+    if getattr(args, "search_only", False):
+        print("Search-only eval (Hunt retrieval — no API / no compose)\n")
+
     queries = args.queries if args.queries else None
     code = run_eval(queries=queries, top_k=args.top_k)
+    sys.exit(code)
+
+
+def cmd_validate(args: argparse.Namespace) -> None:
+    """Dry-run index pipeline on fixture archive + search benchmark."""
+    from pathlib import Path as _Path
+    from core.pipeline_validate import run_validate
+
+    fixture = _Path(args.fixture) if args.fixture else None
+    benchmark = _Path(args.benchmark) if args.benchmark else None
+    work = _Path(args.work_dir) if args.work_dir else None
+    mock = not args.real_embed
+
+    code = run_validate(
+        work,
+        fixture_archive=fixture,
+        benchmark_fixture=benchmark,
+        mock_embed=mock,
+        verbose=True,
+    )
     sys.exit(code)
 
 
@@ -1355,6 +1379,8 @@ def build_parser() -> argparse.ArgumentParser:
                       help="Review last 20 low-confidence queries interactively")
     p_ev.add_argument("--routing", action="store_true",
                       help="Run routing-only eval (fast, no Ollama required)")
+    p_ev.add_argument("--search-only", action="store_true",
+                      help="Label run as Hunt-only (default eval never calls API)")
     p_ev.add_argument("--stress", action="store_true",
                       help="Run all 100 stress-test questions end-to-end and export HTML report")
     p_ev.add_argument("--project", default=None,
@@ -1509,6 +1535,28 @@ def build_parser() -> argparse.ArgumentParser:
         help="Daemon check interval in seconds (default 60)",
     )
 
+    p_val = sub.add_parser(
+        "validate",
+        help="Test index pipeline on fixture archive + search benchmark (no API)",
+    )
+    p_val.add_argument(
+        "--fixture",
+        help="Fixture archive directory (default: tests/fixtures/mini_archive)",
+    )
+    p_val.add_argument(
+        "--benchmark",
+        help="Search benchmark YAML (default: tests/fixtures/search_benchmark.yaml)",
+    )
+    p_val.add_argument(
+        "--work-dir",
+        help="Sandbox work dir (default: ./tiga_work_validate)",
+    )
+    p_val.add_argument(
+        "--real-embed",
+        action="store_true",
+        help="Use real Ollama embeddings instead of mock",
+    )
+
     return parser
 
 
@@ -1530,6 +1578,7 @@ def main() -> None:
         "query":     cmd_query,
         "status":    cmd_status,
         "eval":      cmd_eval,
+        "validate":  cmd_validate,
         "serve":     cmd_serve,
         "ui":        cmd_ui,
         "health":    cmd_health,

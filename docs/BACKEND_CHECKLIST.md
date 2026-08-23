@@ -17,8 +17,10 @@
 - [ ] Confirm enterprise API vendor shortlist + env var names (no keys in repo)
 - [ ] Document expected index size / file count per project (baseline for “represent don’t replicate”)
 
-### Host (your LAN machine)
-- [ ] `python tiga.py init` + `health` passes (Ollama embed path; API key present for Einstein)
+### Pre-flight (before real NAS index)
+- [x] `python tiga.py validate` — fixture archive, mocked embed, search benchmark
+- [x] `pytest tests/test_pipeline_integration.py` — automated same checks
+- [ ] `python tiga.py validate --real-embed` — optional with Ollama running
 - [ ] FastAPI binds LAN (`server.host` / firewall allows office browsers)
 - [ ] Night indexing window configured if embed load competes with daytime queries
 
@@ -177,9 +179,9 @@
 - [ ] Stratify across 3–5 projects and modes (semantic / file_locator / structured / cross_project)
 
 ### Metrics (automate where possible)
-- [x] Top-5 path recall (`core/eval.py`)
-- [x] Citation validity gate
-- [ ] **Correct source in top 5 → target >90%**
+- [x] Top-5 path recall on fixture benchmark (`tiga.py validate`)
+- [x] Citation validity gate on fixture benchmark
+- [ ] **100-Q Gateway set** on real 3–5 projects with expected answers
 - [ ] **Answer correctness** (human or LLM-judge with rubric) → target >85%
 - [ ] **Citation supports claim** → target >95%
 - [ ] **Hallucination flag** on sample → target <3%

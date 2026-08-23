@@ -156,6 +156,8 @@ def run_eval(
     """
     Run eval and return exit code (0 = pass, 1 = invalid citations found).
 
+    Search-only: calls core.query.search only — never compose or external API.
+
     queries: if None, load from tiga_work/fixtures/eval_queries.yaml.
              if provided, treat as ad-hoc (no expected_paths checked).
     """

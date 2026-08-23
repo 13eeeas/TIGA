@@ -43,7 +43,10 @@ class _FakeTable:
 @contextmanager
 def _mock_embed_success():
     """Mock embedding + LanceDB merge path so no Ollama service is required."""
-    with patch("core.index._vectors.embed_texts_batched", side_effect=lambda texts, _cfg: [[0.1] * 768 for _ in texts]), \
+    def _batched(texts, cfg, batch_size=None):
+        return [[0.1] * 768 for _ in texts]
+
+    with patch("core.index._vectors.embed_texts_batched", side_effect=_batched), \
          patch("core.index._vectors._get_chunk_table", return_value=_FakeTable()), \
          patch("lancedb.connect", return_value=MagicMock()):
         yield

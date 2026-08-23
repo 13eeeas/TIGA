@@ -60,7 +60,8 @@ python tiga.py index        # incremental index (skip unchanged)
 python tiga.py rebuild      # force full re-index
 python tiga.py query <q>    # search from terminal
 python tiga.py status       # index stats
-python tiga.py eval         # search quality test
+python tiga.py eval         # search quality test (Hunt only — no API)
+python tiga.py validate     # dry-run index + search benchmark on fixtures
 python tiga.py serve        # start FastAPI server (port 7860)
 python tiga.py ui           # start Streamlit UI (port 8501)
 python tiga.py health       # check Ollama + DB

@@ -1,0 +1,5 @@
+# Project 262 — Hospitality Brief
+
+Project 262 is a 320-key luxury hotel with ballroom and spa facilities.
+The hospitality brief defines facade strategy, guest room modules, and back-of-house logistics.
+Target completion aligns with the waterfront masterplan.

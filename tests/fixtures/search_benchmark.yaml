@@ -1,0 +1,22 @@
+# Search-only benchmark (Hunt retrieval — no API / no compose)
+# Used by: python tiga.py validate  and  pytest test_pipeline_integration
+
+- query: "Project 261 Tianmu residential brief client requirements"
+  expected_paths:
+    - 261_tianmu/01_Brief/project_brief.txt
+
+- query: "tender documentation Rev F Project 261"
+  expected_paths:
+    - 261_tianmu/02_Tender/tender_documentation.txt
+
+- query: "320 key luxury hotel facade strategy"
+  expected_paths:
+    - 262_hotel/Brief/hotel_brief.txt
+
+- query: "school competition submission 1200 student campus"
+  expected_paths:
+    - 263_school/Brief/school_competition.txt
+
+- query: "green mark gold residential tianmu"
+  expected_paths:
+    - 261_tianmu/01_Brief/project_brief.txt
