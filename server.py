@@ -38,6 +38,14 @@ Endpoints
   POST /api/feedback
   GET  /api/feedback/summary|queries|file/{id}|zero-results|export
 
+  Field collect (office test data → dev refinement)
+  GET  /api/collect/status
+  POST /api/collect/export
+  GET  /api/collect/exports
+  GET  /api/collect/exports/{name}
+  POST /api/collect/label
+  GET  /api/collect/labels
+
   Config
   GET  /api/config/history
   POST /api/config/rollback
@@ -69,7 +77,7 @@ from typing import Any, Generator
 
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -463,6 +471,14 @@ class FeedbackRequest(BaseModel):
     rank_position: int | None = None
     session_id:    str | None = None
     comment:       str | None = None
+    expected_paths: list[str] | None = None  # gold path for field refinement
+
+
+class FieldLabelRequest(BaseModel):
+    query: str
+    expected_paths: list[str]
+    notes: str | None = None
+    rating: int | None = None
 
 
 class AuditLogRequest(BaseModel):
@@ -849,6 +865,32 @@ async def api_query(
     # ── Log query ────────────────────────────────────────────────────────────
     result_count = len(results_page) + (len(files_result) if files_result else 0)
     _log_query(req.query, route.project_code, mode, confidence, result_count, duration_ms)
+
+    # Field test collector — rich Hunt events for office → dev refinement
+    try:
+        from core.field_collector import record_search_event
+        record_search_event(
+            query=req.query,
+            mode=mode,
+            project_code=route.project_code,
+            confidence=confidence,
+            duration_ms=duration_ms,
+            session_id=session_id,
+            results=[
+                {
+                    "rel_path": v.rel_path,
+                    "file_path": v.file_path,
+                    "citation": v.citation,
+                    "project_id": v.project_id,
+                    "final_score": v.final_score,
+                    "snippet": v.snippet,
+                }
+                for v in results_page
+            ],
+            answer_preview=answer_summary if mode == "semantic" else None,
+        )
+    except Exception as _fc_exc:
+        logger.debug("Field collect skipped: %s", _fc_exc)
 
     return QueryResponse(
         query              = req.query,
@@ -1618,6 +1660,15 @@ async def post_feedback(
         (req.session_id, req.query, req.result_id, req.rating, req.rank_position, req.comment),
     )
     conn.commit()
+    if req.expected_paths:
+        from core.field_collector import add_label
+        add_label(
+            req.query,
+            req.expected_paths,
+            notes=req.comment,
+            source="ui_feedback",
+            rating=req.rating,
+        )
     return {"status": "ok"}
 
 
@@ -1727,6 +1778,82 @@ async def feedback_export(conn: sqlite3.Connection = Depends(get_db)) -> Streami
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=tiga_feedback.csv"},
     )
+
+
+# ---------------------------------------------------------------------------
+# Field test data collector (office → dev refinement)
+# ---------------------------------------------------------------------------
+
+@app.get("/api/collect/status")
+async def api_collect_status(conn: sqlite3.Connection = Depends(get_db)) -> dict:
+    from core.field_collector import collect_status
+    return collect_status(conn)
+
+
+@app.post("/api/collect/export")
+async def api_collect_export(
+    since: str | None = Query(None, description="ISO date — only events on/after this"),
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict:
+    from core.field_collector import export_bundle
+    _audit("Field data export", since or "all")
+    path = export_bundle(conn, since=since)
+    return {
+        "status": "ok",
+        "path": str(path),
+        "name": path.name,
+        "download_url": f"/api/collect/exports/{path.name}",
+    }
+
+
+@app.get("/api/collect/exports")
+async def api_collect_exports_list() -> dict:
+    from core.field_collector import field_exports_dir
+    items = sorted(field_exports_dir().glob("field_export_*.zip"), reverse=True)
+    return {
+        "items": [
+            {"name": p.name, "size_bytes": p.stat().st_size, "path": str(p)}
+            for p in items[:20]
+        ]
+    }
+
+
+@app.get("/api/collect/exports/{export_name}")
+async def api_collect_export_download(export_name: str) -> FileResponse:
+    from core.field_collector import field_exports_dir
+    if not export_name.endswith(".zip"):
+        export_name = f"{export_name}.zip"
+    if ".." in export_name or "/" in export_name:
+        raise HTTPException(status_code=400, detail="Invalid export name")
+    path = field_exports_dir() / export_name
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Export not found")
+    return FileResponse(
+        path,
+        media_type="application/zip",
+        filename=export_name,
+    )
+
+
+@app.post("/api/collect/label")
+async def api_collect_label(req: FieldLabelRequest) -> dict:
+    from core.field_collector import add_label
+    _audit("Field label added", req.query[:80])
+    entry = add_label(
+        req.query,
+        req.expected_paths,
+        notes=req.notes,
+        source="admin",
+        rating=req.rating,
+    )
+    return {"status": "ok", "label": entry}
+
+
+@app.get("/api/collect/labels")
+async def api_collect_labels() -> dict:
+    from core.field_collector import load_labels
+    labels = load_labels()
+    return {"total": len(labels), "items": labels}
 
 
 # ---------------------------------------------------------------------------

@@ -283,6 +283,34 @@ def test_pipeline_status_includes_validate(client) -> None:
     assert "validate" in resp.json()
 
 
+def test_collect_labels_endpoint(client) -> None:
+    resp = client.post(
+        "/api/collect/label",
+        json={
+            "query": "test query",
+            "expected_paths": ["proj/brief.txt"],
+            "notes": "unit test",
+        },
+    )
+    assert resp.status_code == 200
+    resp2 = client.get("/api/collect/labels")
+    assert resp2.status_code == 200
+    assert resp2.json()["total"] >= 1
+
+
+def test_collect_status_endpoint(client) -> None:
+    resp = client.get("/api/collect/status")
+    assert resp.status_code == 200
+    assert "search_events" in resp.json()
+
+
+def test_collect_export_endpoint(client) -> None:
+    resp = client.post("/api/collect/export")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data.get("name", "").endswith(".zip")
+
+
 def test_launcher_page(client) -> None:
     resp = client.get("/launcher")
     assert resp.status_code == 200

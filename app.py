@@ -146,6 +146,7 @@ tabs = st.tabs([
     "Index",
     "Diagnostics",
     "Feedback",
+    "Field Data",
     "Audit Log",
 ])
 
@@ -358,6 +359,77 @@ with tabs[6]:
         st.dataframe(pd.DataFrame(qr), use_container_width=True)
 
 with tabs[7]:
+    st.subheader("Office field test collector")
+    st.caption(
+        "Every Hunt search is logged locally (no API keys). Export a zip when done "
+        "in the office, then run `python tiga.py collect import` on dev to refine Hunt."
+    )
+    cs = api("get", "/api/collect/status") or {}
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Search events", cs.get("search_events", 0))
+    c2.metric("Gold labels", cs.get("labels", 0))
+    c3.metric("Feedback", cs.get("feedback_rows", 0))
+    c4.metric("Collector", "ON" if cs.get("enabled") else "OFF")
+
+    ex_cols = st.columns(2)
+    with ex_cols[0]:
+        since = st.text_input("Export since (optional)", placeholder="2026-08-01")
+        if st.button("Export field bundle", type="primary"):
+            url = "/api/collect/export"
+            if since.strip():
+                url += f"?since={since.strip()}"
+            r = api("post", url)
+            if r:
+                st.success(f"Exported: `{r.get('name')}`")
+                st.caption(f"Path: `{r.get('path')}`")
+                dl = _API + (r.get("download_url") or "")
+                st.markdown(f"[Download zip]({dl})")
+    with ex_cols[1]:
+        exports = api("get", "/api/collect/exports") or {}
+        for item in (exports.get("items") or [])[:5]:
+            name = item.get("name", "")
+            size_kb = round((item.get("size_bytes") or 0) / 1024, 1)
+            st.markdown(f"- [{name}]({_API}/api/collect/exports/{name}) ({size_kb} KB)")
+
+    st.divider()
+    st.subheader("Add gold label")
+    st.caption("When staff know the correct file but Hunt missed it — feeds refinement.")
+    lq = st.text_input("Query", key="label_query")
+    le = st.text_area(
+        "Expected path suffixes (one per line)",
+        placeholder="261_tianmu/01_Brief/project_brief.txt",
+        key="label_paths",
+    )
+    ln = st.text_input("Notes (optional)", key="label_notes")
+    if st.button("Save label"):
+        paths = [p.strip() for p in le.splitlines() if p.strip()]
+        if lq.strip() and paths:
+            r = api("post", "/api/collect/label", json={
+                "query": lq.strip(),
+                "expected_paths": paths,
+                "notes": ln.strip() or None,
+            })
+            if r:
+                st.success("Label saved")
+                st.rerun()
+        else:
+            st.warning("Query and at least one expected path required.")
+
+    labels = api("get", "/api/collect/labels") or {}
+    items = labels.get("items") or []
+    if items:
+        st.subheader("Saved labels")
+        import pandas as pd
+        st.dataframe(pd.DataFrame([
+            {
+                "Query": i.get("query"),
+                "Expected": ", ".join(i.get("expected_paths") or []),
+                "Source": i.get("source"),
+            }
+            for i in items
+        ]), use_container_width=True, hide_index=True)
+
+with tabs[8]:
     st.caption("Immutable record of admin actions.")
     ad = api("get", "/api/audit?page=1&limit=50") or {}
     st.caption(f"Total: {ad.get('total',0):,}")

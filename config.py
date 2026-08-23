@@ -196,6 +196,17 @@ class Config:
         # Cap chunks from the same file in the ranked pool (evidence diversity)
         self.max_chunks_per_file: int = int(ret.get("max_chunks_per_file", 2))
 
+        # --- Field test data collector (office → dev refinement) ---
+        fc = data.get("field_collect", {})
+        self.field_collect_enabled: bool = fc.get("enabled", True)
+        self.field_collect_max_results: int = int(fc.get("max_results_logged", 10))
+        self.field_collect_include_answer: bool = fc.get(
+            "include_answer_preview", False
+        )
+        self.field_collect_answer_preview_chars: int = int(
+            fc.get("answer_preview_chars", 240)
+        )
+
         # --- Compose / Einstein synthesis ---
         comp = data.get("compose", {})
         self.compose_provider: str = comp.get("provider", "openai")
@@ -268,6 +279,12 @@ class Config:
     def get_report_dir(self) -> Path:
         return self.work_dir / "reports"
 
+    def get_field_data_dir(self) -> Path:
+        return self.work_dir / "field_data"
+
+    def get_field_exports_dir(self) -> Path:
+        return self.work_dir / "field_exports"
+
     def retrieval_candidate_pool(self, top_k: int) -> int:
         """Hybrid candidate count before rerank/trim."""
         base = max(top_k * 3, 20)
@@ -282,6 +299,9 @@ class Config:
             self.get_vector_dir(),
             self.get_log_dir(),
             self.get_report_dir(),
+            self.get_field_data_dir(),
+            self.get_field_exports_dir(),
+            self.work_dir / "field_imports",
         ]:
             d.mkdir(parents=True, exist_ok=True)
 

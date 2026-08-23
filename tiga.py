@@ -122,6 +122,13 @@ retrieval:
   domain_expand_enabled: true
   max_chunks_per_file: 2
 
+# Office field test collector — export bundles for dev refinement (no API)
+field_collect:
+  enabled: true
+  max_results_logged: 10
+  include_answer_preview: false
+  answer_preview_chars: 240
+
 compose:
   provider: openai
   api_enabled: true
@@ -631,6 +638,86 @@ def cmd_uninstall(args: argparse.Namespace) -> None:
     if result.get("work_dir_removed"):
         print("Removed tiga_work data directory")
     print("Done. Delete the TIGA install folder manually if you no longer need it.")
+
+
+def cmd_collect(args: argparse.Namespace) -> None:
+    """Office field test data — status, export, import, label."""
+    from pathlib import Path
+
+    from config import cfg
+    from core.db import get_connection
+    from core.field_collector import (
+        add_label,
+        collect_status,
+        export_bundle,
+        import_bundle,
+        load_labels,
+    )
+
+    cfg.ensure_dirs()
+
+    if args.collect_cmd == "status":
+        conn = get_connection(cfg.get_db_path())
+        try:
+            st = collect_status(conn)
+        finally:
+            conn.close()
+        print("\nField test collector")
+        print(f"  Enabled:       {st['enabled']}")
+        print(f"  Host:            {st['host']}")
+        print(f"  Search events:   {st['search_events']}")
+        print(f"  Gold labels:     {st['labels']}")
+        print(f"  Feedback rows:   {st['feedback_rows']}")
+        print(f"  Data dir:        {st['data_dir']}")
+        if st.get("exports"):
+            print(f"  Recent exports:  {', '.join(st['exports'][:3])}")
+        print("\nExport for dev:  python tiga.py collect export")
+        return
+
+    if args.collect_cmd == "export":
+        conn = get_connection(cfg.get_db_path())
+        try:
+            path = export_bundle(conn, since=args.since)
+        finally:
+            conn.close()
+        print(f"\nField export ready:\n  {path}")
+        print("\nCopy this zip off the office machine (USB / shared drive).")
+        print("On dev:  python tiga.py collect import path/to/" + path.name)
+        return
+
+    if args.collect_cmd == "import":
+        if not args.path:
+            print("Usage: python tiga.py collect import <field_export_*.zip>")
+            sys.exit(1)
+        result = import_bundle(Path(args.path))
+        print("\nImport complete")
+        print(f"  Extracted to: {result['imported_to']}")
+        print(f"  Events added: {result['merged']['events_added']}")
+        print(f"  Labels added: {result['merged']['labels_added']}")
+        if result.get("office_eval_merged"):
+            print(f"  Merged eval:  {result['office_eval_merged']}")
+        print("\nReview refinement_candidates in field_imports/ and update Hunt tuning.")
+        return
+
+    if args.collect_cmd == "label":
+        if not args.query or not args.expected:
+            print("Usage: python tiga.py collect label --query \"...\" --expected path/suffix")
+            sys.exit(1)
+        entry = add_label(
+            args.query,
+            args.expected,
+            notes=args.notes,
+            source="cli",
+        )
+        print(f"Label saved for: {entry['query']!r}")
+        print(f"  expected_paths: {entry['expected_paths']}")
+        return
+
+    if args.collect_cmd == "labels":
+        for lab in load_labels():
+            print(f"- {lab.get('query')!r}")
+            print(f"    → {lab.get('expected_paths')}")
+        return
 
 
 def cmd_card(args: argparse.Namespace) -> None:
@@ -1638,6 +1725,35 @@ def build_parser() -> argparse.ArgumentParser:
         help="Use real Ollama embeddings instead of mock",
     )
 
+    # collect — office field test data
+    p_col = sub.add_parser(
+        "collect",
+        help="Office field test data: export bundles for dev refinement",
+    )
+    col_sub = p_col.add_subparsers(dest="collect_cmd", required=True)
+
+    col_sub.add_parser("status", help="Show collector stats")
+
+    p_ce = col_sub.add_parser("export", help="Export zip bundle to field_exports/")
+    p_ce.add_argument(
+        "--since",
+        default=None,
+        help="Only include events on/after ISO date (e.g. 2026-08-01)",
+    )
+
+    p_ci = col_sub.add_parser("import", help="Import office export zip on dev machine")
+    p_ci.add_argument("path", nargs="?", help="Path to field_export_*.zip")
+
+    p_cl = col_sub.add_parser("label", help="Add gold expected_paths for a query")
+    p_cl.add_argument("--query", required=True, help="Search query text")
+    p_cl.add_argument(
+        "--expected", action="append", required=True,
+        help="Expected path suffix (repeatable)",
+    )
+    p_cl.add_argument("--notes", default=None, help="Optional note")
+
+    col_sub.add_parser("labels", help="List gold labels")
+
     return parser
 
 
@@ -1665,6 +1781,7 @@ def main() -> None:
         "open":      cmd_open,
         "shortcuts": cmd_shortcuts,
         "uninstall": cmd_uninstall,
+        "collect":   cmd_collect,
         "health":    cmd_health,
         "einstein":  cmd_einstein,
         "card":      cmd_card,

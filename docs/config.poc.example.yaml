@@ -57,6 +57,11 @@ retrieval:
   domain_expand_enabled: true
   max_chunks_per_file: 2
 
+field_collect:
+  enabled: true
+  max_results_logged: 10
+  include_answer_preview: false
+
 compose:
   provider: openai
   api_enabled: true
