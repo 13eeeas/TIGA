@@ -166,8 +166,8 @@ echo         - "Z:/Projects"
 echo.
 echo  2. Start TIGA Hunt:
 echo       launcher.bat
-echo     (creates desktop shortcuts on first setup — double-click "TIGA Hunt")
-echo     Or: run.bat
+echo     Or run POC test after indexing roots:
+echo       poc-test.bat
 echo.
 echo  3. Open the launcher portal: http://localhost:7860/launcher
 echo     Hunt search: http://localhost:7860/

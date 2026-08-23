@@ -12,6 +12,7 @@ Subcommands:
   status       Show index stats
   eval         Run search quality evaluation (Hunt only — no API by default)
   validate     Dry-run full index on fixtures + search benchmark
+  collect      Office field test data — export/import for Hunt refinement
   serve        Start the FastAPI LAN server
   conventions  Detect/show/override project folder naming conventions
   einstein     Phase 2 (stub)
@@ -718,6 +719,144 @@ def cmd_collect(args: argparse.Namespace) -> None:
             print(f"- {lab.get('query')!r}")
             print(f"    → {lab.get('expected_paths')}")
         return
+
+
+def _parse_project_selection(spec: str, projects: list[dict]) -> list[dict]:
+    """Parse '1,2,4-6' into project dicts."""
+    indices: set[int] = set()
+    for part in spec.replace(" ", "").split(","):
+        if not part:
+            continue
+        if "-" in part:
+            a, b = part.split("-", 1)
+            for i in range(int(a), int(b) + 1):
+                indices.add(i)
+        else:
+            indices.add(int(part))
+    selected = []
+    for i in sorted(indices):
+        if 1 <= i <= len(projects):
+            selected.append(projects[i - 1])
+    return selected
+
+
+def cmd_poc_test(args: argparse.Namespace) -> None:
+    """One-click POC test: pick projects → index → stress retrieval → export."""
+    from pathlib import Path
+
+    from config import cfg
+    from core.db import get_connection
+    from core.poc_test import (
+        discover_projects,
+        export_poc_test_bundle,
+        import_poc_test_bundle,
+        load_session,
+        run_poc_test,
+        run_retrieval_stress,
+    )
+    from core.query_generator import generate_queries_for_projects as gen_q
+
+    cfg.ensure_dirs()
+    conn = get_connection(cfg.get_db_path())
+
+    try:
+        if args.poc_cmd == "import":
+            if not args.path:
+                print("Usage: python tiga.py poc-test import <poc_test_export_*.zip>")
+                sys.exit(1)
+            result = import_poc_test_bundle(Path(args.path))
+            print("\nPOC test import complete")
+            print(f"  Playbook: {result.get('playbook')}")
+            print(f"  Stress:   {result.get('stress_results')}")
+            print(f"  Eval:     {result.get('office_eval_merged')}")
+            return
+
+        if args.poc_cmd == "projects":
+            projects = discover_projects(conn, cfg)
+            if not projects:
+                print("No projects found. Set index_roots in config.yaml first.")
+                return
+            for i, p in enumerate(projects, 1):
+                idx = p.get("indexed_files", p.get("indexable_files", 0))
+                print(f"  [{i}] {p.get('name')} — {idx} files")
+            return
+
+        if args.poc_cmd == "stress":
+            session = load_session(cfg)
+            selected = session.get("selected") or []
+            if not selected:
+                print("No session — run `python tiga.py poc-test run` first.")
+                sys.exit(1)
+            project_keys = [
+                s.get("project_id") or s.get("name") for s in selected
+            ]
+            gen = gen_q(conn, project_keys, cfg.index_roots)
+            gen_dict = gen.to_dict()
+            stress = run_retrieval_stress(gen_dict["queries"], conn, cfg, top_k=args.top_k)
+            zip_path = export_poc_test_bundle(
+                session, gen_dict, stress, None, cfg, conn
+            )
+            print(f"Literal {stress['literal_recall_pct']}% | "
+                  f"Paraphrase {stress['paraphrase_recall_pct']}% | "
+                  f"Export: {zip_path}")
+            sys.exit(0 if stress["overall_recall_pct"] >= 80 else 2)
+
+        # run (default interactive one-click flow)
+        projects = discover_projects(conn, cfg)
+        if not projects:
+            print("No projects under index_roots. Edit tiga_work/config.yaml")
+            sys.exit(1)
+
+        selected: list[dict] = []
+        if args.projects:
+            # paths or numbers
+            if all(p.isdigit() or "-" in p or "," in args.projects for p in args.projects.split(",")):
+                selected = _parse_project_selection(args.projects, projects)
+            else:
+                for raw in args.projects.split(","):
+                    raw = raw.strip()
+                    match = next((p for p in projects if p.get("path") == raw or p.get("name") == raw), None)
+                    if match:
+                        selected.append(match)
+        else:
+            print(f"\n{'=' * 60}")
+            print("  TIGA POC Test — choose projects to index & stress")
+            print(f"{'=' * 60}\n")
+            print("Available projects:\n")
+            for i, p in enumerate(projects, 1):
+                n = p.get("indexed_files", p.get("indexable_files", 0))
+                print(f"  [{i}] {p.get('name')}  ({n} files)")
+            print("\nPick 3–5 for Gateway 1 (comma-separated, e.g. 1,2,3): ")
+            spec = input().strip()
+            if not spec:
+                print("Cancelled.")
+                sys.exit(1)
+            selected = _parse_project_selection(spec, projects)
+
+        if not selected:
+            print("No projects selected.")
+            sys.exit(1)
+
+        print(f"\nSelected {len(selected)} project(s):")
+        for s in selected:
+            print(f"  • {s.get('name')} — {s.get('path', s.get('project_id'))}")
+
+        if not args.yes:
+            confirm = input("\nProceed with index + stress test? [Y/n] ").strip().lower()
+            if confirm and confirm not in ("y", "yes"):
+                print("Cancelled.")
+                sys.exit(0)
+
+        result = run_poc_test(
+            selected,
+            cfg,
+            skip_index=args.skip_index,
+            top_k=args.top_k,
+            verbose=True,
+        )
+        sys.exit(result.get("exit_code", 0))
+    finally:
+        conn.close()
 
 
 def cmd_card(args: argparse.Namespace) -> None:
@@ -1754,6 +1893,38 @@ def build_parser() -> argparse.ArgumentParser:
 
     col_sub.add_parser("labels", help="List gold labels")
 
+    # poc-test — one-click index + corpus-adaptive stress + export
+    p_poc = sub.add_parser(
+        "poc-test",
+        help="Pick projects → index → auto-generate queries → stress Hunt → export",
+    )
+    poc_sub = p_poc.add_subparsers(dest="poc_cmd", required=True)
+
+    p_poc_run = poc_sub.add_parser("run", help="Interactive one-click POC test")
+    p_poc_run.add_argument(
+        "--projects",
+        default=None,
+        help="Project indices (1,2,3) or comma-separated paths",
+    )
+    p_poc_run.add_argument(
+        "--skip-index",
+        action="store_true",
+        help="Skip indexing — stress test only on current index",
+    )
+    p_poc_run.add_argument("--top-k", type=int, default=5)
+    p_poc_run.add_argument("-y", "--yes", action="store_true", help="Skip confirm prompt")
+
+    p_poc_stress = poc_sub.add_parser(
+        "stress",
+        help="Re-run stress test from last session (no re-index)",
+    )
+    p_poc_stress.add_argument("--top-k", type=int, default=5)
+
+    poc_sub.add_parser("projects", help="List available projects")
+
+    p_poc_imp = poc_sub.add_parser("import", help="Import office POC export on dev")
+    p_poc_imp.add_argument("path", nargs="?", help="poc_test_export_*.zip")
+
     return parser
 
 
@@ -1782,6 +1953,7 @@ def main() -> None:
         "shortcuts": cmd_shortcuts,
         "uninstall": cmd_uninstall,
         "collect":   cmd_collect,
+        "poc-test":  cmd_poc_test,
         "health":    cmd_health,
         "einstein":  cmd_einstein,
         "card":      cmd_card,

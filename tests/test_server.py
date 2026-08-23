@@ -311,6 +311,18 @@ def test_collect_export_endpoint(client) -> None:
     assert data.get("name", "").endswith(".zip")
 
 
+def test_poc_test_projects_endpoint(client) -> None:
+    resp = client.get("/api/poc-test/projects")
+    assert resp.status_code == 200
+    assert "items" in resp.json()
+
+
+def test_poc_test_status_endpoint(client) -> None:
+    resp = client.get("/api/poc-test/status")
+    assert resp.status_code == 200
+    assert "running" in resp.json()
+
+
 def test_launcher_page(client) -> None:
     resp = client.get("/launcher")
     assert resp.status_code == 200

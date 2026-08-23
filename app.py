@@ -141,6 +141,7 @@ _live_ops_panel()
 tabs = st.tabs([
     "Pipeline",
     "Validate & Benchmark",
+    "POC Test",
     "Directories",
     "Workers & Auto-Brain",
     "Index",
@@ -263,8 +264,63 @@ with tabs[1]:
             import pandas as pd
             st.dataframe(pd.DataFrame(result.get("queries", [])), use_container_width=True, hide_index=True)
 
-# ── Directories (unchanged logic) ───────────────────────────────────────────
 with tabs[2]:
+    st.subheader("One-click POC test")
+    st.caption(
+        "Choose projects → index → auto-generate architecture-firm queries from your corpus → "
+        "stress Hunt retrieval → export zip with refinement playbook. **No API cost.**"
+    )
+    st.info("CLI: double-click `poc-test.bat` or run `python tiga.py poc-test run`")
+
+    ps = api("get", "/api/poc-test/status") or {}
+    if ps.get("running"):
+        st.warning("POC test running… check Live log in System status.")
+    elif ps.get("finished_at") and ps.get("stress"):
+        sr = ps["stress"]
+        st.write(
+            f"Last run — Literal **{sr.get('literal_recall_pct')}%** | "
+            f"Paraphrase **{sr.get('paraphrase_recall_pct')}%** | "
+            f"Overall **{sr.get('overall_recall_pct')}%**"
+        )
+        if ps.get("export_path"):
+            st.caption(f"Export: `{ps['export_path']}`")
+
+    proj = api("get", "/api/poc-test/projects") or {}
+    items = proj.get("items") or []
+    if items:
+        labels = {
+            f"{p.get('name')} ({p.get('indexed_files', p.get('indexable_files', 0))} files)": p.get("path")
+            for p in items
+        }
+        picked = st.multiselect(
+            "Projects to index & test (pick 3–5)",
+            options=list(labels.keys()),
+            key="poc_projects",
+        )
+        skip_idx = st.checkbox("Skip index — stress test only", value=False)
+        if st.button("Run POC test", type="primary"):
+            paths = [labels[k] for k in picked if k in labels]
+            if len(paths) < 1:
+                st.warning("Select at least one project.")
+            else:
+                r = api("post", "/api/poc-test/run", json={
+                    "project_paths": paths,
+                    "skip_index": skip_idx,
+                    "top_k": 5,
+                })
+                if r:
+                    st.toast(r.get("status", "started"))
+                    st.rerun()
+    else:
+        st.write("No projects found — set `index_roots` in config.yaml.")
+
+    exports = api("get", "/api/poc-test/exports") or {}
+    for item in (exports.get("items") or [])[:5]:
+        name = item.get("name", "")
+        st.markdown(f"- [{name}]({_API}/api/poc-test/exports/{name})")
+
+# ── Directories (unchanged logic) ───────────────────────────────────────────
+with tabs[3]:
     st.subheader("Index Roots")
     dirs = api("get", "/api/directories") or []
     for d in dirs:
@@ -296,7 +352,7 @@ with tabs[2]:
             api("post", "/api/directories/add", json={"path": new_path.strip()})
             st.rerun()
 
-with tabs[3]:
+with tabs[4]:
     ab = api("get", "/api/autobrain/status") or {}
     enabled = ab.get("enabled", False)
     st.subheader("Auto-Brain")
@@ -310,7 +366,7 @@ with tabs[3]:
         st.slider(stage.capitalize(), limits["min"], limits["max"],
                   allocs.get(stage, 2), key=f"sl_{stage}", disabled=enabled)
 
-with tabs[4]:
+with tabs[5]:
     st.subheader("File Search")
     fq = st.text_input("Search by filename or path")
     if fq.strip():
@@ -339,14 +395,14 @@ with tabs[4]:
             r = api("post", "/api/index/integrity") or {}
             st.success("OK" if r.get("ok") else f"issues found")
 
-with tabs[5]:
+with tabs[6]:
     if st.button("Run Full Diagnostic"):
         with st.spinner("Running…"):
             diag = api("post", "/api/diagnostics/run") or {}
         for c in diag.get("checks", []):
             st.write(f"{'✅' if c['ok'] else '❌'} **{c['name']}** — {c.get('detail','')}")
 
-with tabs[6]:
+with tabs[7]:
     summary = api("get", "/api/feedback/summary") or {}
     c1, c2, c3 = st.columns(3)
     c1.metric("👍", summary.get("total_positive", 0))
@@ -358,7 +414,7 @@ with tabs[6]:
         import pandas as pd
         st.dataframe(pd.DataFrame(qr), use_container_width=True)
 
-with tabs[7]:
+with tabs[8]:
     st.subheader("Office field test collector")
     st.caption(
         "Every Hunt search is logged locally (no API keys). Export a zip when done "
@@ -429,7 +485,7 @@ with tabs[7]:
             for i in items
         ]), use_container_width=True, hide_index=True)
 
-with tabs[8]:
+with tabs[9]:
     st.caption("Immutable record of admin actions.")
     ad = api("get", "/api/audit?page=1&limit=50") or {}
     st.caption(f"Total: {ad.get('total',0):,}")

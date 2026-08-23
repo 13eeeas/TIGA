@@ -14,6 +14,9 @@ tiga_work/db/
 tiga_work/vectors/
 tiga_work/logs/
 tiga_work/reports/
+tiga_work/field_data/
+tiga_work/field_exports/
+tiga_work/poc_test/
 tiga_work/config.yaml
 tiga_work/corrections.json
 tiga_work/project_conventions.yml

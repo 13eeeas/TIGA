@@ -46,6 +46,13 @@ Endpoints
   POST /api/collect/label
   GET  /api/collect/labels
 
+  POC test (pick projects → index → stress → export)
+  GET  /api/poc-test/projects
+  GET  /api/poc-test/status
+  POST /api/poc-test/run
+  GET  /api/poc-test/exports
+  GET  /api/poc-test/exports/{name}
+
   Config
   GET  /api/config/history
   POST /api/config/rollback
@@ -141,6 +148,20 @@ _validate_state: dict[str, Any] = {
     "search":      None,
     "errors":      [],
     "output":      [],
+}
+
+_poc_test_lock = threading.Lock()
+_poc_test_state: dict[str, Any] = {
+    "running":      False,
+    "started_at":   None,
+    "finished_at":  None,
+    "exit_code":    None,
+    "export_path":  None,
+    "generation":   None,
+    "stress":       None,
+    "selected":     [],
+    "errors":       [],
+    "output":       [],
 }
 
 
@@ -1116,6 +1137,8 @@ async def pipeline_status() -> dict:
         state["throughput"] = round(rate, 2)
     with _validate_lock:
         state["validate"] = dict(_validate_state)
+    with _poc_test_lock:
+        state["poc_test"] = dict(_poc_test_state)
     return state
 
 
@@ -1854,6 +1877,142 @@ async def api_collect_labels() -> dict:
     from core.field_collector import load_labels
     labels = load_labels()
     return {"total": len(labels), "items": labels}
+
+
+# ---------------------------------------------------------------------------
+# POC test — one-click index + corpus-adaptive stress + export
+# ---------------------------------------------------------------------------
+
+class PocTestRunRequest(BaseModel):
+    project_paths: list[str]
+    skip_index: bool = False
+    top_k: int = 5
+
+
+def _poc_test_run(project_paths: list[str], skip_index: bool, top_k: int) -> None:
+    global _poc_test_state
+
+    def _log(msg: str) -> None:
+        with _poc_test_lock:
+            _poc_test_state["output"].append(f"[{datetime.now().isoformat()}] {msg}")
+
+    with _poc_test_lock:
+        _poc_test_state.update({
+            "running": True,
+            "started_at": time.time(),
+            "finished_at": None,
+            "exit_code": None,
+            "export_path": None,
+            "generation": None,
+            "stress": None,
+            "selected": project_paths,
+            "errors": [],
+            "output": ["Starting POC test…"],
+        })
+
+    try:
+        from core.poc_test import discover_projects, run_poc_test
+        from core.db import get_connection
+
+        conn = get_connection(cfg.get_db_path())
+        try:
+            all_projects = discover_projects(conn, cfg)
+            selected = [
+                p for p in all_projects
+                if p.get("path") in project_paths or p.get("name") in project_paths
+            ]
+            if not selected:
+                selected = [{"path": p, "name": Path(p).name, "project_id": Path(p).name}
+                            for p in project_paths]
+            _log(f"Selected {len(selected)} project(s)")
+            result = run_poc_test(
+                selected, cfg, skip_index=skip_index, top_k=top_k, verbose=False
+            )
+            _log(
+                f"Done — literal {result['stress']['literal_recall_pct']}% "
+                f"paraphrase {result['stress']['paraphrase_recall_pct']}%"
+            )
+            with _poc_test_lock:
+                _poc_test_state.update({
+                    "exit_code": result.get("exit_code", 0),
+                    "export_path": result.get("export_path"),
+                    "generation": result.get("generation"),
+                    "stress": result.get("stress"),
+                })
+        finally:
+            conn.close()
+    except Exception as e:
+        _log(f"ERROR: {e}")
+        with _poc_test_lock:
+            _poc_test_state["errors"].append(str(e))
+            _poc_test_state["exit_code"] = 1
+        logger.error("POC test failed: %s", e)
+    finally:
+        with _poc_test_lock:
+            _poc_test_state["running"] = False
+            _poc_test_state["finished_at"] = time.time()
+
+
+@app.get("/api/poc-test/projects")
+async def api_poc_test_projects(conn: sqlite3.Connection = Depends(get_db)) -> dict:
+    from core.poc_test import discover_projects
+    items = discover_projects(conn, cfg)
+    return {"total": len(items), "items": items}
+
+
+@app.get("/api/poc-test/status")
+async def api_poc_test_status() -> dict:
+    with _poc_test_lock:
+        return dict(_poc_test_state)
+
+
+@app.post("/api/poc-test/run")
+async def api_poc_test_run(req: PocTestRunRequest) -> dict:
+    if not req.project_paths:
+        raise HTTPException(status_code=400, detail="project_paths required")
+    with _poc_test_lock:
+        if _poc_test_state["running"]:
+            return {"status": "already_running"}
+    with _pipeline_lock:
+        if _pipeline_state["running"]:
+            return {"status": "pipeline_busy"}
+    _audit("POC test started", f"{len(req.project_paths)} projects")
+    t = threading.Thread(
+        target=_poc_test_run,
+        kwargs={
+            "project_paths": req.project_paths,
+            "skip_index": req.skip_index,
+            "top_k": req.top_k,
+        },
+        daemon=True,
+    )
+    t.start()
+    return {"status": "started", "projects": len(req.project_paths)}
+
+
+@app.get("/api/poc-test/exports")
+async def api_poc_test_exports() -> dict:
+    from core.poc_test import exports_dir
+    items = sorted(exports_dir().glob("poc_test_export_*.zip"), reverse=True)
+    return {
+        "items": [
+            {"name": p.name, "size_bytes": p.stat().st_size, "path": str(p)}
+            for p in items[:15]
+        ]
+    }
+
+
+@app.get("/api/poc-test/exports/{export_name}")
+async def api_poc_test_export_download(export_name: str) -> FileResponse:
+    from core.poc_test import exports_dir
+    if not export_name.endswith(".zip"):
+        export_name = f"{export_name}.zip"
+    if ".." in export_name or "/" in export_name:
+        raise HTTPException(status_code=400, detail="Invalid export name")
+    path = exports_dir() / export_name
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Export not found")
+    return FileResponse(path, media_type="application/zip", filename=export_name)
 
 
 # ---------------------------------------------------------------------------

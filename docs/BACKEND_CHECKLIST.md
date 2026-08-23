@@ -20,6 +20,8 @@
 ### Pre-flight (before real NAS index)
 - [x] `python tiga.py validate` — fixture archive, mocked embed, search benchmark
 - [x] `pytest tests/test_pipeline_integration.py` — automated same checks
+- [x] **Field collector** — `python tiga.py collect export` after office testing
+- [x] **POC test** — `poc-test.bat` / `python tiga.py poc-test run` → corpus-adaptive stress + export zip
 - [ ] `python tiga.py validate --real-embed` — optional with Ollama running
 - [ ] FastAPI binds LAN (`server.host` / firewall allows office browsers)
 - [ ] Night indexing window configured if embed load competes with daytime queries
