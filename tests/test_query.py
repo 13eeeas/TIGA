@@ -269,6 +269,7 @@ def test_hybrid_scoring_uses_both_lanes(tmp_path: Path, conn) -> None:
     final = alpha * vector_score + (1-alpha) * bm25_score
     """
     cfg_obj = _cfg(tmp_path)
+    cfg_obj.reranker_enabled = False  # isolate hybrid merge from reranker
     root = tmp_path
     file_id, chunk_id = _seed(conn, root, "brief.txt", "hospital architecture")
 

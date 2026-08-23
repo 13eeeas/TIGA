@@ -307,7 +307,7 @@ def test_fingerprint_read_error_marks_failed(tmp_path: Path, conn) -> None:
     cfg_file = _write_config(tmp_path, [root])
     cfg_obj = load_config(config_file=cfg_file, work_dir=tmp_path)
 
-    with patch("core.discover.compute_fingerprint", side_effect=OSError("read error")):
+    with patch("core.discover._compute_fingerprint_by_strategy", side_effect=OSError("read error")):
         stats = run_discover(conn, [root], cfg_obj=cfg_obj)
 
     row = conn.execute("SELECT * FROM files WHERE file_name='corrupt.pdf'").fetchone()
@@ -343,3 +343,27 @@ def test_classify_lane_helper(tmp_path: Path) -> None:
     assert _classify_lane(".dwg",  cfg_obj) == "METADATA_ONLY"
     assert _classify_lane(".xyz",  cfg_obj) == "METADATA_ONLY"   # unknown
     assert _classify_lane("",     cfg_obj) == "METADATA_ONLY"   # no extension
+
+
+def test_discover_skips_content_duplicates(tmp_path: Path, conn) -> None:
+    """Second file with identical content fingerprint is marked DUPLICATE."""
+    root = tmp_path / "archive"
+    root.mkdir()
+    content = b"same tender document bytes"
+    (root / "tender_a.pdf").write_bytes(content)
+    (root / "copy/tender_b.pdf").parent.mkdir()
+    (root / "copy/tender_b.pdf").write_bytes(content)
+
+    cfg_file = _write_config(tmp_path, [root])
+    cfg_obj = load_config(config_file=cfg_file, work_dir=tmp_path)
+
+    stats = run_discover(conn, [root], cfg_obj=cfg_obj)
+    assert stats["discovered"] == 1
+    assert stats.get("duplicates", 0) == 1
+
+    dup = conn.execute(
+        "SELECT status, error_code, duplicate_of FROM files WHERE file_name = 'tender_b.pdf'"
+    ).fetchone()
+    assert dup["status"] == "SKIPPED"
+    assert dup["error_code"] == "DUPLICATE"
+    assert dup["duplicate_of"]

@@ -258,6 +258,7 @@ _FILE_EXTRA_COLS = [
     ("canonical_category", "TEXT"),          # normalised category: renders_3d | meetings | cad | bim | ...
     ("folder_date",        "TEXT"),          # ISO date extracted from folder name (e.g. "186 20130322 Presentation")
     ("is_received",        "INTEGER DEFAULT 0"),  # 1 if file is in a "Received" / "From Client" folder
+    ("duplicate_of",       "TEXT"),          # file_id of canonical copy when fingerprint matches
 ]
 
 _FILE_EXTRA_INDEXES = [
@@ -270,6 +271,7 @@ _FILE_EXTRA_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_files_discipline         ON files(discipline)",
     "CREATE INDEX IF NOT EXISTS idx_files_canonical_category ON files(canonical_category)",
     "CREATE INDEX IF NOT EXISTS idx_files_folder_date        ON files(folder_date)",
+    "CREATE INDEX IF NOT EXISTS idx_files_fingerprint      ON files(fingerprint_sha256)",
 ]
 
 
@@ -321,13 +323,13 @@ def upsert_file(conn: sqlite3.Connection, f: dict[str, Any]) -> None:
              size_bytes, mtime_epoch, fingerprint_sha256,
              lane, status, project_id, project_confidence,
              typology, typology_confidence,
-             error_code, error_detail, updated_at)
+             error_code, error_detail, duplicate_of, updated_at)
         VALUES
             (:file_id, :file_path, :file_name, :extension,
              :size_bytes, :mtime_epoch, :fingerprint_sha256,
              :lane, :status, :project_id, :project_confidence,
              :typology, :typology_confidence,
-             :error_code, :error_detail, datetime('now'))
+             :error_code, :error_detail, :duplicate_of, datetime('now'))
         ON CONFLICT(file_id) DO UPDATE SET
             file_path           = excluded.file_path,
             file_name           = excluded.file_name,
@@ -343,6 +345,7 @@ def upsert_file(conn: sqlite3.Connection, f: dict[str, Any]) -> None:
             typology_confidence = COALESCE(excluded.typology_confidence, typology_confidence),
             error_code          = excluded.error_code,
             error_detail        = excluded.error_detail,
+            duplicate_of        = excluded.duplicate_of,
             updated_at          = datetime('now')
     """
     conn.execute(sql, {
@@ -361,6 +364,7 @@ def upsert_file(conn: sqlite3.Connection, f: dict[str, Any]) -> None:
         "typology_confidence": f.get("typology_confidence"),
         "error_code":          f.get("error_code"),
         "error_detail":        f.get("error_detail"),
+        "duplicate_of":        f.get("duplicate_of"),
     })
     conn.commit()
 

@@ -82,6 +82,9 @@ email:
 extract:
   empty_fallback_metadata: true
 
+dedupe:
+  enabled: true
+
 ollama:
   base_url: http://localhost:11434
   embed_model: nomic-embed-text

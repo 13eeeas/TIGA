@@ -224,7 +224,7 @@ class Config:
         # Cross-encoder reranker (optional; requires: pip install sentence-transformers)
         # Reranks the top-N hybrid candidates by reading query+chunk together,
         # closing the accuracy gap to ChatGPT Projects-style retrieval quality.
-        self.reranker_enabled: bool = ret.get("reranker_enabled", False)
+        self.reranker_enabled: bool = ret.get("reranker_enabled", True)
         self.reranker_model: str = ret.get(
             "reranker_model", "cross-encoder/ms-marco-MiniLM-L-6-v2"
         )
@@ -298,7 +298,10 @@ class Config:
         #   "full"     — SHA256 of full file content (slowest, most accurate)
         #   "sampled"  — SHA256 of head+tail 64 KB blocks (~100x faster, 99.9% accurate)
         #   "metadata" — size + mtime only (fastest; good enough for local/NAS filesystems)
-        self.fingerprint_strategy: str = pipe.get("fingerprint_strategy", "full")
+        self.fingerprint_strategy: str = pipe.get("fingerprint_strategy", "sampled")
+
+        dedupe = data.get("dedupe", {})
+        self.dedupe_enabled: bool = dedupe.get("enabled", True)
 
         # --- Scheduler (time-of-day resource balancing) ---
         # Controls embed_batch_size and extract_workers based on time of day so that

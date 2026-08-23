@@ -1,8 +1,9 @@
 """
 app.py — TIGA Hunt Admin Panel (Streamlit).
 
-Admin-only. Accessed from the settings drawer in the main UI.
-Password: admin / admin
+Admin-only. Set credentials via environment:
+  TIGA_ADMIN_USER (default: admin)
+  TIGA_ADMIN_PASSWORD (default: admin — change before LAN rollout)
 
 Run via: python tiga.py ui
 Requires: python tiga.py serve (FastAPI on cfg.server_port)
@@ -18,6 +19,9 @@ import requests
 import streamlit as st
 
 from config import cfg
+
+_ADMIN_USER = os.environ.get("TIGA_ADMIN_USER", "admin")
+_ADMIN_PASSWORD = os.environ.get("TIGA_ADMIN_PASSWORD", "admin")
 
 st.set_page_config(
     page_title="TIGA Admin",
@@ -75,7 +79,7 @@ if not st.session_state.admin_authed:
     username = st.text_input("Username", key="login_user")
     password = st.text_input("Password", type="password", key="login_pass")
     if st.button("Login", type="primary", use_container_width=True):
-        if username == "admin" and password == "admin":
+        if username == _ADMIN_USER and password == _ADMIN_PASSWORD:
             st.session_state.admin_authed = True
             st.rerun()
         else:

@@ -189,7 +189,10 @@ def run_discover(
         "skipped":   0,
         "failed":    0,
         "unchanged": 0,
+        "duplicates": 0,
     }
+
+    fp_canonical: dict[str, str] = {}
 
     for root in index_roots:
         root = Path(root)
@@ -202,7 +205,7 @@ def run_discover(
 
         logger.info("Scanning: %s", root)
         try:
-            _scan_root(root, conn, _cfg, stats)
+            _scan_root(root, conn, _cfg, stats, fp_canonical)
         except PermissionError as e:
             logger.warning("Permission denied scanning %s: %s", root, e)
         except Exception as e:
@@ -210,11 +213,37 @@ def run_discover(
 
     logger.info(
         "Discover complete — total: %d, discovered: %d, skipped: %d, "
-        "failed: %d, unchanged: %d",
+        "failed: %d, unchanged: %d, duplicates: %d",
         stats["total"], stats["discovered"], stats["skipped"],
-        stats["failed"], stats["unchanged"],
+        stats["failed"], stats["unchanged"], stats.get("duplicates", 0),
     )
     return stats
+
+
+def _find_content_duplicate(
+    conn: sqlite3.Connection,
+    fingerprint: str,
+    posix_path: str,
+    fp_canonical: dict[str, str],
+    cfg_obj: Config,
+) -> str | None:
+    """Return canonical file_id if this fingerprint was already indexed."""
+    if not getattr(cfg_obj, "dedupe_enabled", True):
+        return None
+    if fingerprint in fp_canonical:
+        return fp_canonical[fingerprint]
+    row = conn.execute(
+        """
+        SELECT file_id FROM files
+        WHERE fingerprint_sha256 = ?
+          AND file_path != ?
+          AND status NOT IN ('SKIPPED', 'FAILED')
+        ORDER BY updated_at ASC
+        LIMIT 1
+        """,
+        (fingerprint, posix_path),
+    ).fetchone()
+    return row["file_id"] if row else None
 
 
 def _scan_root(
@@ -222,6 +251,7 @@ def _scan_root(
     conn: sqlite3.Connection,
     cfg_obj: Config,
     stats: dict[str, int],
+    fp_canonical: dict[str, str],
 ) -> None:
     existing_by_path = _load_existing_by_path(conn, root)
     exclude_dir_names = _exclude_dir_names(cfg_obj.exclude_globs)
@@ -314,7 +344,35 @@ def _scan_root(
             stats["failed"] += 1
             continue
 
-        # h. Incremental: skip if fingerprint unchanged and already processed
+        # h. Content duplicate — same fingerprint as an already-known file
+        canonical_id = _find_content_duplicate(conn, fp, posix, fp_canonical, cfg_obj)
+        if canonical_id:
+            canon_path = conn.execute(
+                "SELECT file_path FROM files WHERE file_id = ?", (canonical_id,)
+            ).fetchone()
+            upsert_file(conn, {
+                "file_id":            fid,
+                "file_path":          posix,
+                "file_name":          safe.name,
+                "extension":          ext,
+                "size_bytes":         size_bytes,
+                "mtime_epoch":        mtime_epoch,
+                "fingerprint_sha256": fp,
+                "lane":               "SKIPPED",
+                "status":             "SKIPPED",
+                "error_code":         "DUPLICATE",
+                "error_detail":       canon_path["file_path"] if canon_path else canonical_id,
+                "duplicate_of":       canonical_id,
+            })
+            log_event(
+                conn, "DISCOVER_DUPLICATE",
+                detail=f"duplicate of {canonical_id}", file_id=fid,
+            )
+            stats["duplicates"] = stats.get("duplicates", 0) + 1
+            stats["skipped"] += 1
+            continue
+
+        # i. Incremental: skip if fingerprint unchanged and already processed
         existing = existing_row or get_file_by_path(conn, posix)
         if (
             existing
@@ -336,6 +394,7 @@ def _scan_root(
             "lane":               lane,
             "status":             "DISCOVERED",
         })
+        fp_canonical[fp] = fid
         stats["discovered"] += 1
 
 

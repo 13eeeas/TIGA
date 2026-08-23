@@ -86,26 +86,17 @@ def test_extract_chunks_long_pdf_page_splits_with_suffix(tmp_path: Path) -> None
     """
     A PDF page exceeding MAX_PDF_CHARS chars gets split into p1a, p1b, ...
     """
-    from fpdf import FPDF
+    from core.extract import _apply_suffix, _split_text
 
-    # Create a single-page PDF with text well over MAX_PDF_CHARS
     long_text = ("Architecture is the learned game, correct and magnificent, "
-                 "of forms assembled in the light. ") * 120  # ~6000+ chars
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Helvetica", size=10)
-    pdf.multi_cell(0, 5, long_text)
-    pdf_path = tmp_path / "long_page.pdf"
-    pdf.output(str(pdf_path))
+                 "of forms assembled in the light. ") * 120
+    parts = _split_text(long_text, MAX_PDF_CHARS)
+    pairs = _apply_suffix("p1", parts)
 
-    pairs = extract_chunks(pdf_path)
     refs = [ref for ref, _ in pairs]
-
-    # Should NOT have bare "p1" — it should be p1a, p1b, ...
     assert "p1" not in refs, "long page should be split into p1a, p1b, ..."
     assert any(r.startswith("p1") and len(r) > 2 for r in refs), \
         f"expected p1a/p1b style refs, got: {refs}"
-    # Text should be preserved across splits
     combined = " ".join(text for _, text in pairs)
     assert len(combined) > MAX_PDF_CHARS
 

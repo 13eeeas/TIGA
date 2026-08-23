@@ -127,13 +127,14 @@ class TestEmbedTextsBatched:
         from core.vectors import embed_texts_batched
 
         sleep_calls: list[float] = []
-        # batch_size = max(cfg.embed_batch_size, 64); use +1 to span two batches
-        batch_size = max(cfg.embed_batch_size, 64)
+        batch_size = 64
 
         with patch("core.vectors.embed_texts_batch",
                    return_value=[_fake_embedding()] * batch_size), \
              patch("core.vectors.time.sleep", side_effect=sleep_calls.append):
-            embed_texts_batched(["a"] * (batch_size + 1), cfg)
+            embed_texts_batched(
+                ["a"] * (batch_size + 1), cfg, batch_size=batch_size
+            )
 
         assert len(sleep_calls) == 1
         assert sleep_calls[0] == pytest.approx(cfg.embed_batch_sleep_s)
