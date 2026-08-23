@@ -213,11 +213,19 @@ with tabs[1]:
             st.error(f"Last validate **FAIL** (exit {vs.get('exit_code')})")
         sr = vs.get("search") or {}
         if sr:
-            st.write(
-                f"Top-5 recall **{sr.get('top5_recall_pct', '—')}%**  |  "
-                f"Citation valid **{sr.get('citation_valid_pct', '—')}%**  |  "
-                f"Latency p50 **{sr.get('latency_p50_ms', '—')} ms**"
-            )
+            if sr.get("mode") == "search_only_dual":
+                st.write(
+                    f"Literal **{sr.get('literal_recall_pct', '—')}%**  |  "
+                    f"Paraphrase **{sr.get('paraphrase_recall_pct', '—')}%**  |  "
+                    f"Citation **{sr.get('citation_valid_pct', '—')}%**  |  "
+                    f"p50 **{sr.get('latency_p50_ms', '—')} ms**"
+                )
+            else:
+                st.write(
+                    f"Top-5 recall **{sr.get('top5_recall_pct', '—')}%**  |  "
+                    f"Citation valid **{sr.get('citation_valid_pct', '—')}%**  |  "
+                    f"Latency p50 **{sr.get('latency_p50_ms', '—')} ms**"
+                )
         if vs.get("report_path"):
             st.caption(f"Report: `{vs['report_path']}`")
 
@@ -229,7 +237,8 @@ with tabs[1]:
         df = pd.DataFrame([
             {
                 "When": i.get("ts"),
-                "Recall %": i.get("top5_recall_pct"),
+                "Literal %": i.get("literal_recall_pct", i.get("top5_recall_pct")),
+                "Paraphrase %": i.get("paraphrase_recall_pct", "—"),
                 "Pass": "✅" if i.get("gateway_pass") else "❌",
                 "Files": i.get("files_indexed"),
                 "Mock embed": i.get("mock_embed"),

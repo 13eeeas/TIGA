@@ -115,6 +115,12 @@ retrieval:
   reranker_model: cross-encoder/ms-marco-MiniLM-L-6-v2
   reranker_top_k: 50
   reranker_chunk_chars: 1200
+  # Google-classic Hunt signals (local, $0 API)
+  path_boost_enabled: true
+  project_code_boost_enabled: true
+  phrase_match_enabled: true
+  domain_expand_enabled: true
+  max_chunks_per_file: 2
 
 compose:
   provider: openai

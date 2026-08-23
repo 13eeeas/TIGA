@@ -278,30 +278,24 @@ def _resolve_project_scope(
 # BM25 lane
 # ---------------------------------------------------------------------------
 
-def _build_boosted_query(query: str, expanded_terms: list[str]) -> str:
+def _build_boosted_query(
+    query: str,
+    expanded_terms: list[str],
+    *,
+    use_phrases: bool = True,
+    use_domain_expand: bool = True,
+) -> str:
     """
-    Build a BM25 query string that includes synonym expansion terms.
-    The original query tokens are included first (higher weight via OR ordering).
-    Expanded synonym terms are appended. Result is capped to avoid FTS5 limits.
+    Build a BM25 / FTS5 query with synonym + domain expand + phrases.
+    Delegates to retrieval_boost (Google-classic signals, no API).
     """
-    base_tokens = [t for t in re.sub(r'[^\w\s]', ' ', query).split()
-                   if t.lower() not in _STOPWORDS and len(t) > 1]
-    # Add expanded terms (deduplicated against base tokens)
-    base_set = {t.lower() for t in base_tokens}
-    extra: list[str] = []
-    for term in expanded_terms:
-        for word in re.sub(r'[^\w\s]', ' ', term).split():
-            w = word.lower()
-            if w not in base_set and w not in _STOPWORDS and len(w) > 2:
-                base_set.add(w)
-                extra.append(word)
-
-    all_tokens = base_tokens + extra
-    if not all_tokens:
-        return '""'
-    # Cap at 40 tokens to keep FTS5 happy
-    all_tokens = all_tokens[:40]
-    return " OR ".join(all_tokens)
+    from core.retrieval_boost import build_fts_query
+    return build_fts_query(
+        query,
+        expanded_terms,
+        use_phrases=use_phrases,
+        use_domain_expand=use_domain_expand,
+    )
 
 
 def _run_bm25(
@@ -310,8 +304,16 @@ def _run_bm25(
     filters: dict[str, str] | None,
     conn: sqlite3.Connection,
     expanded_terms: list[str] | None = None,
+    *,
+    use_phrases: bool = True,
+    use_domain_expand: bool = True,
 ) -> list[dict[str, Any]]:
-    safe_q = _build_boosted_query(query, expanded_terms or []) if expanded_terms else _fts_escape(query)
+    safe_q = _build_boosted_query(
+        query,
+        expanded_terms or [],
+        use_phrases=use_phrases,
+        use_domain_expand=use_domain_expand,
+    )
     params: list[Any] = [safe_q]
 
     filter_clauses: list[str] = []
@@ -512,10 +514,17 @@ def _search_impl(
         _active_filters.pop("location", None)
         _active_filters.pop("typology", None)
 
-    # ── Step 1: BM25 (with synonym boosting) ─────────────────────────────────
+    # ── Step 1: BM25 (with synonym + domain expand + phrases) ─────────────────
     pool_limit = _cfg.retrieval_candidate_pool(top_k)
-    bm25_rows = _run_bm25(query, pool_limit, _active_filters, conn,
-                          expanded_terms=expanded_terms)
+    bm25_rows = _run_bm25(
+        query,
+        pool_limit,
+        _active_filters,
+        conn,
+        expanded_terms=expanded_terms,
+        use_phrases=getattr(_cfg, "phrase_match_enabled", True),
+        use_domain_expand=getattr(_cfg, "domain_expand_enabled", True),
+    )
     bm25_map: dict[str, dict[str, Any]] = {}
     if bm25_rows:
         raw_scores = [r["bm25_raw"] for r in bm25_rows]
@@ -600,6 +609,24 @@ def _search_impl(
     candidates.sort(key=lambda r: (-r["final_score"], r["file_path"]))
     _apply_version_ranking(candidates, _active_filters, _cfg)
 
+    # ── Step 3a: Archive / Google-classic boosts (path, filename, project code) ─
+    if getattr(_cfg, "path_boost_enabled", True):
+        from core.retrieval_boost import apply_archive_boosts
+        apply_archive_boosts(
+            candidates,
+            query,
+            path_boost=True,
+            project_boost=getattr(_cfg, "project_code_boost_enabled", True),
+        )
+
+    # Diversity: avoid one PDF flooding the pack (keeps best chunks per file)
+    if getattr(_cfg, "max_chunks_per_file", 2) > 0:
+        from core.retrieval_boost import suppress_near_duplicates
+        candidates = suppress_near_duplicates(
+            candidates,
+            max_per_file=int(getattr(_cfg, "max_chunks_per_file", 2)),
+        )
+
     # ── Step 3b: Cross-encoder reranking (optional) ────────────────────────────
     # When enabled, a cross-encoder reads (query, chunk) together and replaces
     # the hybrid score with a more accurate relevance score.  This is the single
@@ -615,6 +642,15 @@ def _search_impl(
                 top_k=_cfg.reranker_top_k,
                 model_name=_cfg.reranker_model,
             )
+            # Re-apply light path boost after rerank so folder structure still matters
+            if getattr(_cfg, "path_boost_enabled", True):
+                from core.retrieval_boost import apply_archive_boosts
+                apply_archive_boosts(
+                    candidates,
+                    query,
+                    path_boost=True,
+                    project_boost=getattr(_cfg, "project_code_boost_enabled", True),
+                )
         except Exception as _re_exc:
             logger.warning("reranker unavailable (using hybrid order): %s", _re_exc)
 

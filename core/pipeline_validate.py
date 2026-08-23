@@ -34,8 +34,10 @@ logger = logging.getLogger(__name__)
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_FIXTURE_ARCHIVE = REPO_ROOT / "tests" / "fixtures" / "mini_archive"
 DEFAULT_SEARCH_BENCHMARK = REPO_ROOT / "tests" / "fixtures" / "search_benchmark.yaml"
+DEFAULT_DUAL_BENCHMARK = REPO_ROOT / "tests" / "fixtures" / "search_benchmark_dual.yaml"
 
 _GATEWAY_TOP5_TARGET = 0.90
+_GATEWAY_PARAPHRASE_TARGET = 0.80
 
 
 @contextmanager
@@ -94,8 +96,14 @@ def setup_sandbox(
         "index_roots": [str(archive_root)],
         "retrieval": {
             "top_k_default": 10,
+            # Hunt Google-close signals ON even without Ollama/vectors
             "reranker_enabled": False,
             "prefer_latest_default": True,
+            "path_boost_enabled": True,
+            "project_code_boost_enabled": True,
+            "phrase_match_enabled": True,
+            "domain_expand_enabled": True,
+            "max_chunks_per_file": 2,
         },
         "compose": {
             "api_enabled": False,
@@ -156,38 +164,32 @@ def run_index_validation(
     }
 
 
-def run_search_benchmark(
+def _score_query_set(
+    entries: list[dict[str, Any]],
     cfg: Config,
-    fixture_path: Path | None = None,
     *,
-    top_k: int | None = None,
-    verbose: bool = True,
+    top_k: int,
+    verbose: bool,
+    label: str,
 ) -> dict[str, Any]:
-    """
-    Hunt-only retrieval benchmark — no compose, no API.
-    """
-    path = fixture_path or DEFAULT_SEARCH_BENCHMARK
-    fixture = _load_fixture(path)
-    if not fixture:
-        raise FileNotFoundError(f"No benchmark queries at {path}")
-
-    k = top_k or cfg.top_k
+    """Score a list of {query, expected_paths} entries — Hunt only."""
     db_path = str(cfg.get_db_path())
     root_paths = [str(r) for r in cfg.index_roots]
-
     hits = 0
     invalid_citations = 0
     total_citations = 0
     latencies: list[float] = []
     queries_out: list[dict[str, Any]] = []
 
-    for entry in fixture:
+    if verbose and entries:
+        print(f"\n  [{label}] {len(entries)} queries")
+
+    for entry in entries:
         q = entry.get("query", "")
         expected = entry.get("expected_paths", [])
-
         t0 = time.perf_counter()
         try:
-            results = search(q, top_k=k, cfg_obj=cfg)
+            results = search(q, top_k=top_k, cfg_obj=cfg)
         except Exception as exc:
             logger.warning("search failed for %r: %s", q, exc)
             results = []
@@ -209,38 +211,118 @@ def run_search_benchmark(
             "hit": hit,
             "elapsed_ms": elapsed,
             "expected_paths": expected,
-            "returned_paths": returned_paths[:k],
+            "returned_paths": returned_paths[:top_k],
             "top_citation": q_citations[0] if q_citations else "",
             "invalid_citations": bad,
+            "bucket": label,
         }
         queries_out.append(row)
-
         if verbose:
             mark = "PASS" if hit else "MISS"
-            print(f"\n[{mark}] {q!r}  ({elapsed:.0f} ms)")
+            print(f"\n[{mark}] ({label}) {q!r}  ({elapsed:.0f} ms)")
             for p in returned_paths[:3]:
                 print(f"       {p}")
 
-    n = len(fixture)
-    top5_recall = round(hits / n, 4) if n else 0.0
+    n = len(entries)
+    recall = round(hits / n, 4) if n else 0.0
     citation_valid_pct = (
         round((1 - invalid_citations / total_citations) * 100, 2)
         if total_citations else 100.0
     )
-
-    report = {
-        "mode": "search_only",
-        "ts": datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S"),
+    return {
+        "label": label,
         "total_queries": n,
-        "top5_recall": top5_recall,
-        "top5_recall_pct": round(top5_recall * 100, 1),
-        "gateway_target_pct": _GATEWAY_TOP5_TARGET * 100,
-        "gateway_pass": top5_recall >= _GATEWAY_TOP5_TARGET and invalid_citations == 0,
+        "hits": hits,
+        "top5_recall": recall,
+        "top5_recall_pct": round(recall * 100, 1),
         "citation_valid_pct": citation_valid_pct,
         "invalid_citations": invalid_citations,
         "latency_p50_ms": round(_percentile(latencies, 50), 1),
         "latency_p95_ms": round(_percentile(latencies, 95), 1),
         "queries": queries_out,
+    }
+
+
+def run_search_benchmark(
+    cfg: Config,
+    fixture_path: Path | None = None,
+    *,
+    top_k: int | None = None,
+    verbose: bool = True,
+) -> dict[str, Any]:
+    """
+    Hunt-only retrieval benchmark — no compose, no API.
+
+    Supports:
+      - list YAML (legacy search_benchmark.yaml)
+      - dual YAML with `literal:` + `paraphrase:` keys (preferred)
+    """
+    path = fixture_path or DEFAULT_DUAL_BENCHMARK
+    if not path.exists() and fixture_path is None:
+        path = DEFAULT_SEARCH_BENCHMARK
+
+    raw = yaml.safe_load(path.read_text(encoding="utf-8")) if path.exists() else None
+    if not raw:
+        raise FileNotFoundError(f"No benchmark queries at {path}")
+
+    k = top_k or cfg.top_k
+    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
+
+    if isinstance(raw, dict) and ("literal" in raw or "paraphrase" in raw):
+        literal_entries = raw.get("literal") or []
+        paraphrase_entries = raw.get("paraphrase") or []
+        lit = _score_query_set(literal_entries, cfg, top_k=k, verbose=verbose, label="literal")
+        para = _score_query_set(
+            paraphrase_entries, cfg, top_k=k, verbose=verbose, label="paraphrase"
+        )
+        all_queries = lit["queries"] + para["queries"]
+        total = lit["total_queries"] + para["total_queries"]
+        hits = lit["hits"] + para["hits"]
+        overall = round(hits / total, 4) if total else 0.0
+        invalid = lit["invalid_citations"] + para["invalid_citations"]
+        gateway_pass = (
+            lit["top5_recall"] >= _GATEWAY_TOP5_TARGET
+            and para["top5_recall"] >= _GATEWAY_PARAPHRASE_TARGET
+            and invalid == 0
+        )
+        report = {
+            "mode": "search_only_dual",
+            "ts": ts,
+            "total_queries": total,
+            "top5_recall": overall,
+            "top5_recall_pct": round(overall * 100, 1),
+            "literal_recall_pct": lit["top5_recall_pct"],
+            "paraphrase_recall_pct": para["top5_recall_pct"],
+            "gateway_target_pct": _GATEWAY_TOP5_TARGET * 100,
+            "paraphrase_target_pct": _GATEWAY_PARAPHRASE_TARGET * 100,
+            "gateway_pass": gateway_pass,
+            "citation_valid_pct": min(lit["citation_valid_pct"], para["citation_valid_pct"]),
+            "invalid_citations": invalid,
+            "latency_p50_ms": lit["latency_p50_ms"],
+            "latency_p95_ms": max(lit["latency_p95_ms"], para["latency_p95_ms"]),
+            "literal": lit,
+            "paraphrase": para,
+            "queries": all_queries,
+        }
+        return report
+
+    # Legacy list format
+    fixture = raw if isinstance(raw, list) else _load_fixture(path)
+    scored = _score_query_set(fixture, cfg, top_k=k, verbose=verbose, label="legacy")
+    report = {
+        "mode": "search_only",
+        "ts": ts,
+        "total_queries": scored["total_queries"],
+        "top5_recall": scored["top5_recall"],
+        "top5_recall_pct": scored["top5_recall_pct"],
+        "gateway_target_pct": _GATEWAY_TOP5_TARGET * 100,
+        "gateway_pass": scored["top5_recall"] >= _GATEWAY_TOP5_TARGET
+        and scored["invalid_citations"] == 0,
+        "citation_valid_pct": scored["citation_valid_pct"],
+        "invalid_citations": scored["invalid_citations"],
+        "latency_p50_ms": scored["latency_p50_ms"],
+        "latency_p95_ms": scored["latency_p95_ms"],
+        "queries": scored["queries"],
     }
     return report
 
@@ -302,8 +384,12 @@ def run_validate(
 
         if verbose:
             print(f"\n{'-' * 60}")
-            print(f"  Top-5 recall     : {search_report['top5_recall_pct']:.0f}%  "
-                  f"(target {_GATEWAY_TOP5_TARGET * 100:.0f}%)")
+            if search_report.get("mode") == "search_only_dual":
+                print(f"  Literal top-5     : {search_report.get('literal_recall_pct', '—')}%  "
+                      f"(target {_GATEWAY_TOP5_TARGET * 100:.0f}%)")
+                print(f"  Paraphrase top-5  : {search_report.get('paraphrase_recall_pct', '—')}%  "
+                      f"(target {_GATEWAY_PARAPHRASE_TARGET * 100:.0f}%)")
+            print(f"  Overall top-5     : {search_report['top5_recall_pct']:.0f}%")
             print(f"  Citation valid   : {search_report['citation_valid_pct']:.0f}%")
             print(f"  Latency p50/p95  : {search_report['latency_p50_ms']:.0f} / "
                   f"{search_report['latency_p95_ms']:.0f} ms")
@@ -389,6 +475,8 @@ def list_validate_reports(*report_dirs: Path) -> list[dict[str, Any]]:
                     "name": path.name,
                     "ts": search.get("ts") or path.stem.replace("validate_", ""),
                     "top5_recall_pct": search.get("top5_recall_pct"),
+                    "literal_recall_pct": search.get("literal_recall_pct"),
+                    "paraphrase_recall_pct": search.get("paraphrase_recall_pct"),
                     "gateway_pass": search.get("gateway_pass"),
                     "files_indexed": index.get("files_indexed"),
                     "mock_embed": index.get("mock_embed"),

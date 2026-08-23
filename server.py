@@ -1108,16 +1108,18 @@ def _validate_run(mock_embed: bool = True, work_dir: str | None = None) -> None:
 
     try:
         from core.pipeline_validate import (
+            DEFAULT_DUAL_BENCHMARK,
             DEFAULT_FIXTURE_ARCHIVE,
             DEFAULT_SEARCH_BENCHMARK,
             REPO_ROOT,
             run_validate_job,
         )
         wd = Path(work_dir) if work_dir else REPO_ROOT / "tiga_work_validate"
+        bench = DEFAULT_DUAL_BENCHMARK if DEFAULT_DUAL_BENCHMARK.exists() else DEFAULT_SEARCH_BENCHMARK
         result = run_validate_job(
             wd,
             fixture_archive=DEFAULT_FIXTURE_ARCHIVE,
-            benchmark_fixture=DEFAULT_SEARCH_BENCHMARK,
+            benchmark_fixture=bench,
             mock_embed=mock_embed,
         )
         _log(

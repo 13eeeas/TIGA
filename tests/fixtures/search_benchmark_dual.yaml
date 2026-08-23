@@ -1,0 +1,45 @@
+# Dual Hunt benchmark — literal vs paraphrase (no API / no compose)
+# Used by: python tiga.py validate  and  admin Validate tab
+
+literal:
+  - query: "Project 261 Tianmu residential brief client requirements"
+    expected_paths:
+      - 261_tianmu/01_Brief/project_brief.txt
+
+  - query: "tender documentation Rev F Project 261"
+    expected_paths:
+      - 261_tianmu/02_Tender/tender_documentation.txt
+
+  - query: "320 key luxury hotel facade strategy"
+    expected_paths:
+      - 262_hotel/Brief/hotel_brief.txt
+
+  - query: "school competition submission 1200 student campus"
+    expected_paths:
+      - 263_school/Brief/school_competition.txt
+
+  - query: "green mark gold residential tianmu"
+    expected_paths:
+      - 261_tianmu/01_Brief/project_brief.txt
+
+# Conversational / paraphrase — tests Google-close semantic retrieval without LLM
+paraphrase:
+  - query: "how many dwellings did the owner want for Tianmu"
+    expected_paths:
+      - 261_tianmu/01_Brief/project_brief.txt
+
+  - query: "contractor pricing drawings package for 261"
+    expected_paths:
+      - 261_tianmu/02_Tender/tender_documentation.txt
+
+  - query: "wellness facilities and accommodation count waterfront hotel"
+    expected_paths:
+      - 262_hotel/Brief/hotel_brief.txt
+
+  - query: "education board learning clusters campus competition"
+    expected_paths:
+      - 263_school/Brief/school_competition.txt
+
+  - query: "sustainability certification for the residential tower scheme"
+    expected_paths:
+      - 261_tianmu/01_Brief/project_brief.txt

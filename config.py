@@ -186,6 +186,15 @@ class Config:
         self.superseded_score_penalty: float = float(
             ret.get("superseded_score_penalty", 0.55)
         )
+        # Google-classic Hunt signals (local, no API cost)
+        self.path_boost_enabled: bool = ret.get("path_boost_enabled", True)
+        self.project_code_boost_enabled: bool = ret.get(
+            "project_code_boost_enabled", True
+        )
+        self.phrase_match_enabled: bool = ret.get("phrase_match_enabled", True)
+        self.domain_expand_enabled: bool = ret.get("domain_expand_enabled", True)
+        # Cap chunks from the same file in the ranked pool (evidence diversity)
+        self.max_chunks_per_file: int = int(ret.get("max_chunks_per_file", 2))
 
         # --- Compose / Einstein synthesis ---
         comp = data.get("compose", {})

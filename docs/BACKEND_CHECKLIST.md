@@ -67,7 +67,10 @@
 - [x] BM25 + vector merge (`core/query.py`)
 - [x] Query router + synonyms (`core/router.py`, `query_synonyms.yml`)
 - [x] Structured / file_locator / cross_project executors
-- [ ] Tune BM25 OR behavior for multi-project corpus (over-broad recall)
+- [x] **Phrase-aware FTS** + **domain paraphrase expand** (`core/retrieval_boost.py`)
+- [x] **Path / filename boost** + **project-code boost** (Google-classic archive signals)
+- [x] **Per-file chunk cap** so one PDF cannot flood the evidence pack
+- [ ] Tune BM25 OR behavior further on multi-project NAS corpus
 - [ ] Project scoping: auto-filter when project code detected in query
 
 ### Reranker (critical)
@@ -81,6 +84,7 @@
 - [x] Hybrid pool uses `retrieval_candidate_pool()` (≥50 when rerank on)
 - [x] **`evidence_pack_size: 12`** in compose config
 - [x] Compose loads full chunk text for evidence pack
+- [x] Dual Hunt benchmark: **literal ≥90%** + **paraphrase ≥80%** (`search_benchmark_dual.yaml`)
 - [ ] Return enough ranked results in `/api/query` for UI + eval
 
 ### Citations
@@ -88,7 +92,7 @@
 - [x] Invalid citations excluded from results
 - [ ] Page/ref accuracy spot-check on PDFs per project
 
-**Track B done when:** manual smoke test ≥ 8/10 questions hit right file in top 5 on each project.
+**Track B done when:** dual validate passes on fixtures; manual smoke ≥ 8/10 on each real project; paraphrase queries find the right file before API spend.
 
 ---
 
