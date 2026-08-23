@@ -121,6 +121,20 @@ _pipeline_state: dict[str, Any] = {
 
 _LEGACY_INDEXING = False   # kept for /api/index backward compat
 
+_validate_lock = threading.Lock()
+_validate_state: dict[str, Any] = {
+    "running":     False,
+    "started_at":  None,
+    "finished_at": None,
+    "exit_code":   None,
+    "gateway_pass": None,
+    "report_path": None,
+    "index":       None,
+    "search":      None,
+    "errors":      [],
+    "output":      [],
+}
+
 
 # ---------------------------------------------------------------------------
 # Module-level auto-brain state
@@ -493,8 +507,23 @@ class RemoveFileRequest(BaseModel):
 
 @app.get("/health")
 async def health() -> dict[str, Any]:
-    ok = ollama_available(cfg.ollama_base_url)
-    return {"status": "ok" if ok else "degraded", "ollama": ok}
+    ollama_ok = ollama_available(cfg.ollama_base_url)
+    from core.llm_providers import resolve_api_key
+    api_ready = bool(cfg.compose_api_enabled and resolve_api_key(cfg.compose_provider))
+    hunt_ok = True
+    status = "ok"
+    if not hunt_ok:
+        status = "degraded"
+    elif cfg.compose_api_enabled and not api_ready and not ollama_ok:
+        status = "degraded"
+    return {
+        "status": status,
+        "ollama": ollama_ok,
+        "compose_api_enabled": cfg.compose_api_enabled,
+        "compose_provider": cfg.compose_provider,
+        "compose_api_ready": api_ready,
+        "hunt": hunt_ok,
+    }
 
 
 @app.get("/api/status")
@@ -1036,7 +1065,181 @@ async def pipeline_status() -> dict:
         remaining = state["total"] - state["processed"]
         state["eta"] = round(remaining / rate) if rate > 0 else None
         state["throughput"] = round(rate, 2)
+    with _validate_lock:
+        state["validate"] = dict(_validate_state)
     return state
+
+
+# ---------------------------------------------------------------------------
+# Validate (pre-flight index + search benchmark, no NAS)
+# ---------------------------------------------------------------------------
+
+class ValidateRequest(BaseModel):
+    mock_embed: bool = True
+    work_dir: str | None = None
+
+
+def _validate_run(mock_embed: bool = True, work_dir: str | None = None) -> None:
+    global _validate_state
+    with _validate_lock:
+        _validate_state.update({
+            "running": True,
+            "started_at": time.time(),
+            "finished_at": None,
+            "exit_code": None,
+            "gateway_pass": None,
+            "report_path": None,
+            "index": None,
+            "search": None,
+            "errors": [],
+            "output": [f"[{datetime.now().isoformat()}] Starting validate…"],
+        })
+
+    def _log(line: str) -> None:
+        with _validate_lock:
+            _validate_state["output"].append(f"[{datetime.now().isoformat()}] {line}")
+
+    try:
+        from core.pipeline_validate import (
+            DEFAULT_FIXTURE_ARCHIVE,
+            DEFAULT_SEARCH_BENCHMARK,
+            REPO_ROOT,
+            run_validate_job,
+        )
+        wd = Path(work_dir) if work_dir else REPO_ROOT / "tiga_work_validate"
+        result = run_validate_job(
+            wd,
+            fixture_archive=DEFAULT_FIXTURE_ARCHIVE,
+            benchmark_fixture=DEFAULT_SEARCH_BENCHMARK,
+            mock_embed=mock_embed,
+        )
+        _log(
+            f"Validate complete — exit={result['exit_code']} "
+            f"recall={result.get('search', {}).get('top5_recall_pct', '—')}%"
+        )
+        with _validate_lock:
+            _validate_state.update({
+                "exit_code": result["exit_code"],
+                "gateway_pass": result.get("gateway_pass"),
+                "report_path": result.get("report_path"),
+                "index": result.get("index"),
+                "search": result.get("search"),
+            })
+    except Exception as e:
+        _log(f"ERROR: {e}")
+        with _validate_lock:
+            _validate_state["errors"].append(str(e))
+            _validate_state["exit_code"] = 1
+        logger.error("Validate failed: %s", e)
+    finally:
+        with _validate_lock:
+            _validate_state["running"] = False
+            _validate_state["finished_at"] = time.time()
+
+
+@app.post("/api/validate")
+async def api_validate_start(req: ValidateRequest | None = None) -> dict:
+    req = req or ValidateRequest()
+    with _validate_lock:
+        if _validate_state["running"]:
+            return {"status": "already_running"}
+    with _pipeline_lock:
+        if _pipeline_state["running"]:
+            return {"status": "pipeline_busy"}
+    _audit("Triggered: Validate (fixture index + search benchmark)")
+    t = threading.Thread(
+        target=_validate_run,
+        kwargs={"mock_embed": req.mock_embed, "work_dir": req.work_dir},
+        daemon=True,
+    )
+    t.start()
+    return {"status": "started", "mock_embed": req.mock_embed}
+
+
+@app.get("/api/validate/status")
+async def api_validate_status() -> dict:
+    with _validate_lock:
+        return dict(_validate_state)
+
+
+@app.get("/api/validate/reports")
+async def api_validate_reports(limit: int = Query(20, ge=1, le=100)) -> dict:
+    from core.pipeline_validate import REPO_ROOT, list_validate_reports
+    items = list_validate_reports(
+        cfg.get_report_dir(),
+        REPO_ROOT / "tiga_work_validate" / "reports",
+    )
+    slim = [
+        {k: v for k, v in item.items() if k != "report"}
+        for item in items[:limit]
+    ]
+    return {"total": len(items), "items": slim}
+
+
+@app.get("/api/validate/reports/{report_name}")
+async def api_validate_report(report_name: str) -> dict:
+    from core.pipeline_validate import REPO_ROOT, list_validate_reports
+    if not report_name.endswith(".json"):
+        report_name = f"{report_name}.json"
+    for item in list_validate_reports(
+        cfg.get_report_dir(),
+        REPO_ROOT / "tiga_work_validate" / "reports",
+    ):
+        if item["name"] == report_name or item["path"].endswith(report_name):
+            return item.get("report") or {}
+    raise HTTPException(status_code=404, detail="Report not found")
+
+
+@app.post("/api/eval/search-recall")
+async def api_eval_search_recall(
+    top_k: int = Query(5, ge=1, le=20),
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict:
+    """Run Hunt-only recall eval on current index (no API / no compose)."""
+    from core.eval import _load_fixture
+    from core.query import search
+    from core.eval import _has_hit, validate_citation
+
+    _audit("Triggered: Search recall eval (no API)")
+    fixture_path = cfg.work_dir / "fixtures" / "eval_queries.yaml"
+    fixture = _load_fixture(fixture_path)
+    if not fixture:
+        return {"ok": False, "error": f"No fixture at {fixture_path}"}
+
+    db_path = str(cfg.get_db_path())
+    root_paths = [str(r) for r in cfg.index_roots]
+    hits = 0
+    rows: list[dict] = []
+    for entry in fixture:
+        q = entry.get("query", "")
+        expected = entry.get("expected_paths", [])
+        try:
+            results = search(q, top_k=top_k, conn=conn)
+        except Exception as exc:
+            results = []
+        paths = [r.get("file_path", "") for r in results]
+        hit = _has_hit(paths, expected) if expected else False
+        hits += int(hit)
+        cites = [r.get("citation", "") for r in results if r.get("citation")]
+        bad = [c for c in cites if not validate_citation(c, db_path, root_paths)]
+        rows.append({
+            "query": q,
+            "hit": hit,
+            "expected_paths": expected,
+            "returned_paths": paths[:top_k],
+            "invalid_citations": bad,
+        })
+    n = len(fixture)
+    recall = round(hits / n, 4) if n else 0.0
+    return {
+        "ok": True,
+        "mode": "search_only",
+        "total_queries": n,
+        "top_k": top_k,
+        "top5_recall": recall,
+        "top5_recall_pct": round(recall * 100, 1),
+        "queries": rows,
+    }
 
 
 # ---------------------------------------------------------------------------

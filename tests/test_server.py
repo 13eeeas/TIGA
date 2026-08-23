@@ -262,3 +262,22 @@ def test_get_session_empty_for_unknown_id(client) -> None:
     resp = client.get("/api/session/no-such-session")
     assert resp.status_code == 200
     assert resp.json()["messages"] == []
+
+
+def test_validate_status_endpoint(client) -> None:
+    resp = client.get("/api/validate/status")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "running" in data
+
+
+def test_validate_reports_endpoint(client) -> None:
+    resp = client.get("/api/validate/reports")
+    assert resp.status_code == 200
+    assert "items" in resp.json()
+
+
+def test_pipeline_status_includes_validate(client) -> None:
+    resp = client.get("/api/pipeline/status")
+    assert resp.status_code == 200
+    assert "validate" in resp.json()

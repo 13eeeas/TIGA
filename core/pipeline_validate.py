@@ -318,3 +318,83 @@ def run_validate(
 
     finally:
         conn.close()
+
+
+def run_validate_job(
+    work_dir: Path | None = None,
+    *,
+    fixture_archive: Path | None = None,
+    benchmark_fixture: Path | None = None,
+    mock_embed: bool = True,
+) -> dict[str, Any]:
+    """Structured validate result for API/admin."""
+    sandbox = work_dir or (REPO_ROOT / "tiga_work_validate")
+    cfg, archive_root = setup_sandbox(sandbox, fixture_archive)
+    conn = get_connection(cfg.get_db_path())
+    try:
+        with mock_embed_if_needed(mock_embed):
+            index_report = run_index_validation(cfg, conn, mock_embed=mock_embed)
+            if not index_report["ok"]:
+                return {
+                    "exit_code": 1,
+                    "archive_root": str(archive_root),
+                    "mock_embed": mock_embed,
+                    "index": index_report,
+                    "search": None,
+                    "report_path": None,
+                    "gateway_pass": False,
+                }
+            search_report = run_search_benchmark(
+                cfg, benchmark_fixture, verbose=False
+            )
+        report_dir = cfg.get_report_dir()
+        report_dir.mkdir(parents=True, exist_ok=True)
+        out_path = report_dir / f"validate_{search_report['ts']}.json"
+        combined = {"index": index_report, "search": search_report}
+        out_path.write_text(json.dumps(combined, indent=2), encoding="utf-8")
+        exit_code = 1 if search_report.get("invalid_citations", 0) > 0 else (
+            0 if search_report.get("gateway_pass") else 2
+        )
+        return {
+            "exit_code": exit_code,
+            "archive_root": str(archive_root),
+            "mock_embed": mock_embed,
+            "index": index_report,
+            "search": search_report,
+            "report_path": str(out_path),
+            "gateway_pass": bool(search_report.get("gateway_pass")),
+        }
+    finally:
+        conn.close()
+
+
+def list_validate_reports(*report_dirs: Path) -> list[dict[str, Any]]:
+    """List validate_*.json reports newest first."""
+    seen: set[str] = set()
+    items: list[dict[str, Any]] = []
+    for d in report_dirs:
+        if not d or not Path(d).exists():
+            continue
+        for path in sorted(Path(d).glob("validate_*.json"), reverse=True):
+            key = str(path.resolve())
+            if key in seen:
+                continue
+            seen.add(key)
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+                search = data.get("search") or {}
+                index = data.get("index") or {}
+                items.append({
+                    "path": str(path),
+                    "name": path.name,
+                    "ts": search.get("ts") or path.stem.replace("validate_", ""),
+                    "top5_recall_pct": search.get("top5_recall_pct"),
+                    "gateway_pass": search.get("gateway_pass"),
+                    "files_indexed": index.get("files_indexed"),
+                    "mock_embed": index.get("mock_embed"),
+                    "report": data,
+                })
+            except Exception as exc:
+                logger.warning("Skipping report %s: %s", path, exc)
+    items.sort(key=lambda r: r.get("ts") or "", reverse=True)
+    return items
