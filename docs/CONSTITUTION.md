@@ -22,10 +22,13 @@ Success is measured by retrieval accuracy and daily usefulness — not by chatbo
 
 | Phase | Scope | Gate to continue |
 |-------|--------|------------------|
-| Spike | 1 project, end-to-end on LAN | Ingest + search + cited answer works |
-| POC | ~5 representative projects, ≤ ~S$1,000 | 100-question benchmark strong; staff return to the tool |
-| Scale test | 50–200 projects, ≤ ~S$10,000 | Security path accepted; usage justifies spend |
-| Enterprise | Only if earned | Proven demand + firm-approved data policy |
+| Spike | 1 project, end-to-end on LAN | Ingest + search + cited answer + enterprise API wired |
+| POC | **3** projects (expand to 5–10 in Pilot), ≤ ~S$1,000 | 100-question benchmark strong; staff return to the tool |
+| Pilot | 5–10 projects | Usage + IT in-principle security OK |
+| Scale test | 50–200 projects, ≤ ~S$10,000 | Security signed off; usage justifies spend |
+| Product | Only if earned | Proven demand + ongoing budget owner |
+
+Full checkpoints and funding asks: [`MILESTONES.md`](MILESTONES.md).
 
 **Rule:** do not scale corpus size, Atlas, Einstein, or multimodal CAD/BIM until retrieval quality and usage justify it.
 
@@ -152,7 +155,9 @@ Local hardware is **required** for the search system. It is **not** required tha
 | Routine / hard answers | Strong model (local *or* API) | Quality; choose by security option |
 | Metadata classification | Cheap model (local or API) | High volume, low risk if scoped |
 
-**Default product behavior:** LAN search always works. Synthesis uses the best firm-approved provider for that deployment.
+**Decided posture (2026):** Einstein uses a **firm-approved enterprise API** (evidence-pack only, zero retention). Local LLM on the LAN host is **fallback only** (cited snippets / degraded search). See [`MILESTONES.md`](MILESTONES.md) for phased gates and funding checkpoints.
+
+**Default product behavior:** LAN search always works. Synthesis uses the approved enterprise provider once IT/legal sign off; until then, local fallback only.
 
 ---
 

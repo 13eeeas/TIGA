@@ -3,7 +3,8 @@
 Office-LAN archive search for architecture firms.
 Plain English → cited evidence first, then a short grounded answer.
 
-**Charter:** see [`docs/CONSTITUTION.md`](docs/CONSTITUTION.md) — objectives, LAN constraints, API security options, and POC gates. Where this README and older docs disagree, the constitution wins.
+**Charter:** [`docs/CONSTITUTION.md`](docs/CONSTITUTION.md) — objectives, LAN constraints, enterprise API security.  
+**Milestones:** [`docs/MILESTONES.md`](docs/MILESTONES.md) — phases, funding gates, proof metrics. Where docs disagree, the constitution wins.
 
 ## Quick Start
 
