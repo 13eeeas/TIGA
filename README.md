@@ -5,12 +5,30 @@ Plain English queries → top-5 cited results in under 5 seconds.
 
 ## Quick Start
 
+**One-click install and run:**
+
+```
+install.bat              # Windows — setup (first time) + start
+bash install.sh          # Linux / macOS
+```
+
+**Fresh machine (clone from GitHub first):**
+
+```
+installer\bootstrap.bat  # Windows — clones to %USERPROFILE%\TIGA, then installs
+bash installer/bootstrap.sh   # Linux / macOS — clones to ~/TIGA, then installs
+```
+
+**Manual steps:**
+
 ```
 setup.bat        # first time only
 run.bat          # start server + UI
 ```
 
 Then open **http://localhost:8501** in any browser on the LAN.
+
+**In-app:** open Settings (gear icon) → **App** section to update from GitHub or uninstall.
 
 ## Product Ambition
 

@@ -248,6 +248,21 @@ body{font-family:'Source Serif 4',Georgia,serif;background:var(--page-bg);color:
 .drawer-admin-btn{display:block;margin:20px;padding:12px 20px;background:var(--btn-bg);color:var(--page-bg);border:none;border-radius:12px;font-family:'Source Serif 4',Georgia,serif;font-size:14px;font-weight:300;cursor:pointer;text-align:center;text-decoration:none;box-shadow:0 2px 12px rgba(0,0,0,.15);transition:background .2s,transform .12s}
 .drawer-admin-btn:hover{background:var(--coral);transform:translateY(-1px)}
 
+.lifecycle-meta{font-size:12px;color:var(--ink-60);font-weight:300;line-height:1.6;margin-bottom:12px}
+.lifecycle-meta a{color:var(--coral);text-decoration:none}
+.lifecycle-meta a:hover{text-decoration:underline}
+.lifecycle-actions{display:flex;flex-direction:column;gap:8px}
+.lifecycle-btn{width:100%;padding:10px 14px;border-radius:10px;border:1px solid var(--glass-border);background:var(--glass-bg);font-family:'Source Serif 4',Georgia,serif;font-size:13px;font-weight:300;color:var(--ink);cursor:pointer;transition:all .15s}
+.lifecycle-btn:hover{border-color:rgba(201,100,66,.45);color:var(--coral)}
+.lifecycle-btn.primary{background:var(--coral);border-color:var(--coral);color:#fff}
+.lifecycle-btn.primary:hover{opacity:.88}
+.lifecycle-btn.danger{border-color:rgba(234,67,53,.35);color:#ea4335}
+.lifecycle-btn.danger:hover{background:rgba(234,67,53,.08)}
+.lifecycle-status{font-size:11.5px;color:var(--ink-60);margin-top:8px;min-height:18px;font-weight:300}
+.lifecycle-badge{display:inline-block;font-size:10px;padding:2px 8px;border-radius:100px;background:rgba(201,100,66,.12);color:var(--coral);margin-left:6px;vertical-align:middle}
+.lifecycle-log{margin-top:8px;max-height:80px;overflow-y:auto;font-size:11px;color:var(--ink-60);font-family:'SF Mono','Fira Code',monospace;line-height:1.5;background:var(--preview-bg);border-radius:8px;padding:8px;display:none}
+.lifecycle-log.visible{display:block}
+
 .status-loading{color:var(--ink-60);font-size:13px;font-weight:300;padding:8px 0}
 
 /* ── TOAST ── */
@@ -441,6 +456,17 @@ body{font-family:'Source Serif 4',Georgia,serif;background:var(--page-bg);color:
   <div class="drawer-section">
     <div class="drawer-section-label">Models</div>
     <div id="modelsContent"><div class="status-loading">Loading…</div></div>
+  </div>
+
+  <div class="drawer-section">
+    <div class="drawer-section-label">App</div>
+    <div id="lifecycleMeta" class="lifecycle-meta">Loading…</div>
+    <div class="lifecycle-actions">
+      <button class="lifecycle-btn primary" id="updateBtn" onclick="runUpdate()">Update from GitHub</button>
+      <button class="lifecycle-btn danger" id="uninstallBtn" onclick="confirmUninstall()">Uninstall TIGA</button>
+    </div>
+    <div class="lifecycle-status" id="lifecycleStatus"></div>
+    <div class="lifecycle-log" id="lifecycleLog"></div>
   </div>
 
   <a class="drawer-admin-btn" id="adminLink" href="#" target="_blank">Open Admin Panel ↗</a>
@@ -755,12 +781,140 @@ async function submitFeedback() {
 
 /* ── Settings drawer ────────────────────────────────────── */
 let settingsOpen = false;
+let _updatePollTimer = null;
 
 function toggleSettings() {
   settingsOpen = !settingsOpen;
   document.getElementById('settingsDrawer').classList.toggle('open', settingsOpen);
   document.getElementById('settingsOverlay').classList.toggle('open', settingsOpen);
   if (settingsOpen) loadStatus();
+}
+
+async function loadLifecycleInfo() {
+  const meta = document.getElementById('lifecycleMeta');
+  const updateBtn = document.getElementById('updateBtn');
+  try {
+    const resp = await fetch('/api/lifecycle/info');
+    const d = await resp.json();
+    const ver = d.commit_short ? `v${d.commit_short}` : 'local';
+    const branch = d.branch ? ` · ${d.branch}` : '';
+    const badge = d.update_available
+      ? `<span class="lifecycle-badge">${d.commits_behind} update${d.commits_behind === 1 ? '' : 's'}</span>`
+      : '';
+    meta.innerHTML = `
+      <div><strong>TIGA Hunt</strong> ${ver}${branch}${badge}</div>
+      <div>${d.venv_ready ? 'Environment ready' : 'Setup required — run install.bat'}</div>
+      <div><a href="${d.github_url}" target="_blank" rel="noopener">View on GitHub ↗</a></div>`;
+    updateBtn.textContent = d.update_available ? 'Update from GitHub' : 'Check for updates';
+    updateBtn.disabled = !d.is_git_repo;
+  } catch (e) {
+    meta.textContent = 'Could not load app info';
+    updateBtn.disabled = true;
+  }
+}
+
+function setLifecycleStatus(msg, isError) {
+  const el = document.getElementById('lifecycleStatus');
+  el.textContent = msg || '';
+  el.style.color = isError ? '#ea4335' : '';
+}
+
+function showLifecycleLog(lines) {
+  const log = document.getElementById('lifecycleLog');
+  if (!lines || !lines.length) {
+    log.classList.remove('visible');
+    log.textContent = '';
+    return;
+  }
+  log.textContent = lines.slice(-12).join('\n');
+  log.classList.add('visible');
+}
+
+async function runUpdate() {
+  const btn = document.getElementById('updateBtn');
+  btn.disabled = true;
+  setLifecycleStatus('Starting update…');
+  showLifecycleLog([]);
+  try {
+    const resp = await fetch('/api/lifecycle/update', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({stash: true}),
+    });
+    const d = await resp.json();
+    if (!resp.ok) throw new Error(d.detail || d.message || 'Update failed');
+    if (d.status === 'busy') {
+      setLifecycleStatus(d.message);
+    } else {
+      setLifecycleStatus('Updating from GitHub…');
+      pollUpdateStatus();
+    }
+  } catch (e) {
+    setLifecycleStatus(e.message, true);
+    btn.disabled = false;
+  }
+}
+
+function pollUpdateStatus() {
+  if (_updatePollTimer) clearInterval(_updatePollTimer);
+  _updatePollTimer = setInterval(async () => {
+    try {
+      const resp = await fetch('/api/lifecycle/update/status');
+      const s = await resp.json();
+      showLifecycleLog(s.log || []);
+      if (s.running) {
+        setLifecycleStatus(`Updating… (${s.phase})`);
+        return;
+      }
+      clearInterval(_updatePollTimer);
+      _updatePollTimer = null;
+      document.getElementById('updateBtn').disabled = false;
+      if (s.error) {
+        setLifecycleStatus(s.error, true);
+      } else if (s.result && s.result.updated) {
+        setLifecycleStatus(`Updated to ${s.result.commit_short}. Restart TIGA to apply.`);
+        showToast('Update complete — restart recommended');
+        loadLifecycleInfo();
+      } else {
+        setLifecycleStatus('Already up to date.');
+        loadLifecycleInfo();
+      }
+    } catch (e) {
+      clearInterval(_updatePollTimer);
+      _updatePollTimer = null;
+      setLifecycleStatus('Lost connection during update', true);
+      document.getElementById('updateBtn').disabled = false;
+    }
+  }, 1500);
+}
+
+async function confirmUninstall() {
+  if (!confirm('Uninstall TIGA? This removes the Python environment (.venv).')) {
+    showToast('Uninstall cancelled');
+    return;
+  }
+  const removeData = confirm('Also remove local data (tiga_work — indexes, config, logs)?');
+  const typed = prompt('Type UNINSTALL to confirm:');
+  if (typed !== 'UNINSTALL') {
+    showToast('Uninstall cancelled');
+    return;
+  }
+  setLifecycleStatus('Scheduling uninstall…');
+  document.getElementById('uninstallBtn').disabled = true;
+  try {
+    const resp = await fetch('/api/lifecycle/uninstall', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({remove_data: removeData, confirm: 'UNINSTALL'}),
+    });
+    const d = await resp.json();
+    if (!resp.ok) throw new Error(d.detail || 'Uninstall failed');
+    setLifecycleStatus(d.message || 'Uninstall scheduled. Shutting down…');
+    showToast('TIGA is shutting down…');
+  } catch (e) {
+    setLifecycleStatus(e.message, true);
+    document.getElementById('uninstallBtn').disabled = false;
+  }
 }
 
 async function loadStatus() {
@@ -807,6 +961,7 @@ async function loadStatus() {
       '<div class="status-loading">Server offline</div>';
     document.getElementById('modelsContent').innerHTML = '';
   }
+  loadLifecycleInfo();
 }
 
 /* ── Toast ──────────────────────────────────────────────── */

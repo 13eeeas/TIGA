@@ -46,6 +46,12 @@ Endpoints
   GET  /api/audit|audit/export
   POST /api/audit/log
 
+  Lifecycle (install / update / uninstall)
+  GET  /api/lifecycle/info
+  POST /api/lifecycle/update
+  GET  /api/lifecycle/update/status
+  POST /api/lifecycle/uninstall
+
 CORS: allow all origins (LAN internal use only).
 """
 
@@ -80,6 +86,13 @@ from core.index import run_index
 from core.query import (
     search, execute_structured_query,
     execute_file_locator_query, execute_cross_project_query,
+)
+from core.lifecycle import (
+    get_install_info,
+    get_update_status,
+    launch_uninstall,
+    shutdown_server,
+    start_update,
 )
 from core.router import get_router
 
@@ -485,6 +498,15 @@ class ReindexFileRequest(BaseModel):
 
 class RemoveFileRequest(BaseModel):
     path: str
+
+
+class LifecycleUpdateRequest(BaseModel):
+    stash: bool = True
+
+
+class LifecycleUninstallRequest(BaseModel):
+    remove_data: bool = False
+    confirm: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -1656,6 +1678,49 @@ async def open_file_in_folder(req: OpenFileRequest) -> dict:
 async def post_audit_log(req: AuditLogRequest) -> dict:
     _audit(req.action, req.detail)
     return {"status": "ok"}
+
+
+# ---------------------------------------------------------------------------
+# Lifecycle endpoints (install / update / uninstall)
+# ---------------------------------------------------------------------------
+
+@app.get("/api/lifecycle/info")
+async def lifecycle_info() -> dict[str, Any]:
+    """Install metadata: git commit, update availability, paths."""
+    return get_install_info()
+
+
+@app.post("/api/lifecycle/update")
+async def lifecycle_update(req: LifecycleUpdateRequest) -> dict[str, Any]:
+    """Pull latest from GitHub and refresh dependencies (background job)."""
+    _audit("Lifecycle: update started")
+    return start_update(stash=req.stash)
+
+
+@app.get("/api/lifecycle/update/status")
+async def lifecycle_update_status() -> dict[str, Any]:
+    """Poll background update job progress."""
+    return get_update_status()
+
+
+@app.post("/api/lifecycle/uninstall")
+async def lifecycle_uninstall(req: LifecycleUninstallRequest) -> dict[str, Any]:
+    """
+    Schedule uninstall: removes .venv and optionally tiga_work after shutdown.
+    Requires confirm='UNINSTALL'.
+    """
+    if req.confirm != "UNINSTALL":
+        raise HTTPException(
+            status_code=400,
+            detail="Type UNINSTALL in confirm to proceed.",
+        )
+    _audit(
+        "Lifecycle: uninstall scheduled",
+        f"remove_data={req.remove_data}",
+    )
+    result = launch_uninstall(remove_data=req.remove_data, server_pid=os.getpid())
+    shutdown_server(delay_seconds=1.5)
+    return result
 
 
 # ---------------------------------------------------------------------------

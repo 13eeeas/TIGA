@@ -160,6 +160,7 @@ tabs = st.tabs([
     "Diagnostics",
     "Feedback",
     "Audit Log",
+    "App Lifecycle",
 ])
 
 # ── TAB 1: Pipeline ────────────────────────────────────────────────────────
@@ -495,3 +496,69 @@ with tabs[6]:
         csv_bytes = api("get", "/api/audit/export")
         if csv_bytes:
             st.download_button("Download", data=csv_bytes, file_name="tiga_audit.csv", mime="text/csv")
+
+
+# ── TAB 8: App Lifecycle ───────────────────────────────────────────────────
+with tabs[7]:
+    st.subheader("Install & Updates")
+    info = api("get", "/api/lifecycle/info") or {}
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Version", info.get("commit_short") or "local")
+    c2.metric("Branch", info.get("branch") or "—")
+    updates = info.get("commits_behind", 0)
+    c3.metric("Updates", f"{updates} behind" if updates else "Up to date")
+
+    st.caption(f"**Install path:** `{info.get('repo_root', '—')}`")
+    gh = info.get("github_url", "https://github.com/13eeeas/TIGA")
+    st.markdown(f"[View on GitHub ↗]({gh})")
+
+    st.divider()
+    st.subheader("Update from GitHub")
+
+    if not info.get("is_git_repo"):
+        st.warning("Not a git repository — in-app updates unavailable. Re-clone from GitHub.")
+    else:
+        if st.button("Update now", type="primary", key="lifecycle_update"):
+            r = api("post", "/api/lifecycle/update", json={"stash": True})
+            if r:
+                api("post", "/api/audit/log", json={"action": "Lifecycle: update started"})
+                st.toast(r.get("message", "Update started"))
+
+        status = api("get", "/api/lifecycle/update/status") or {}
+        if status.get("running"):
+            st.info(f"Updating… ({status.get('phase', '—')})")
+        elif status.get("error"):
+            st.error(status["error"])
+        elif status.get("result"):
+            res = status["result"]
+            if res.get("updated"):
+                st.success(f"Updated to {res.get('commit_short')} — restart TIGA to apply.")
+            else:
+                st.success("Already up to date.")
+
+        log_lines = status.get("log") or []
+        if log_lines:
+            with st.expander("Update log", expanded=status.get("running", False)):
+                st.code("\n".join(log_lines[-30:]))
+
+    st.divider()
+    st.subheader("Uninstall")
+    st.caption("Removes `.venv` and optionally `tiga_work`. Source files stay on disk.")
+
+    remove_data = st.checkbox("Also remove local data (tiga_work)", value=False)
+    confirm = st.text_input('Type UNINSTALL to confirm', key="uninstall_confirm")
+    if st.button("Uninstall TIGA", type="secondary", key="lifecycle_uninstall"):
+        if confirm != "UNINSTALL":
+            st.error('Type UNINSTALL in the box above to proceed.')
+        else:
+            r = api("post", "/api/lifecycle/uninstall", json={
+                "remove_data": remove_data,
+                "confirm": "UNINSTALL",
+            })
+            if r:
+                api("post", "/api/audit/log", json={
+                    "action": "Lifecycle: uninstall scheduled",
+                    "detail": f"remove_data={remove_data}",
+                })
+                st.warning(r.get("message", "Uninstall scheduled. Server shutting down…"))
