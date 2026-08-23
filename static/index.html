@@ -257,11 +257,68 @@ body{font-family:'Source Serif 4',Georgia,serif;background:var(--page-bg);color:
 /* ── ERROR STATE ── */
 .error-card{background:rgba(234,67,53,.08);border:1px solid rgba(234,67,53,.2);border-radius:14px;padding:16px 20px;font-size:14px;color:var(--ink);font-weight:300}
 
+/* ── SKIP LINK ── */
+.skip-link{position:absolute;top:-100px;left:16px;z-index:300;padding:10px 16px;background:var(--coral);color:#fff;border-radius:8px;font-size:13px;text-decoration:none;transition:top .2s}
+.skip-link:focus{top:16px;outline:2px solid var(--coral);outline-offset:2px}
+
+/* ── FOCUS VISIBLE ── */
+:focus-visible{outline:2px solid var(--coral);outline-offset:2px}
+.icon-btn:focus-visible,.search-btn:focus-visible,.hint-pill:focus-visible,.followup-pill:focus-visible,.result-item:focus-visible,.action-btn:focus-visible{outline:2px solid var(--coral);outline-offset:2px}
+
+/* ── LOADING STATUS ── */
+.search-status{font-size:12.5px;color:var(--ink-60);font-weight:300;text-align:center;margin-top:8px;min-height:18px;opacity:0;transition:opacity .2s}
+.search-status.active{opacity:1}
+
+/* ── NEW SEARCH BTN ── */
+.new-search-btn{display:none;background:transparent;border:1px solid var(--ink-12);border-radius:100px;padding:6px 14px;font-family:'Source Serif 4',Georgia,serif;font-size:12.5px;font-weight:300;color:var(--ink-60);cursor:pointer;transition:all .2s}
+.new-search-btn.visible{display:inline-flex;align-items:center;gap:6px}
+.new-search-btn:hover{border-color:rgba(201,100,66,.45);color:var(--coral);background:var(--coral-glow)}
+
+/* ── RESULTS META ── */
+.results-meta{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding:2px 2px 4px;animation:fadeUp .35s ease both}
+.results-query{font-family:'Lora',Georgia,serif;font-size:15px;font-weight:400;color:var(--ink);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.results-query em{font-style:italic;color:var(--coral)}
+.results-badges{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.meta-badge{font-size:11px;font-weight:400;letter-spacing:.04em;padding:3px 10px;border-radius:100px;border:1px solid var(--ink-12);color:var(--ink-60);background:var(--glass-inner);white-space:nowrap}
+.meta-badge.conf-high{border-color:rgba(52,168,83,.35);color:#34a853;background:rgba(52,168,83,.08)}
+.meta-badge.conf-med{border-color:rgba(201,100,66,.35);color:var(--coral);background:rgba(201,100,66,.08)}
+.meta-badge.conf-low{border-color:rgba(234,67,53,.25);color:#ea4335;background:rgba(234,67,53,.06)}
+
+/* ── EMPTY STATE ── */
+.empty-state{background:var(--glass-bg);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border:1px dashed var(--ink-12);border-radius:16px;padding:28px 24px;text-align:center;animation:fadeUp .35s ease both}
+.empty-icon{font-size:32px;margin-bottom:10px;opacity:.7}
+.empty-title{font-family:'Lora',Georgia,serif;font-size:17px;font-weight:400;color:var(--ink);margin-bottom:6px}
+.empty-desc{font-size:13.5px;color:var(--ink-60);font-weight:300;line-height:1.6;max-width:420px;margin:0 auto 16px}
+.empty-tips{display:flex;flex-wrap:wrap;gap:7px;justify-content:center}
+.empty-tip{background:transparent;border:1px dashed var(--ink-12);border-radius:100px;padding:5px 13px;font-family:'Source Serif 4',Georgia,serif;font-size:12px;color:var(--ink-60);cursor:pointer;transition:all .2s}
+.empty-tip:hover{border-style:solid;border-color:rgba(201,100,66,.45);color:var(--coral);background:var(--coral-glow)}
+
+/* ── KEYBOARD HINT ── */
+.kbd-hint{font-size:11px;color:var(--ink-60);font-weight:300;text-align:center;margin-top:6px;opacity:.7}
+.kbd-hint kbd{display:inline-block;padding:1px 5px;border-radius:4px;border:1px solid var(--ink-12);background:var(--glass-inner);font-family:inherit;font-size:10px}
+
+/* ── MOBILE ── */
+@media(max-width:640px){
+  .header{padding:16px 18px}
+  .hero{padding:0 18px 60px}
+  .hero-title{font-size:26px}
+  .results-section,.search-wrap,.hint-pills{max-width:100%;padding-left:18px;padding-right:18px}
+  .settings-drawer{width:100%;max-width:100%}
+  .result-item{flex-wrap:wrap;gap:10px}
+  .file-meta,.result-actions{margin-left:auto}
+  .feedback-bar{bottom:14px;max-width:calc(100% - 32px)}
+  .modal-overlay{padding:12px}
+  .results-query{white-space:normal}
+  .new-search-btn.visible{display:none}
+}
+
 </style>
 </head>
 <body>
 
-<div class="blob-layer">
+<a class="skip-link" href="#searchInput">Skip to search</a>
+
+<div class="blob-layer" aria-hidden="true">
   <div class="blob blob-1"></div>
   <div class="blob blob-2"></div>
   <div class="blob blob-3"></div>
@@ -291,6 +348,10 @@ body{font-family:'Source Serif 4',Georgia,serif;background:var(--page-bg);color:
     </a>
 
     <div class="header-right">
+      <button class="new-search-btn" id="newSearchBtn" onclick="resetSearch()" aria-label="Start a new search">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+        New search
+      </button>
       <!-- Theme toggle -->
       <button class="icon-btn" id="themeToggle" title="Toggle theme" aria-label="Toggle colour theme">
         <svg class="icon-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
@@ -315,27 +376,30 @@ body{font-family:'Source Serif 4',Georgia,serif;background:var(--page-bg);color:
   </header>
 
   <!-- ── HERO ── -->
-  <main class="hero" id="hero">
+  <main class="hero" id="hero" role="main">
     <h1 class="hero-title">Search the archive,<br><span class="title-accent">the way you remember it</span></h1>
 
     <div class="search-wrap">
-      <div class="search-box">
-        <svg class="search-icon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+      <div class="search-box" role="search">
+        <svg class="search-icon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
           <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
         </svg>
-        <input class="search-input" id="searchInput" type="text"
-          placeholder="What are you looking for?" autocomplete="off" spellcheck="false"/>
-        <button class="search-btn" onclick="doSearch()">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <input class="search-input" id="searchInput" type="search"
+          placeholder="What are you looking for?" autocomplete="off" spellcheck="false"
+          aria-label="Search the archive" enterkeyhint="search"/>
+        <button class="search-btn" onclick="doSearch()" aria-label="Search">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <line x1="5" y1="12" x2="19" y2="12"/>
             <polyline points="12 5 19 12 12 19"/>
           </svg>
         </button>
       </div>
       <!-- Progress bar — shown while searching -->
-      <div class="search-progress" id="searchProgress">
+      <div class="search-progress" id="searchProgress" role="progressbar" aria-hidden="true">
         <div class="search-progress-bar"></div>
       </div>
+      <div class="search-status" id="searchStatus" aria-live="polite"></div>
+      <p class="kbd-hint" id="kbdHint">Press <kbd>Enter</kbd> to search · <kbd>/</kbd> to focus</p>
     </div>
 
     <!-- Hint pills — hidden after first search -->
@@ -350,12 +414,16 @@ body{font-family:'Source Serif 4',Georgia,serif;background:var(--page-bg);color:
   </main>
 
   <!-- ── RESULTS ── -->
-  <section class="results-section" id="resultsSection">
-    <div class="summary-card">
+  <section class="results-section" id="resultsSection" aria-live="polite" aria-label="Search results">
+    <div class="results-meta" id="resultsMeta" style="display:none">
+      <div class="results-query" id="resultsQuery"></div>
+      <div class="results-badges" id="resultsBadges"></div>
+    </div>
+    <div class="summary-card" id="summaryCard">
       <div class="summary-label">Summary</div>
       <div id="summaryText"></div>
     </div>
-    <div class="results-list" id="resultsList"></div>
+    <div class="results-list" id="resultsList" role="list"></div>
     <div class="followups" id="followUps"></div>
     <button class="show-more-btn" id="showMoreBtn" onclick="showMore()" style="display:none">Show more results</button>
     <div class="show-more-dots" id="showMoreDots">
@@ -455,6 +523,15 @@ let sessionId  = null;
 let _results   = [];
 let _query     = '';
 let _offset    = 0;
+let _statusTimer = null;
+let _focusedIdx = -1;
+
+const LOADING_STAGES = [
+  'Searching the archive…',
+  'Matching keywords and meaning…',
+  'Ranking results…',
+  'Composing summary…',
+];
 
 /* ── Init ───────────────────────────────────────────────── */
 (async function init() {
@@ -469,7 +546,30 @@ let _offset    = 0;
     const d = await r.json();
     sessionId = d.session_id;
   } catch(e) { console.warn('Session init failed:', e); }
+
+  // Global keyboard shortcuts
+  document.addEventListener('keydown', e => {
+    if (e.key === '/' && !isTyping(e)) {
+      e.preventDefault();
+      document.getElementById('searchInput').focus();
+    }
+    if (e.key === 'Escape') {
+      if (document.getElementById('modalOverlay').classList.contains('open')) closeModalDirect();
+      else if (settingsOpen) toggleSettings();
+      else if (document.getElementById('feedbackFormOverlay').classList.contains('open')) closeFeedbackFormDirect();
+    }
+    if (document.getElementById('resultsSection').classList.contains('visible') && !isTyping(e)) {
+      if (e.key === 'ArrowDown') { e.preventDefault(); focusResult(_focusedIdx + 1); }
+      if (e.key === 'ArrowUp')   { e.preventDefault(); focusResult(_focusedIdx - 1); }
+      if (e.key === 'Enter' && _focusedIdx >= 0) { e.preventDefault(); openPreview(_focusedIdx); }
+    }
+  });
 })();
+
+function isTyping(e) {
+  const t = e.target;
+  return t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable;
+}
 
 /* ── Theme ──────────────────────────────────────────────── */
 const root = document.documentElement;
@@ -499,6 +599,48 @@ function fileIcon(ext) {
   return m[(ext||'').toLowerCase()] || '📄';
 }
 
+/* ── Loading status ─────────────────────────────────────── */
+function startLoadingStatus() {
+  const el = document.getElementById('searchStatus');
+  let i = 0;
+  el.textContent = LOADING_STAGES[0];
+  el.classList.add('active');
+  clearInterval(_statusTimer);
+  _statusTimer = setInterval(() => {
+    i = Math.min(i + 1, LOADING_STAGES.length - 1);
+    el.textContent = LOADING_STAGES[i];
+  }, 900);
+}
+function stopLoadingStatus() {
+  clearInterval(_statusTimer);
+  const el = document.getElementById('searchStatus');
+  el.classList.remove('active');
+  el.textContent = '';
+}
+
+/* ── Reset search ───────────────────────────────────────── */
+function resetSearch() {
+  document.getElementById('searchInput').value = '';
+  document.getElementById('resultsSection').classList.remove('visible');
+  document.getElementById('feedbackBar').classList.remove('visible');
+  document.getElementById('newSearchBtn').classList.remove('visible');
+  document.getElementById('resultsMeta').style.display = 'none';
+  document.getElementById('summaryCard').style.display = '';
+  document.getElementById('resultsList').innerHTML = '';
+  document.getElementById('followUps').innerHTML = '';
+  document.getElementById('showMoreBtn').style.display = 'none';
+  document.getElementById('hero').style.paddingBottom = '';
+  const hints = document.getElementById('hintPills');
+  if (hints) hints.style.display = '';
+  document.getElementById('kbdHint').style.display = '';
+  _results = [];
+  _query = '';
+  _offset = 0;
+  _focusedIdx = -1;
+  document.getElementById('searchInput').focus();
+  window.scrollTo({top: 0, behavior: 'smooth'});
+}
+
 /* ── Search ─────────────────────────────────────────────── */
 async function doSearch(offset) {
   offset = offset || 0;
@@ -515,15 +657,16 @@ async function doSearch(offset) {
 
   cat.classList.add('searching');
   prog.classList.add('active');
+  startLoadingStatus();
 
   if (offset === 0) {
     document.getElementById('resultsSection').classList.remove('visible');
     document.getElementById('feedbackBar').classList.remove('visible');
-    // Hide hints after first search
+    document.getElementById('newSearchBtn').classList.remove('visible');
     const hints = document.getElementById('hintPills');
     if (hints) hints.style.display = 'none';
+    document.getElementById('kbdHint').style.display = 'none';
   } else {
-    // Show loading dots near the Show More button
     smBtn.style.display  = 'none';
     smDots.classList.add('active');
   }
@@ -544,12 +687,14 @@ async function doSearch(offset) {
     const data = await resp.json();
     cat.classList.remove('searching');
     prog.classList.remove('active');
+    stopLoadingStatus();
     smDots.classList.remove('active');
     showResults(data, offset > 0);
 
   } catch(e) {
     cat.classList.remove('searching');
     prog.classList.remove('active');
+    stopLoadingStatus();
     smDots.classList.remove('active');
     showError('Could not reach the server. Is TIGA running? ' + e.message);
   }
@@ -559,57 +704,29 @@ async function doSearch(offset) {
 function showResults(data, append) {
   if (!append) {
     _results = [];
+    _focusedIdx = -1;
     document.getElementById('resultsList').innerHTML = '';
     document.getElementById('followUps').innerHTML = '';
-    document.getElementById('summaryText').textContent = data.answer_summary || '—';
+    renderResultsMeta(data);
+    document.getElementById('newSearchBtn').classList.add('visible');
   }
 
   const newResults = data.results || [];
   const startIdx = _results.length;
   _results = _results.concat(newResults);
 
-  const list = document.getElementById('resultsList');
-  newResults.forEach((r, i) => {
-    const idx = startIdx + i;
-    const ext = (r.ext || '').replace('.', '').toLowerCase();
-    const isDir = ext === 'dir';
-    const el  = document.createElement('div');
-    el.className = 'result-item' + (isDir ? ' is-dir' : '');
-    el.style.animation = `fadeUp 0.32s ${i * 0.06}s ease both`;
-    el.style.opacity = '0';
-
-    const nameOnly = r.title || r.rel_path.split('/').pop() || r.rel_path;
-    const score    = Math.round((r.final_score || 0) * 100);
-    const meta     = [r.project_id, r.typology].filter(Boolean).join(' · ');
-
-    // Directory results: no vote buttons, show folder snippet
-    const actionsHtml = isDir ? `
-      <div class="result-actions">
-        <div class="file-meta" style="font-size:11px;color:var(--coral);white-space:nowrap">📁 folder</div>
-      </div>` : `
-      <div class="file-meta">${score}%</div>
-      <div class="result-actions">
-        <button class="action-btn" title="Preview"
-          onclick="openPreview(${idx})" aria-label="Preview">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
-          </svg>
-        </button>
-        <button class="action-btn" id="up_${idx}" title="Helpful"
-          onclick="voteResult('up', ${idx}, event)" aria-label="Helpful">👍</button>
-        <button class="action-btn" id="dn_${idx}" title="Not helpful"
-          onclick="voteResult('down', ${idx}, event)" aria-label="Not helpful">👎</button>
-      </div>`;
-
-    el.innerHTML = `
-      <div class="file-icon">${fileIcon(ext)}</div>
-      <div class="file-info" onclick="${isDir ? '' : `openPreview(${idx})`}" style="cursor:${isDir ? 'default' : 'pointer'}">
-        <div class="file-name">${esc(nameOnly)}</div>
-        <div class="file-path">${esc(isDir ? r.snippet : r.rel_path)}${!isDir && meta ? ' · ' + esc(meta) : ''}</div>
-      </div>
-      ${actionsHtml}`;
-    list.appendChild(el);
-  });
+  // Summary or empty state
+  const summaryCard = document.getElementById('summaryCard');
+  if (!append && newResults.length === 0) {
+    summaryCard.style.display = 'none';
+    document.getElementById('resultsList').innerHTML = renderEmptyState(data);
+  } else {
+    summaryCard.style.display = '';
+    if (!append) {
+      document.getElementById('summaryText').textContent = data.answer_summary || '—';
+    }
+    renderResultItems(newResults, startIdx);
+  }
 
   // Follow-up prompts
   if (!append) {
@@ -632,6 +749,132 @@ function showResults(data, append) {
   document.getElementById('resultsSection').classList.add('visible');
   document.getElementById('feedbackBar').classList.add('visible');
   document.getElementById('hero').style.paddingBottom = '20px';
+
+  // Scroll to results on first page
+  if (!append) {
+    setTimeout(() => {
+      document.getElementById('resultsSection').scrollIntoView({behavior:'smooth', block:'start'});
+    }, 80);
+  }
+}
+
+function renderResultsMeta(data) {
+  const meta = document.getElementById('resultsMeta');
+  const queryEl = document.getElementById('resultsQuery');
+  const badges = document.getElementById('resultsBadges');
+  meta.style.display = 'flex';
+  queryEl.innerHTML = `Results for <em>${esc(_query)}</em>`;
+
+  const count = (data.results || []).length;
+  const latency = data.latency_ms ? `${Math.round(data.latency_ms)}ms` : '';
+  const conf = data.confidence_label || '';
+  const confClass = conf === 'High' ? 'conf-high' : conf === 'Medium' ? 'conf-med' : conf ? 'conf-low' : '';
+  const mode = data.mode ? data.mode.replace(/_/g, ' ') : '';
+
+  badges.innerHTML = [
+    count ? `<span class="meta-badge">${count} result${count !== 1 ? 's' : ''}</span>` : '',
+    latency ? `<span class="meta-badge">${latency}</span>` : '',
+    conf ? `<span class="meta-badge ${confClass}">${esc(conf)} confidence</span>` : '',
+    mode ? `<span class="meta-badge">${esc(mode)}</span>` : '',
+  ].filter(Boolean).join('');
+}
+
+function renderEmptyState(data) {
+  const tips = [
+    '186 facade details',
+    'PDF meeting minutes',
+    'glazing specification',
+  ];
+  const tipLabels = [
+    'Try a project number',
+    'Search by file type',
+    'Broaden the query',
+  ];
+  const fallback = data.fallback_suggestion
+    ? `<p class="empty-desc" style="margin-top:12px;font-style:italic">${esc(data.fallback_suggestion)}</p>` : '';
+  return `
+    <div class="empty-state">
+      <div class="empty-icon" aria-hidden="true">🔍</div>
+      <div class="empty-title">No matching files found</div>
+      <p class="empty-desc">TIGA searched the indexed archive but couldn't find a strong match for this query. Try refining your search or browse a project folder directly.</p>
+      ${fallback}
+      <div class="empty-tips">
+        ${tips.map((t, i) => `<button class="empty-tip" data-query="${esc(t)}" onclick="useEmptyTip(this)">${esc(tipLabels[i])}: "${esc(t)}"</button>`).join('')}
+      </div>
+    </div>`;
+}
+
+function useEmptyTip(el) {
+  document.getElementById('searchInput').value = el.dataset.query || el.textContent;
+  doSearch(0);
+}
+
+function renderResultItems(newResults, startIdx) {
+  const list = document.getElementById('resultsList');
+  newResults.forEach((r, i) => {
+    const idx = startIdx + i;
+    const ext = (r.ext || '').replace('.', '').toLowerCase();
+    const isDir = ext === 'dir';
+    const el  = document.createElement('div');
+    el.className = 'result-item' + (isDir ? ' is-dir' : '');
+    el.style.animation = `fadeUp 0.32s ${i * 0.06}s ease both`;
+    el.style.opacity = '0';
+    el.setAttribute('role', 'listitem');
+    el.setAttribute('tabindex', '0');
+    el.dataset.idx = idx;
+
+    const nameOnly = r.title || r.rel_path.split('/').pop() || r.rel_path;
+    const score    = Math.round((r.final_score || 0) * 100);
+    const meta     = [r.project_id, r.typology].filter(Boolean).join(' · ');
+
+    const actionsHtml = isDir ? `
+      <div class="result-actions">
+        <div class="file-meta" style="font-size:11px;color:var(--coral);white-space:nowrap">📁 folder</div>
+      </div>` : `
+      <div class="file-meta" aria-label="Relevance score">${score}%</div>
+      <div class="result-actions">
+        <button class="action-btn" title="Preview"
+          onclick="openPreview(${idx})" aria-label="Preview ${esc(nameOnly)}">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+          </svg>
+        </button>
+        <button class="action-btn" id="up_${idx}" title="Helpful"
+          onclick="voteResult('up', ${idx}, event)" aria-label="Mark helpful">👍</button>
+        <button class="action-btn" id="dn_${idx}" title="Not helpful"
+          onclick="voteResult('down', ${idx}, event)" aria-label="Mark not helpful">👎</button>
+      </div>`;
+
+    el.innerHTML = `
+      <div class="file-icon" aria-hidden="true">${fileIcon(ext)}</div>
+      <div class="file-info" onclick="${isDir ? '' : `openPreview(${idx})`}" style="cursor:${isDir ? 'default' : 'pointer'}">
+        <div class="file-name">${esc(nameOnly)}</div>
+        <div class="file-path">${esc(isDir ? r.snippet : r.rel_path)}${!isDir && meta ? ' · ' + esc(meta) : ''}</div>
+      </div>
+      ${actionsHtml}`;
+
+    el.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); if (!isDir) openPreview(idx); }
+    });
+    el.addEventListener('focus', () => { _focusedIdx = idx; highlightFocused(); });
+    list.appendChild(el);
+  });
+}
+
+function focusResult(idx) {
+  const items = document.querySelectorAll('.result-item');
+  if (!items.length) return;
+  idx = Math.max(0, Math.min(idx, items.length - 1));
+  _focusedIdx = idx;
+  items[idx].focus();
+  highlightFocused();
+}
+
+function highlightFocused() {
+  document.querySelectorAll('.result-item').forEach((el, i) => {
+    el.style.outline = i === _focusedIdx ? '2px solid var(--coral)' : '';
+    el.style.outlineOffset = i === _focusedIdx ? '2px' : '';
+  });
 }
 
 function showMore() {

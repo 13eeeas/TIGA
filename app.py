@@ -32,51 +32,117 @@ st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Lora:wght@400;500&family=Source+Serif+4:opsz,wght@8..60,300;8..60,400&display=swap');
 
-/* Body & UI text */
+:root {
+  --tiga-coral: #C96442;
+  --tiga-coral-dim: rgba(201,100,66,0.12);
+  --tiga-ink: #1A1410;
+  --tiga-ink-60: rgba(26,20,16,0.52);
+  --tiga-surface: rgba(255,255,255,0.72);
+  --tiga-border: rgba(26,20,16,0.09);
+}
+
 html, body, [class*="css"], .stMarkdown, .stText, .stCaption,
 .stDataFrame, div[data-testid="stMetricLabel"], div[data-testid="stMetricValue"] {
     font-family: 'Source Serif 4', Georgia, serif !important;
 }
-/* Headings */
 h1, h2, h3, h4, .stSubheader, div[data-testid="stHeading"] {
     font-family: 'Lora', Georgia, serif !important;
     font-weight: 400 !important;
+    letter-spacing: -0.01em;
 }
-/* Primary action buttons → coral */
+#MainMenu, footer, header[data-testid="stHeader"] {visibility: hidden;}
+.block-container {padding-top: 1.5rem; max-width: 1100px;}
 .stButton > button[kind="primary"] {
-    background-color: #C96442 !important;
-    border-color: #C96442 !important;
+    background-color: var(--tiga-coral) !important;
+    border-color: var(--tiga-coral) !important;
     color: white !important;
     font-family: 'Source Serif 4', Georgia, serif !important;
+    border-radius: 10px !important;
 }
 .stButton > button[kind="primary"]:hover {
     background-color: #a8522f !important;
     border-color: #a8522f !important;
 }
-/* All other buttons */
 .stButton > button {
     font-family: 'Source Serif 4', Georgia, serif !important;
+    border-radius: 10px !important;
 }
-/* Tab active underline → coral */
 .stTabs [data-baseweb="tab"][aria-selected="true"] {
-    border-bottom-color: #C96442 !important;
-    color: #C96442 !important;
+    border-bottom-color: var(--tiga-coral) !important;
+    color: var(--tiga-coral) !important;
+    font-family: 'Source Serif 4', Georgia, serif !important;
 }
-/* Metric value */
+.stTabs [data-baseweb="tab"] {
+    font-family: 'Source Serif 4', Georgia, serif !important;
+}
 div[data-testid="stMetricValue"] {
     font-family: 'Lora', Georgia, serif !important;
     font-size: 1.6rem !important;
 }
-/* Progress bar → coral */
-.stProgress > div > div { background-color: #C96442 !important; }
-/* Text inputs */
+.stProgress > div > div { background-color: var(--tiga-coral) !important; }
 .stTextInput input, .stTextArea textarea, .stNumberInput input {
     font-family: 'Source Serif 4', Georgia, serif !important;
+    border-radius: 10px !important;
+}
+section[data-testid="stSidebar"] {
+    background: rgba(252,250,247,0.96) !important;
+    border-right: 1px solid var(--tiga-border);
+}
+.tiga-login-title {
+    font-family: 'Lora', Georgia, serif;
+    font-size: 2rem;
+    font-weight: 400;
+    text-align: center;
+    margin-bottom: 4px;
+}
+.tiga-login-sub {
+    text-align: center;
+    color: var(--tiga-ink-60);
+    font-size: 14px;
+    margin-bottom: 28px;
+}
+.tiga-status-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+.tiga-status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border-radius: 100px;
+    border: 1px solid var(--tiga-border);
+    font-size: 13px;
+    background: var(--tiga-surface);
+}
+.tiga-status-dot { width: 8px; height: 8px; border-radius: 50%; }
+.tiga-dot-ok { background: #34a853; }
+.tiga-dot-warn { background: #fbbc04; }
+.tiga-dot-err { background: #ea4335; }
+.tiga-empty {
+    text-align: center;
+    padding: 32px 20px;
+    color: var(--tiga-ink-60);
+    border: 1px dashed var(--tiga-border);
+    border-radius: 14px;
+    font-size: 14px;
 }
 </style>
 """, unsafe_allow_html=True)
 
 _API = f"http://localhost:{cfg.server_port}"
+_SEARCH_UI = f"http://localhost:{cfg.server_port}"
+
+
+def empty_state(msg: str) -> None:
+    st.markdown(f'<div class="tiga-empty">{msg}</div>', unsafe_allow_html=True)
+
+
+def status_pill(label: str, ok: bool | None) -> str:
+    dot = "tiga-dot-ok" if ok else ("tiga-dot-warn" if ok is None else "tiga-dot-err")
+    return f'<span class="tiga-status-pill"><span class="tiga-status-dot {dot}"></span>{label}</span>'
 
 
 # ---------------------------------------------------------------------------
@@ -109,26 +175,22 @@ if "admin_authed" not in st.session_state:
 # ---------------------------------------------------------------------------
 
 if not st.session_state.admin_authed:
-    st.markdown("""
-    <style>
-    [data-testid="stAppViewContainer"] { max-width: 400px; margin: auto; padding-top: 80px; }
-    </style>
-    """, unsafe_allow_html=True)
+    st.markdown('<div class="tiga-login-wrap">', unsafe_allow_html=True)
+    st.markdown('<div class="tiga-login-title">TIGA Admin</div>', unsafe_allow_html=True)
+    st.markdown('<div class="tiga-login-sub">Administration panel for TIGA Hunt</div>', unsafe_allow_html=True)
 
-    st.title("Admin")
-    st.caption("TIGA Hunt administration panel")
-    st.divider()
+    username = st.text_input("Username", key="login_user", placeholder="admin")
+    password = st.text_input("Password", type="password", key="login_pass", placeholder="••••••")
 
-    username = st.text_input("Username", key="login_user")
-    password = st.text_input("Password", type="password", key="login_pass")
-
-    if st.button("Login", type="primary", use_container_width=True):
+    if st.button("Sign in", type="primary", use_container_width=True):
         if username == "admin" and password == "admin":
             st.session_state.admin_authed = True
             st.rerun()
         else:
             st.error("Invalid credentials.")
 
+    st.caption(f"Search portal: [{_SEARCH_UI}]({_SEARCH_UI})")
+    st.markdown('</div>', unsafe_allow_html=True)
     st.stop()
 
 # ---------------------------------------------------------------------------
@@ -136,8 +198,9 @@ if not st.session_state.admin_authed:
 # ---------------------------------------------------------------------------
 
 with st.sidebar:
-    st.title("⚙️ Admin")
-    st.caption(f"API: `{_API}`")
+    st.markdown("### TIGA Admin")
+    st.caption(f"API `{_API}`")
+    st.markdown(f"[← Search portal]({_SEARCH_UI})")
     st.divider()
     try:
         h = requests.get(_API + "/health", timeout=3).json()
@@ -148,18 +211,36 @@ with st.sidebar:
     except Exception:
         st.error("Server offline")
     st.divider()
-    if st.button("Logout"):
+    if st.button("Sign out", use_container_width=True):
         st.session_state.admin_authed = False
         st.rerun()
+
+# ── Dashboard status bar ───────────────────────────────────────────────────
+_status = api("get", "/api/status") or {}
+_health = {}
+try:
+    _health = requests.get(_API + "/health", timeout=3).json()
+except Exception:
+    pass
+
+st.markdown(
+    '<div class="tiga-status-bar">'
+    + status_pill("Server online" if _status else "Server offline", bool(_status))
+    + status_pill("Ollama online" if _health.get("ollama") else "Ollama offline", _health.get("ollama"))
+    + status_pill(f"{(_status.get('files_indexed') or 0):,} indexed", True if _status.get('files_indexed') else None)
+    + status_pill(f"{(_status.get('files_discovered') or 0):,} discovered", None)
+    + '</div>',
+    unsafe_allow_html=True,
+)
 
 tabs = st.tabs([
     "Pipeline",
     "Directories",
-    "Workers & Auto-Brain",
+    "Workers",
     "Index",
     "Diagnostics",
     "Feedback",
-    "Audit Log",
+    "Audit",
 ])
 
 # ── TAB 1: Pipeline ────────────────────────────────────────────────────────
@@ -198,6 +279,7 @@ with tabs[0]:
             st.warning(err)
     else:
         st.write("No pipeline running.")
+        empty_state("Trigger a pipeline action above to start indexing or extraction.")
 
     with st.expander("Live output", expanded=False):
         lines = ps.get("output") or []
@@ -218,6 +300,8 @@ with tabs[1]:
     st.subheader("Index Roots")
 
     dirs = api("get", "/api/directories") or []
+    if not dirs:
+        empty_state("No index roots configured. Add a directory path below.")
     for d in dirs:
         icon = "✅" if d.get("mounted") else "❌"
         with st.expander(f"{d['path']}  —  {icon}", expanded=False):
@@ -365,7 +449,7 @@ with tabs[3]:
                 api("post", "/api/audit/log", json={"action": "Config rollback", "detail": entry["version_id"]})
                 st.success("Rolled back.")
     if not history:
-        st.write("No config history yet.")
+        empty_state("No config version history yet.")
 
 
 # ── TAB 5: Diagnostics ─────────────────────────────────────────────────────
@@ -399,7 +483,7 @@ with tabs[4]:
                     api("post", "/api/audit/log",
                         json={"action": f"Killed process PID {p['pid']}"})
     else:
-        st.write("No active workers.")
+        empty_state("No active worker processes.")
 
     st.subheader("Search Quality Self-Test")
     st.caption("10 Tianmu-specific queries probing the index from multiple angles.")
@@ -468,11 +552,15 @@ with tabs[5]:
         st.dataframe(pd.DataFrame(qr)[["query","results","positive","negative","comments","flagged"]],
                      use_container_width=True)
     else:
-        st.write("No feedback yet.")
+        empty_state("No feedback recorded yet. Thumbs and comments from the search portal appear here.")
 
     st.subheader("Zero-Result Queries")
-    for z in (api("get", "/api/feedback/zero-results") or []):
-        st.write(f"- **{z['query']}** — {z['attempts']} attempts")
+    zero_results = api("get", "/api/feedback/zero-results") or []
+    if zero_results:
+        for z in zero_results:
+            st.write(f"- **{z['query']}** — {z['attempts']} attempts")
+    else:
+        empty_state("No zero-result queries logged.")
 
     if st.button("Export feedback CSV"):
         csv_bytes = api("get", "/api/feedback/export")
