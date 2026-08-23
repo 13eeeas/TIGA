@@ -576,6 +576,57 @@ def cmd_ui(_args: argparse.Namespace) -> None:
     )
 
 
+def cmd_open(args: argparse.Namespace) -> None:
+    """Open Hunt launcher, search UI, or admin in the default browser."""
+    from tools.launcher_util import open_portal
+
+    open_portal(target=args.target, start=not args.no_start)
+
+
+def cmd_shortcuts(_args: argparse.Namespace) -> None:
+    """Create desktop shortcuts for launcher, admin, and uninstall."""
+    from tools.launcher_util import create_shortcuts
+
+    paths = create_shortcuts()
+    if paths:
+        print("Desktop shortcuts created:")
+        for p in paths:
+            print(f"  {p}")
+    else:
+        print("No shortcuts created (unsupported platform or error).")
+
+
+def cmd_uninstall(args: argparse.Namespace) -> None:
+    """Remove desktop shortcuts and optionally local install data."""
+    from tools.launcher_util import uninstall
+
+    if not args.yes:
+        print("Use --yes to confirm uninstall.")
+        print("Options: --venv (remove .venv)  --data (delete tiga_work)")
+        return
+
+    result = uninstall(
+        remove_desktop_shortcuts=True,
+        remove_venv=args.venv,
+        remove_work_dir=args.data,
+        stop_services=True,
+    )
+    removed = result.get("shortcuts_removed") or []
+    if removed:
+        print("Removed shortcuts:")
+        for p in removed:
+            print(f"  {p}")
+    else:
+        print("No desktop shortcuts found.")
+    if result.get("services_stopped"):
+        print("Stopped TIGA serve/ui processes.")
+    if result.get("venv_removed"):
+        print("Removed .venv")
+    if result.get("work_dir_removed"):
+        print("Removed tiga_work data directory")
+    print("Done. Delete the TIGA install folder manually if you no longer need it.")
+
+
 def cmd_card(args: argparse.Namespace) -> None:
     """View, scrape, or interactively edit a project data card."""
     from config import cfg
@@ -1390,7 +1441,31 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("serve", help="Start FastAPI LAN server")
 
     # ui
-    sub.add_parser("ui", help="Start Streamlit UI")
+    sub.add_parser("ui", help="Start Streamlit admin panel")
+
+    # open — one-click browser access
+    p_open = sub.add_parser("open", help="Open Hunt launcher or admin in browser")
+    p_open.add_argument(
+        "target",
+        nargs="?",
+        default="launcher",
+        choices=["launcher", "hunt", "admin"],
+        help="launcher (default), hunt, or admin",
+    )
+    p_open.add_argument(
+        "--no-start",
+        action="store_true",
+        help="Do not start serve/ui if they are down",
+    )
+
+    # shortcuts
+    sub.add_parser("shortcuts", help="Create desktop shortcuts (launcher, admin, uninstall)")
+
+    # uninstall
+    p_un = sub.add_parser("uninstall", help="Remove shortcuts and optional local data")
+    p_un.add_argument("--yes", action="store_true", help="Confirm uninstall")
+    p_un.add_argument("--venv", action="store_true", help="Also remove .venv")
+    p_un.add_argument("--data", action="store_true", help="Also delete tiga_work index data")
 
     # health
     sub.add_parser("health", help="Check Ollama + DB connectivity")
@@ -1581,6 +1656,9 @@ def main() -> None:
         "validate":  cmd_validate,
         "serve":     cmd_serve,
         "ui":        cmd_ui,
+        "open":      cmd_open,
+        "shortcuts": cmd_shortcuts,
+        "uninstall": cmd_uninstall,
         "health":    cmd_health,
         "einstein":  cmd_einstein,
         "card":      cmd_card,

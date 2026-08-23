@@ -281,3 +281,10 @@ def test_pipeline_status_includes_validate(client) -> None:
     resp = client.get("/api/pipeline/status")
     assert resp.status_code == 200
     assert "validate" in resp.json()
+
+
+def test_launcher_page(client) -> None:
+    resp = client.get("/launcher")
+    assert resp.status_code == 200
+    assert "TIGA Hunt" in resp.text
+    assert "Open Hunt" in resp.text

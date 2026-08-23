@@ -372,6 +372,13 @@ async def serve_ui() -> HTMLResponse:
     return HTMLResponse(html_file.read_text(encoding="utf-8"))
 
 
+@app.get("/launcher", response_class=HTMLResponse, include_in_schema=False)
+async def serve_launcher() -> HTMLResponse:
+    """One-click launcher hub — Hunt, Admin, uninstall instructions."""
+    html_file = Path(__file__).parent / "static" / "launcher.html"
+    return HTMLResponse(html_file.read_text(encoding="utf-8"))
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],    # LAN internal — no public exposure

@@ -165,12 +165,18 @@ echo       index_roots:
 echo         - "Z:/Projects"
 echo.
 echo  2. Start TIGA Hunt:
-echo       run.bat
-echo     (or: python tiga.py serve)
+echo       launcher.bat
+echo     (creates desktop shortcuts on first setup — double-click "TIGA Hunt")
+echo     Or: run.bat
 echo.
-echo  3. Open your browser to: http://localhost:7860
+echo  3. Open the launcher portal: http://localhost:7860/launcher
+echo     Hunt search: http://localhost:7860/
+echo     Admin panel: http://localhost:7861/
 echo.
-echo  4. (Optional) Run a quick folder scan before indexing:
+echo  4. Desktop shortcuts installed:
+python tiga.py shortcuts 2>nul
+echo.
+echo  5. (Optional) Run a quick folder scan before indexing:
 echo       python tiga.py scan "Z:/Projects" --phases
 echo.
 echo  5. (Optional) Run the WOHA project seeder:

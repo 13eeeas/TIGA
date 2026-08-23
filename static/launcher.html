@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="auto">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="light dark">
+<title>TIGA — Launcher</title>
+<link href="https://fonts.googleapis.com/css2?family=Lora:wght@400;500&family=Source+Serif+4:opsz,wght@8..60,300;8..60,400&display=swap" rel="stylesheet">
+<style>
+:root {
+  --coral:#C96442; --page-bg:#ffffff; --ink:#1A1410; --ink-60:rgba(26,20,16,0.52);
+  --ink-12:rgba(26,20,16,0.09); --glass-bg:rgba(255,255,255,0.72);
+  --glass-border:rgba(255,255,255,0.85); --glass-shadow:0 8px 32px rgba(0,0,0,0.08);
+  --btn-bg:#1A1410; --ok:#2d6a4f; --warn:#b45309; --bad:#b91c1c;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --page-bg:#0F0E0C; --ink:#EDE8E0; --ink-60:rgba(237,232,224,0.55); --ink-12:rgba(237,232,224,0.08);
+    --glass-bg:rgba(30,26,22,0.78); --glass-border:rgba(255,255,255,0.10);
+    --glass-shadow:0 8px 32px rgba(0,0,0,0.35); --btn-bg:#EDE8E0;
+  }
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Source Serif 4',Georgia,serif;background:var(--page-bg);color:var(--ink);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+.wrap{width:100%;max-width:560px}
+.brand{font-family:'Lora',Georgia,serif;font-size:28px;font-weight:400;margin-bottom:6px}
+.sub{color:var(--ink-60);font-size:14px;margin-bottom:28px}
+.card{background:var(--glass-bg);border:1px solid var(--glass-border);border-radius:20px;padding:28px;box-shadow:var(--glass-shadow)}
+.status{display:flex;gap:12px;margin-bottom:24px;flex-wrap:wrap}
+.pill{font-size:12px;padding:6px 12px;border-radius:999px;border:1px solid var(--ink-12);color:var(--ink-60)}
+.pill.ok{border-color:rgba(45,106,79,0.35);color:var(--ok)}
+.pill.bad{border-color:rgba(185,28,28,0.35);color:var(--bad)}
+.pill.wait{border-color:rgba(180,83,9,0.35);color:var(--warn)}
+.actions{display:grid;gap:12px;margin-bottom:24px}
+.btn{display:block;width:100%;padding:16px 20px;border-radius:14px;border:none;font-family:inherit;font-size:16px;font-weight:400;cursor:pointer;text-align:center;text-decoration:none;transition:transform .12s,background .2s}
+.btn-primary{background:var(--coral);color:#fff}
+.btn-primary:hover{transform:translateY(-1px);filter:brightness(1.05)}
+.btn-secondary{background:var(--btn-bg);color:var(--page-bg)}
+.btn-secondary:hover{background:var(--coral);transform:translateY(-1px)}
+.section-label{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--coral);margin-bottom:10px}
+.uninstall{background:rgba(185,28,28,0.06);border:1px solid rgba(185,28,28,0.18);border-radius:14px;padding:16px}
+.uninstall p{font-size:13px;color:var(--ink-60);line-height:1.55;margin-bottom:12px}
+.btn-danger{background:transparent;border:1px solid rgba(185,28,28,0.45);color:var(--bad)}
+.btn-danger:hover{background:rgba(185,28,28,0.08)}
+.foot{margin-top:18px;font-size:12px;color:var(--ink-60);text-align:center}
+code{font-size:11px;background:var(--ink-12);padding:2px 6px;border-radius:6px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand">TIGA Hunt</div>
+  <div class="sub">Office LAN knowledge search — launcher portal</div>
+
+  <div class="card">
+    <div class="status" id="statusRow">
+      <span class="pill wait" id="serverPill">Server checking…</span>
+      <span class="pill wait" id="adminPill">Admin checking…</span>
+    </div>
+
+    <div class="actions">
+      <a class="btn btn-primary" id="huntBtn" href="/">Open Hunt — search portal</a>
+      <a class="btn btn-secondary" id="adminBtn" href="#" target="_blank">Open Admin panel</a>
+    </div>
+
+    <div class="section-label">Remove TIGA</div>
+    <div class="uninstall">
+      <p>
+        Uninstall stops TIGA services and removes desktop shortcuts.
+        Your indexed data in <code>tiga_work/</code> is kept unless you choose to delete it in the uninstaller.
+      </p>
+      <p id="uninstallHint">
+        On this PC, double-click the desktop shortcut <strong>Uninstall TIGA</strong>,
+        or run <code>uninstall.bat</code> / <code>uninstall.sh</code> from the TIGA install folder.
+      </p>
+    </div>
+
+    <div class="foot" id="footNote">LAN host · bookmarks this page for one-click access</div>
+  </div>
+</div>
+
+<script>
+const port = parseInt(window.location.port || '7860', 10);
+const host = window.location.hostname || '127.0.0.1';
+const adminPort = port + 1;
+
+document.getElementById('adminBtn').href = `http://${host}:${adminPort}/`;
+
+async function ping(url) {
+  try {
+    const r = await fetch(url, { cache: 'no-store' });
+    return r.ok;
+  } catch {
+    return false;
+  }
+}
+
+function setPill(el, ok, labelOk, labelBad) {
+  el.textContent = ok ? labelOk : labelBad;
+  el.className = 'pill ' + (ok ? 'ok' : 'bad');
+}
+
+async function refreshStatus() {
+  const serverOk = await ping('/health');
+  setPill(document.getElementById('serverPill'), serverOk, 'Hunt server online', 'Hunt server offline');
+  let adminOk = false;
+  try {
+    const r = await fetch(`http://${host}:${adminPort}/_stcore/health`, { mode: 'no-cors' });
+    adminOk = true;
+  } catch {
+    adminOk = await ping(`http://${host}:${adminPort}/`);
+  }
+  setPill(document.getElementById('adminPill'), adminOk, 'Admin online', 'Admin offline — run launcher');
+}
+
+refreshStatus();
+setInterval(refreshStatus, 8000);
+</script>
+</body>
+</html>

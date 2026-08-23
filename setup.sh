@@ -136,8 +136,10 @@ fi
 # 7. Work directories
 # ---------------------------------------------------------------------------
 
-python -c "from config import cfg; cfg.ensure_dirs(); print('[OK]  Work dirs ready')" 2>/dev/null \
+python -c "from config import cfg; cfg.ensure_dirs(); print('[OK] Work dirs ready')" 2>/dev/null \
     || warn "Could not create work dirs (config may need editing first)"
+
+python tiga.py shortcuts 2>/dev/null || warn "Could not create desktop shortcuts"
 
 # ---------------------------------------------------------------------------
 # Done
@@ -157,10 +159,13 @@ echo "       index_roots:"
 echo '         - "/mnt/projects/WOHA"'
 echo ""
 echo "  2. Start TIGA Hunt:"
-echo "       source .venv/bin/activate"
-echo "       python tiga.py serve"
+echo "       bash launcher.sh"
+echo "     Or create desktop shortcuts:"
+echo "       python tiga.py shortcuts"
 echo ""
-echo "  3. Open your browser to: http://localhost:7860"
+echo "  3. Open the launcher portal: http://localhost:7860/launcher"
+echo "     Hunt search: http://localhost:7860/"
+echo "     Admin panel: http://localhost:7861/"
 echo ""
 echo "  4. (Optional) Quick scan before indexing:"
 echo '       python tiga.py scan "/mnt/projects/WOHA" --phases'
