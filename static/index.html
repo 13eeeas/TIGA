@@ -128,22 +128,22 @@ body{font-family:'Source Serif 4',Georgia,serif;background:var(--page-bg);color:
 [data-theme="dark"] .icon-sun{display:block}[data-theme="dark"] .icon-moon{display:none}
 @media(prefers-color-scheme:dark){:root:not([data-theme="light"]):not([data-theme="dark"]) .icon-sun{display:block}:root:not([data-theme="light"]):not([data-theme="dark"]) .icon-moon{display:none}}
 
-/* ── CAT ── */
-.cat-wrap{width:34px;height:34px;position:relative}
-.cat-svg{width:34px;height:34px;overflow:visible}
-.cat-body-group{transform-origin:17px 20px;animation:idleFloat 3.8s ease-in-out infinite}
+/* ── CAT (slender animation-flow silhouette) ── */
+.cat-wrap{width:28px;height:36px;position:relative;flex-shrink:0}
+.cat-svg{width:28px;height:36px;overflow:visible;display:block}
+.cat-body-group{transform-origin:12px 22px;animation:idleFloat 3.8s ease-in-out infinite}
 @keyframes idleFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-2.5px)}}
-.cat-tail{transform-origin:9px 26px;animation:tailWag 2.5s ease-in-out infinite}
-@keyframes tailWag{0%,100%{transform:rotate(0deg)}30%{transform:rotate(-12deg)}70%{transform:rotate(8deg)}}
+.cat-tail{transform-origin:5px 27px;animation:tailWag 2.5s ease-in-out infinite}
+@keyframes tailWag{0%,100%{transform:rotate(0deg)}30%{transform:rotate(-14deg)}70%{transform:rotate(10deg)}}
 .cat-eye-l,.cat-eye-r{transform-origin:center;animation:eyeBlink 5s ease-in-out infinite}
 @keyframes eyeBlink{0%,44%,48%,100%{transform:scaleY(1)}46%{transform:scaleY(0.08)}}
-.cat-wrap.searching .cat-body-group{animation:searchSpin .9s linear infinite;transform-origin:17px 17px}
+.cat-wrap.searching .cat-body-group{animation:searchSpin .9s linear infinite;transform-origin:12px 18px}
 @keyframes searchSpin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
 .cat-wrap.searching .cat-eye-l,.cat-wrap.searching .cat-eye-r{animation:eyeFocus .35s ease both}
-@keyframes eyeFocus{to{transform:scaleY(0.25)scaleX(1.4)}}
+@keyframes eyeFocus{to{transform:scaleY(0.2)scaleX(1.5)}}
 .cat-wrap.searching .cat-tail{animation:tailSearch .45s ease-in-out infinite alternate}
-@keyframes tailSearch{from{transform:rotate(-20deg)}to{transform:rotate(20deg)}}
-.cat-ring{position:absolute;inset:-7px;border-radius:50%;border:1.5px solid var(--coral);opacity:0;transform:scale(0.7);pointer-events:none}
+@keyframes tailSearch{from{transform:rotate(-24deg)}to{transform:rotate(24deg)}}
+.cat-ring{position:absolute;inset:-6px -4px;border-radius:50%;border:1.5px solid var(--coral);opacity:0;transform:scale(0.7);pointer-events:none}
 .cat-wrap.searching .cat-ring{animation:ringPulse 1s ease-out infinite}
 @keyframes ringPulse{0%{opacity:.7;transform:scale(.75)}100%{opacity:0;transform:scale(1.6)}}
 
@@ -368,17 +368,17 @@ body{font-family:'Source Serif 4',Georgia,serif;background:var(--page-bg);color:
     <a class="logo-mark" href="#">
       <div class="cat-wrap" id="catWrap">
         <div class="cat-ring"></div>
-        <svg class="cat-svg" viewBox="0 0 34 34" fill="none">
+        <svg class="cat-svg" viewBox="0 0 24 32" fill="none" aria-hidden="true">
           <g class="cat-body-group">
-            <path class="cat-tail" d="M7.5 29.5 Q2.5 26 4.2 20.5 Q5.8 26 8.8 28Z" fill="#C96442"/>
-            <ellipse cx="17" cy="22.5" rx="9.5" ry="8" fill="#C96442"/>
-            <ellipse cx="17" cy="12.5" rx="8.5" ry="8" fill="#C96442"/>
-            <polygon points="9.5,8.5 6.2,1.5 13.2,7" fill="#C96442"/>
-            <polygon points="24.5,8.5 27.8,1.5 20.8,7" fill="#C96442"/>
-            <ellipse class="cat-eye-l" cx="13.4" cy="12.6" rx="2.1" ry="2.5" fill="white" opacity=".92"/>
-            <ellipse class="cat-eye-r" cx="20.6" cy="12.6" rx="2.1" ry="2.5" fill="white" opacity=".92"/>
-            <ellipse class="cat-eye-l" cx="13.4" cy="12.6" rx=".88" ry="2.1" fill="#1A1410" opacity=".85"/>
-            <ellipse class="cat-eye-r" cx="20.6" cy="12.6" rx=".88" ry="2.1" fill="#1A1410" opacity=".85"/>
+            <path class="cat-tail" d="M6.2 28.8 C1.8 26.2 2.2 20.8 4.4 17.2 C5.2 21.5 5.8 25.8 7.4 27.6" stroke="#C96442" stroke-width="1.65" fill="none" stroke-linecap="round"/>
+            <path d="M12 13.8 C9.4 13.8 8.8 16.8 8.8 21.8 C8.8 27.2 9.8 29.8 12 29.8 C14.2 29.8 15.2 27.2 15.2 21.8 C15.2 16.8 14.6 13.8 12 13.8 Z" fill="#C96442"/>
+            <circle cx="12" cy="9.2" r="4.9" fill="#C96442"/>
+            <path d="M8.4 6.2 L6.8 0.8 L10.6 5.4 Z" fill="#C96442"/>
+            <path d="M15.6 6.2 L17.2 0.8 L13.4 5.4 Z" fill="#C96442"/>
+            <ellipse class="cat-eye-l" cx="10.35" cy="9.5" rx=".95" ry="1.65" fill="white" opacity=".92"/>
+            <ellipse class="cat-eye-r" cx="13.65" cy="9.5" rx=".95" ry="1.65" fill="white" opacity=".92"/>
+            <ellipse class="cat-eye-l" cx="10.35" cy="9.5" rx=".38" ry="1.35" fill="#1A1410" opacity=".88"/>
+            <ellipse class="cat-eye-r" cx="13.65" cy="9.5" rx=".38" ry="1.35" fill="#1A1410" opacity=".88"/>
           </g>
         </svg>
       </div>

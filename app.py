@@ -22,9 +22,26 @@ from config import cfg
 
 st.set_page_config(
     page_title="TIGA Admin",
-    page_icon="⚙️",
+    page_icon=" ",
     layout="wide",
 )
+
+# Shared brand mark (slender cat — matches search portal)
+CAT_SVG = """
+<svg class="tiga-cat-svg" viewBox="0 0 24 32" fill="none" aria-hidden="true">
+  <g>
+    <path d="M6.2 28.8 C1.8 26.2 2.2 20.8 4.4 17.2 C5.2 21.5 5.8 25.8 7.4 27.6" stroke="#C96442" stroke-width="1.65" fill="none" stroke-linecap="round"/>
+    <path d="M12 13.8 C9.4 13.8 8.8 16.8 8.8 21.8 C8.8 27.2 9.8 29.8 12 29.8 C14.2 29.8 15.2 27.2 15.2 21.8 C15.2 16.8 14.6 13.8 12 13.8 Z" fill="#C96442"/>
+    <circle cx="12" cy="9.2" r="4.9" fill="#C96442"/>
+    <path d="M8.4 6.2 L6.8 0.8 L10.6 5.4 Z" fill="#C96442"/>
+    <path d="M15.6 6.2 L17.2 0.8 L13.4 5.4 Z" fill="#C96442"/>
+    <ellipse cx="10.35" cy="9.5" rx=".95" ry="1.65" fill="white" opacity=".92"/>
+    <ellipse cx="13.65" cy="9.5" rx=".95" ry="1.65" fill="white" opacity=".92"/>
+    <ellipse cx="10.35" cy="9.5" rx=".38" ry="1.35" fill="#1A1410" opacity=".88"/>
+    <ellipse cx="13.65" cy="9.5" rx=".38" ry="1.35" fill="#1A1410" opacity=".88"/>
+  </g>
+</svg>
+"""
 
 # ── Design system: match main UI fonts + coral accents ──────────────────────
 st.markdown("""
@@ -34,10 +51,14 @@ st.markdown("""
 :root {
   --tiga-coral: #C96442;
   --tiga-coral-dim: rgba(201,100,66,0.12);
+  --tiga-coral-glow: rgba(201,100,66,0.18);
   --tiga-ink: #1A1410;
   --tiga-ink-60: rgba(26,20,16,0.52);
-  --tiga-surface: rgba(255,255,255,0.72);
+  --tiga-ink-12: rgba(26,20,16,0.09);
+  --tiga-page: #FCFAF7;
+  --tiga-surface: rgba(255,255,255,0.78);
   --tiga-border: rgba(26,20,16,0.09);
+  --tiga-glass-shadow: 0 8px 32px rgba(0,0,0,0.06), 0 1.5px 4px rgba(0,0,0,0.03);
 }
 
 html, body, [class*="css"], .stMarkdown, .stText, .stCaption,
@@ -50,13 +71,26 @@ h1, h2, h3, h4, .stSubheader, div[data-testid="stHeading"] {
     letter-spacing: -0.01em;
 }
 #MainMenu, footer, header[data-testid="stHeader"] {visibility: hidden;}
-.block-container {padding-top: 1.5rem; max-width: 1100px;}
+.block-container {padding-top: 0.75rem; padding-bottom: 3rem; max-width: 1080px;}
+.stApp {background: var(--tiga-page) !important; color: var(--tiga-ink) !important;}
+.tiga-blobs {position: fixed; inset: 0; pointer-events: none; z-index: 0; overflow: hidden;}
+.tiga-blob {position: absolute; border-radius: 50%; filter: blur(90px);}
+.tiga-blob-1 {width: 420px; height: 420px; background: rgba(201,100,66,0.09); top: -100px; left: -60px;}
+.tiga-blob-2 {width: 340px; height: 340px; background: rgba(255,200,170,0.10); bottom: -60px; right: -40px;}
+.tiga-admin-header {position: relative; z-index: 1; display: flex; align-items: center; justify-content: space-between; padding: 8px 0 20px; margin-bottom: 4px; border-bottom: 1px solid var(--tiga-border);}
+.tiga-brand {display: flex; align-items: center; gap: 10px; color: var(--tiga-ink);}
+.tiga-cat-wrap {width: 26px; height: 34px; flex-shrink: 0;}
+.tiga-cat-svg {width: 26px; height: 34px; display: block;}
+.tiga-brand-name {font-family: 'Lora', Georgia, serif; font-size: 1.35rem; font-weight: 500;}
+.tiga-brand-sub {font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--tiga-coral); margin-top: 1px;}
+.tiga-portal-link {font-size: 13px; color: var(--tiga-ink-60); text-decoration: none; padding: 7px 14px; border: 1px solid var(--tiga-border); border-radius: 100px; background: var(--tiga-surface);}
 .stButton > button[kind="primary"] {
     background-color: var(--tiga-coral) !important;
     border-color: var(--tiga-coral) !important;
     color: white !important;
     font-family: 'Source Serif 4', Georgia, serif !important;
     border-radius: 10px !important;
+    box-shadow: 0 2px 8px rgba(201,100,66,0.22) !important;
 }
 .stButton > button[kind="primary"]:hover {
     background-color: #a8522f !important;
@@ -65,7 +99,10 @@ h1, h2, h3, h4, .stSubheader, div[data-testid="stHeading"] {
 .stButton > button {
     font-family: 'Source Serif 4', Georgia, serif !important;
     border-radius: 10px !important;
+    border-color: var(--tiga-border) !important;
+    background: var(--tiga-surface) !important;
 }
+.stTabs [data-baseweb="tab-list"] {gap: 6px;}
 .stTabs [data-baseweb="tab"][aria-selected="true"] {
     border-bottom-color: var(--tiga-coral) !important;
     color: var(--tiga-coral) !important;
@@ -73,20 +110,26 @@ h1, h2, h3, h4, .stSubheader, div[data-testid="stHeading"] {
 }
 .stTabs [data-baseweb="tab"] {
     font-family: 'Source Serif 4', Georgia, serif !important;
+    font-size: 14px !important;
+    color: var(--tiga-ink-60) !important;
 }
 div[data-testid="stMetricValue"] {
     font-family: 'Lora', Georgia, serif !important;
-    font-size: 1.6rem !important;
+    font-size: 1.45rem !important;
 }
 .stProgress > div > div { background-color: var(--tiga-coral) !important; }
 .stTextInput input, .stTextArea textarea, .stNumberInput input {
     font-family: 'Source Serif 4', Georgia, serif !important;
     border-radius: 10px !important;
+    border-color: var(--tiga-border) !important;
+    background: var(--tiga-surface) !important;
 }
 section[data-testid="stSidebar"] {
-    background: rgba(252,250,247,0.96) !important;
+    background: rgba(252,250,247,0.97) !important;
     border-right: 1px solid var(--tiga-border);
 }
+.stDivider {border-color: var(--tiga-border) !important; margin: 1.25rem 0 !important;}
+.tiga-login-logo {display: flex; justify-content: center; margin-bottom: 14px;}
 .tiga-login-title {
     font-family: 'Lora', Georgia, serif;
     font-size: 2rem;
@@ -110,32 +153,73 @@ section[data-testid="stSidebar"] {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    padding: 6px 14px;
+    padding: 6px 13px;
     border-radius: 100px;
     border: 1px solid var(--tiga-border);
-    font-size: 13px;
+    font-size: 12.5px;
     background: var(--tiga-surface);
+    box-shadow: var(--tiga-glass-shadow);
 }
-.tiga-status-dot { width: 8px; height: 8px; border-radius: 50%; }
+.tiga-status-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
 .tiga-dot-ok { background: #34a853; }
 .tiga-dot-warn { background: #fbbc04; }
 .tiga-dot-err { background: #ea4335; }
 .tiga-empty {
     text-align: center;
-    padding: 32px 20px;
+    padding: 36px 20px;
     color: var(--tiga-ink-60);
     border: 1px dashed var(--tiga-border);
     border-radius: 14px;
     font-size: 14px;
+    background: rgba(255,255,255,0.35);
 }
 .tiga-login-wrap {
     max-width: 380px;
-    margin: 4rem auto 0;
-    padding: 32px 28px;
+    margin: 3rem auto 0;
+    padding: 36px 30px;
     background: var(--tiga-surface);
     border: 1px solid var(--tiga-border);
     border-radius: 18px;
+    box-shadow: var(--tiga-glass-shadow);
+    position: relative;
+    z-index: 1;
 }
+.tiga-roadmap-grid {display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 20px;}
+@media (max-width: 768px) { .tiga-roadmap-grid { grid-template-columns: 1fr; } }
+.tiga-roadmap-card {background: var(--tiga-surface); border: 1px solid var(--tiga-border); border-radius: 14px; padding: 16px; box-shadow: var(--tiga-glass-shadow);}
+.tiga-roadmap-card.live {border-top: 2px solid var(--tiga-coral);}
+.tiga-roadmap-card.build {border-top: 2px solid #fbbc04;}
+.tiga-roadmap-card.plan {border-top: 2px solid var(--tiga-ink-12);}
+.tiga-roadmap-badge {font-size: 10px; font-weight: 500; letter-spacing: 0.11em; text-transform: uppercase; color: var(--tiga-coral); margin-bottom: 6px;}
+.tiga-roadmap-title {font-family: 'Lora', Georgia, serif; font-size: 1.15rem; margin-bottom: 4px;}
+.tiga-roadmap-detail {font-size: 13px; color: var(--tiga-ink-60); line-height: 1.5; margin-bottom: 12px; min-height: 2.6em;}
+.tiga-roadmap-stat {font-family: 'Lora', Georgia, serif; font-size: 1.55rem;}
+.tiga-roadmap-stat-label {font-size: 11px; color: var(--tiga-ink-60); margin-top: 2px;}
+.tiga-layer-grid {display: grid; grid-template-columns: 1fr 1fr 1fr; border: 1px solid var(--tiga-border); border-radius: 12px; overflow: hidden; background: var(--tiga-surface); margin-bottom: 8px; box-shadow: var(--tiga-glass-shadow);}
+.tiga-layer-cell {padding: 12px 14px; font-size: 13px; border-bottom: 1px solid var(--tiga-border); border-right: 1px solid var(--tiga-border);}
+.tiga-layer-cell:nth-child(3n) {border-right: none;}
+.tiga-layer-head {font-size: 10px; font-weight: 500; letter-spacing: 0.1em; text-transform: uppercase; color: var(--tiga-coral); background: rgba(201,100,66,0.04);}
+.tiga-layer-name {font-family: 'Lora', Georgia, serif;}
+.tiga-metric-grid {display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 8px;}
+.tiga-metric-cell {background: var(--tiga-surface); border: 1px solid var(--tiga-border); border-radius: 12px; padding: 12px 14px; box-shadow: var(--tiga-glass-shadow);}
+.tiga-metric-value {font-family: 'Lora', Georgia, serif; font-size: 1.35rem;}
+.tiga-metric-label {font-size: 11px; color: var(--tiga-ink-60); margin-top: 2px;}
+.tiga-panel {background: var(--tiga-surface); border: 1px solid var(--tiga-border); border-radius: 14px; padding: 16px 18px; margin-bottom: 14px; box-shadow: var(--tiga-glass-shadow);}
+.tiga-live-panel {background: var(--tiga-surface); border: 1px solid var(--tiga-border); border-radius: 14px; padding: 16px 18px; margin-top: 8px; box-shadow: var(--tiga-glass-shadow);}
+.tiga-dir-meta {display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--tiga-ink-60); margin-top: 6px;}
+.tiga-atlas-card {background: var(--tiga-surface); border: 1px solid var(--tiga-border); border-radius: 14px; padding: 14px 16px; margin-bottom: 10px; box-shadow: var(--tiga-glass-shadow);}
+.tiga-atlas-head {display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 8px;}
+.tiga-atlas-code {font-family: 'Lora', Georgia, serif; font-size: 1.05rem;}
+.tiga-atlas-pct {font-size: 12px; color: var(--tiga-coral); white-space: nowrap;}
+.tiga-atlas-bar {height: 4px; border-radius: 2px; background: var(--tiga-ink-12); overflow: hidden; margin-bottom: 10px;}
+.tiga-atlas-bar-fill {height: 100%; background: var(--tiga-coral); border-radius: 2px;}
+.tiga-atlas-fields {font-size: 13px; color: var(--tiga-ink-60); line-height: 1.55;}
+.tiga-atlas-missing {font-size: 12px; color: #c0392b; margin-top: 8px;}
+.tiga-check-row {display: flex; gap: 10px; align-items: flex-start; padding: 10px 0; border-bottom: 1px solid var(--tiga-ink-12); font-size: 13px;}
+.tiga-check-dot {width: 8px; height: 8px; border-radius: 50%; margin-top: 5px; flex-shrink: 0;}
+.tiga-check-ok {background: #34a853;}
+.tiga-check-fail {background: #ea4335;}
+.tiga-audit-row {font-size: 13px; padding: 8px 0; border-bottom: 1px solid var(--tiga-ink-12); line-height: 1.45;}
 .tiga-section-label {
     font-size: 10px;
     font-weight: 500;
@@ -147,21 +231,22 @@ section[data-testid="stSidebar"] {
 .tiga-tab-intro {
     color: var(--tiga-ink-60);
     font-size: 14px;
-    margin: -8px 0 18px 0;
-    line-height: 1.55;
+    margin: -6px 0 20px 0;
+    line-height: 1.58;
 }
 .main div[data-testid="stMetric"] {
-    background: var(--tiga-surface);
-    border: 1px solid var(--tiga-border);
-    border-radius: 12px;
-    padding: 12px 14px;
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    padding: 0;
 }
 .tiga-dir-card {
     background: var(--tiga-surface);
     border: 1px solid var(--tiga-border);
     border-radius: 14px;
-    padding: 14px 16px;
-    margin-bottom: 10px;
+    padding: 14px 16px 10px;
+    margin-bottom: 8px;
+    box-shadow: var(--tiga-glass-shadow);
 }
 .tiga-dir-path {
     font-family: 'Source Serif 4', Georgia, serif;
@@ -177,15 +262,24 @@ section[data-testid="stSidebar"] {
     :root {
         --tiga-ink: #EDE8E0;
         --tiga-ink-60: rgba(237,232,224,0.52);
-        --tiga-surface: rgba(30,26,22,0.85);
+        --tiga-ink-12: rgba(237,232,224,0.08);
+        --tiga-page: #0F0E0C;
+        --tiga-surface: rgba(30,26,22,0.88);
         --tiga-border: rgba(237,232,224,0.10);
+        --tiga-glass-shadow: 0 8px 32px rgba(0,0,0,0.28);
     }
-    .stApp { background: #0F0E0C !important; color: #EDE8E0 !important; }
+    .stApp { background: var(--tiga-page) !important; color: var(--tiga-ink) !important; }
     section[data-testid="stSidebar"] {
         background: rgba(22,18,14,0.98) !important;
     }
+    .tiga-blob-1 { background: rgba(201,100,66,0.14); }
+    .tiga-blob-2 { background: rgba(140,80,50,0.08); }
 }
 </style>
+<div class="tiga-blobs" aria-hidden="true">
+  <div class="tiga-blob tiga-blob-1"></div>
+  <div class="tiga-blob tiga-blob-2"></div>
+</div>
 """, unsafe_allow_html=True)
 
 _API = f"http://localhost:{cfg.server_port}"
@@ -207,6 +301,103 @@ def tab_intro(text: str) -> None:
 
 def section_label(text: str) -> None:
     st.markdown(f'<p class="tiga-section-label">{text}</p>', unsafe_allow_html=True)
+
+
+def brand_header(portal_url: str) -> None:
+    st.markdown(
+        f'<div class="tiga-admin-header">'
+        f'<div class="tiga-brand">'
+        f'<div class="tiga-cat-wrap">{CAT_SVG}</div>'
+        f'<div><div class="tiga-brand-name">TIGA</div>'
+        f'<div class="tiga-brand-sub">Administration</div></div></div>'
+        f'<a class="tiga-portal-link" href="{portal_url}" target="_self">← Search portal</a>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+
+
+def roadmap_cards(hunt: dict, atlas: dict, ein: dict, status: dict) -> None:
+    indexed = hunt.get("files_indexed") or status.get("files_indexed") or 0
+    cards_n = atlas.get("project_cards") or 0
+    ein_label = "Enabled" if ein.get("enabled") else "Phase 2"
+    st.markdown(
+        f'<div class="tiga-roadmap-grid">'
+        f'<div class="tiga-roadmap-card live">'
+        f'<div class="tiga-roadmap-badge">Live</div>'
+        f'<div class="tiga-roadmap-title">Hunt</div>'
+        f'<div class="tiga-roadmap-detail">{hunt.get("detail", "Search + indexing")}</div>'
+        f'<div class="tiga-roadmap-stat">{indexed:,}</div>'
+        f'<div class="tiga-roadmap-stat-label">Indexed files</div></div>'
+        f'<div class="tiga-roadmap-card build">'
+        f'<div class="tiga-roadmap-badge">Building</div>'
+        f'<div class="tiga-roadmap-title">Atlas</div>'
+        f'<div class="tiga-roadmap-detail">{atlas.get("detail", "Project memory")}</div>'
+        f'<div class="tiga-roadmap-stat">{cards_n:,}</div>'
+        f'<div class="tiga-roadmap-stat-label">Project cards</div></div>'
+        f'<div class="tiga-roadmap-card plan">'
+        f'<div class="tiga-roadmap-badge">Planned</div>'
+        f'<div class="tiga-roadmap-title">Einstein</div>'
+        f'<div class="tiga-roadmap-detail">{ein.get("detail", "Expert reasoning — Phase 2")}</div>'
+        f'<div class="tiga-roadmap-stat">{ein_label}</div>'
+        f'<div class="tiga-roadmap-stat-label">Status</div></div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+
+
+def layer_grid() -> None:
+    st.markdown(
+        '<div class="tiga-layer-grid">'
+        '<div class="tiga-layer-cell tiga-layer-head">Layer</div>'
+        '<div class="tiga-layer-cell tiga-layer-head">Status</div>'
+        '<div class="tiga-layer-cell tiga-layer-head">Admin controls</div>'
+        '<div class="tiga-layer-cell tiga-layer-name">Hunt</div>'
+        '<div class="tiga-layer-cell">Live</div>'
+        '<div class="tiga-layer-cell">Pipeline, Archives, Schedule, Quality</div>'
+        '<div class="tiga-layer-cell tiga-layer-name">Atlas</div>'
+        '<div class="tiga-layer-cell">Foundation</div>'
+        '<div class="tiga-layer-cell">Project cards (this panel)</div>'
+        '<div class="tiga-layer-cell tiga-layer-name">Einstein</div>'
+        '<div class="tiga-layer-cell">Planned</div>'
+        '<div class="tiga-layer-cell">Config flag only — not shipping yet</div>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+
+
+def metric_row(items: list[tuple[str, str]]) -> None:
+    cells = "".join(
+        f'<div class="tiga-metric-cell"><div class="tiga-metric-value">{val}</div>'
+        f'<div class="tiga-metric-label">{label}</div></div>'
+        for label, val in items
+    )
+    st.markdown(f'<div class="tiga-metric-grid">{cells}</div>', unsafe_allow_html=True)
+
+
+def atlas_card_html(card: dict) -> str:
+    code = card.get("project_code", "?")
+    name = card.get("name") or "Untitled"
+    miss = card.get("missing_fields") or []
+    pct = card.get("completeness", 0)
+    fields = (
+        f"Typology: {card.get('typology_primary') or '—'} · "
+        f"Location: {card.get('location') or '—'} · "
+        f"Stage: {card.get('stage') or '—'} · "
+        f"Client: {card.get('client') or '—'}"
+    )
+    missing_html = (
+        f'<div class="tiga-atlas-missing">Missing: {", ".join(miss)}</div>'
+        if miss else '<div class="tiga-atlas-fields" style="color:#34a853">All required fields filled</div>'
+    )
+    return (
+        f'<div class="tiga-atlas-card">'
+        f'<div class="tiga-atlas-head"><div class="tiga-atlas-code">{code} · {name}</div>'
+        f'<div class="tiga-atlas-pct">{pct}% complete</div></div>'
+        f'<div class="tiga-atlas-bar"><div class="tiga-atlas-bar-fill" style="width:{pct}%"></div></div>'
+        f'<div class="tiga-atlas-fields">{fields}</div>{missing_html}'
+        f'<div class="tiga-atlas-fields" style="margin-top:8px;font-size:12px">'
+        f'Edit: <code>python tiga.py card {code}</code></div></div>'
+    )
 
 
 def pipeline_trigger(label: str, path: str, audit_action: str, *, key: str) -> None:
@@ -277,6 +468,7 @@ if "admin_authed" not in st.session_state:
 
 if not st.session_state.admin_authed:
     st.markdown('<div class="tiga-login-wrap">', unsafe_allow_html=True)
+    st.markdown(f'<div class="tiga-login-logo"><div class="tiga-cat-wrap">{CAT_SVG}</div></div>', unsafe_allow_html=True)
     st.markdown('<div class="tiga-login-title">TIGA Admin</div>', unsafe_allow_html=True)
     st.markdown('<div class="tiga-login-sub">Administration panel for TIGA Hunt</div>', unsafe_allow_html=True)
 
@@ -299,7 +491,8 @@ if not st.session_state.admin_authed:
 # ---------------------------------------------------------------------------
 
 with st.sidebar:
-    st.markdown("### TIGA Admin")
+    st.markdown(f'<div class="tiga-cat-wrap" style="margin:0 auto 8px">{CAT_SVG}</div>', unsafe_allow_html=True)
+    st.markdown("### TIGA")
     st.caption("Hunt · Atlas · Einstein")
     st.caption(f"API `{_API}`")
     st.markdown(f"[← Search portal]({_SEARCH_UI})")
@@ -317,10 +510,15 @@ with st.sidebar:
         st.session_state.admin_authed = False
         st.rerun()
 
+brand_header(_SEARCH_UI)
+
 # ── Product status ─────────────────────────────────────────────────────────
 _product = api("get", "/api/product/status") or {}
 _status = api("get", "/api/status") or {}
 _sched = api("get", "/api/schedule/status") or {}
+_hunt = _product.get("hunt") or {}
+_atlas = _product.get("atlas") or {}
+_ein = _product.get("einstein") or {}
 _health = {}
 try:
     _health = requests.get(_API + "/health", timeout=3).json()
@@ -340,25 +538,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# Roadmap cards
-_hunt = _product.get("hunt") or {}
-_atlas = _product.get("atlas") or {}
-_ein = _product.get("einstein") or {}
-r1, r2, r3 = st.columns(3)
-with r1:
-    st.markdown("**Hunt** · live")
-    st.caption(_hunt.get("detail", "Search + indexing"))
-    st.metric("Indexed files", f"{(_hunt.get('files_indexed') or _status.get('files_indexed') or 0):,}")
-with r2:
-    st.markdown("**Atlas** · building")
-    st.caption(_atlas.get("detail", "Project memory"))
-    st.metric("Project cards", f"{(_atlas.get('project_cards') or 0):,}")
-with r3:
-    st.markdown("**Einstein** · planned")
-    st.caption(_ein.get("detail", "Expert reasoning — Phase 2"))
-    st.metric("Status", "Phase 2" if not _ein.get("enabled") else "Enabled")
-
-st.divider()
+roadmap_cards(_hunt, _atlas, _ein, _status)
 
 tabs = st.tabs([
     "Overview",
@@ -379,22 +559,15 @@ with tabs[0]:
     )
 
     section_label("What you operate today")
-    st.markdown(
-        """
-| Layer | Status | Admin controls |
-|-------|--------|----------------|
-| **Hunt** | Live | Pipeline, Archives, Schedule, Quality |
-| **Atlas** | Foundation | Project cards (this panel) |
-| **Einstein** | Planned | Config flag only — not shipping yet |
-"""
-    )
+    layer_grid()
 
     section_label("Active schedule")
     if _sched:
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Mode", _sched.get("mode", "—"))
-        c2.metric("Extract workers", _sched.get("extract_workers", "—"))
-        c3.metric("Embed batch", _sched.get("embed_batch_size", "—"))
+        metric_row([
+            ("Mode", str(_sched.get("mode", "—"))),
+            ("Extract workers", str(_sched.get("extract_workers", "—"))),
+            ("Embed batch", str(_sched.get("embed_batch_size", "—"))),
+        ])
         st.caption(_sched.get("description") or f"Source: {_sched.get('source', '—')}")
         if not _sched.get("run_indexing"):
             st.info("Day mode: heavy indexing paused so the search portal stays responsive. Switch to night in Schedule to run full indexing.")
@@ -475,7 +648,8 @@ with tabs[1]:
     st.subheader("Live progress")
     ps = api("get", "/api/pipeline/status") or {}
     if ps.get("running"):
-        st.write(f"**Stage:** {ps.get('stage', '—')}")
+        st.markdown('<div class="tiga-live-panel">', unsafe_allow_html=True)
+        st.markdown(f'<div class="tiga-live-stage"><strong>Stage:</strong> {ps.get("stage", "—")}</div>', unsafe_allow_html=True)
         p, t = ps.get("processed", 0), ps.get("total", 0)
         if t > 0:
             st.progress(min(p / t, 1.0), text=f"{p:,} / {t:,} files")
@@ -483,6 +657,7 @@ with tabs[1]:
             st.caption(f"ETA: {ps['eta']}s  ·  {ps.get('throughput', 0):.1f} files/s")
         for err in ps.get("errors", []):
             st.warning(err)
+        st.markdown('</div>', unsafe_allow_html=True)
     else:
         empty_state("No pipeline running. Prefer night mode + Run full pipeline for large archives.")
 
@@ -513,12 +688,13 @@ with tabs[2]:
         mounted = d.get("mounted")
         enabled = d.get("enabled", True)
         status_txt = "Online" if mounted else "Offline"
-        status_icon = "🟢" if mounted else "🔴"
+        dot_cls = "tiga-dot-ok" if mounted else "tiga-dot-err"
         st.markdown(
             f'<div class="tiga-dir-card">'
             f'<div class="tiga-dir-path"><strong>{d["path"]}</strong></div>'
-            f'<div style="font-size:12px;color:var(--tiga-ink-60);margin-top:4px">'
-            f'{status_icon} {status_txt} · {"Enabled" if enabled else "Disabled"}</div></div>',
+            f'<div class="tiga-dir-meta">'
+            f'<span class="tiga-status-dot {dot_cls}"></span>'
+            f'{status_txt} · {"Enabled" if enabled else "Disabled"}</div></div>',
             unsafe_allow_html=True,
         )
         c1, c2, c3, c4 = st.columns(4)
@@ -582,11 +758,18 @@ with tabs[3]:
         empty_state("Could not load schedule status.")
     else:
         section_label("Current mode")
-        m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Mode", sched.get("mode", "—"))
-        m2.metric("Extract workers", sched.get("extract_workers", "—"))
-        m3.metric("Embed batch size", sched.get("embed_batch_size", "—"))
-        m4.metric("Heavy indexing", "On" if sched.get("run_indexing") else "Off")
+        metric_row([
+            ("Mode", str(sched.get("mode", "—"))),
+            ("Extract workers", str(sched.get("extract_workers", "—"))),
+            ("Embed batch size", str(sched.get("embed_batch_size", "—"))),
+        ])
+        st.markdown(
+            f'<div class="tiga-panel" style="margin-top:10px">'
+            f'<div class="tiga-metric-label">Heavy indexing</div>'
+            f'<div class="tiga-metric-value" style="font-size:1.1rem;margin-top:4px">'
+            f'{"On" if sched.get("run_indexing") else "Off"}</div></div>',
+            unsafe_allow_html=True,
+        )
         st.caption(sched.get("description") or "")
         st.caption(f"Source: `{sched.get('source', '—')}` · mode file: `{sched.get('mode_file', '—')}`")
 
@@ -631,9 +814,17 @@ with tabs[4]:
     cards = data.get("cards") or []
 
     c1, c2 = st.columns(2)
-    c1.metric("Cards", data.get("total", len(cards)))
+    c1.markdown(
+        f'<div class="tiga-metric-cell"><div class="tiga-metric-value">{data.get("total", len(cards))}</div>'
+        f'<div class="tiga-metric-label">Cards</div></div>',
+        unsafe_allow_html=True,
+    )
     incomplete = sum(1 for c in cards if c.get("missing_fields"))
-    c2.metric("Incomplete", incomplete)
+    c2.markdown(
+        f'<div class="tiga-metric-cell"><div class="tiga-metric-value">{incomplete}</div>'
+        f'<div class="tiga-metric-label">Incomplete</div></div>',
+        unsafe_allow_html=True,
+    )
 
     if not cards:
         empty_state(
@@ -643,23 +834,7 @@ with tabs[4]:
     else:
         section_label("Project cards")
         for card in cards:
-            code = card.get("project_code", "?")
-            name = card.get("name") or "—"
-            miss = card.get("missing_fields") or []
-            pct = card.get("completeness", 0)
-            title = f"{code} · {name} · {pct}% complete"
-            with st.expander(title, expanded=False):
-                st.write(
-                    f"**Typology:** {card.get('typology_primary') or '—'}  ·  "
-                    f"**Location:** {card.get('location') or '—'}  ·  "
-                    f"**Stage:** {card.get('stage') or '—'}  ·  "
-                    f"**Client:** {card.get('client') or '—'}"
-                )
-                if miss:
-                    st.warning("Missing / low-confidence: " + ", ".join(miss))
-                else:
-                    st.success("Required fields filled.")
-                st.caption("Edit via CLI: `python tiga.py card " + str(code) + "`")
+            st.markdown(atlas_card_html(card), unsafe_allow_html=True)
 
     section_label("Coming in Atlas")
     st.markdown(
@@ -677,11 +852,11 @@ with tabs[5]:
 
     section_label("Feedback")
     summary = api("get", "/api/feedback/summary") or {}
-    f1, f2, f3 = st.columns(3)
-    f1.metric("Helpful", summary.get("total_positive", 0))
-    f2.metric("Not helpful", summary.get("total_negative", 0))
-    ratio = summary.get("positive_ratio")
-    f3.metric("Helpful ratio", f"{ratio:.0%}" if ratio is not None else "—")
+    metric_row([
+        ("Helpful", str(summary.get("total_positive", 0))),
+        ("Not helpful", str(summary.get("total_negative", 0))),
+        ("Helpful ratio", f"{summary.get('positive_ratio', 0):.0%}" if summary.get("positive_ratio") is not None else "—"),
+    ])
 
     qr = api("get", "/api/feedback/queries") or []
     if qr:
@@ -715,10 +890,13 @@ with tabs[5]:
         checks = diag.get("checks", [])
         st.write(f"**{diag.get('passed', 0)}/{diag.get('total', 0)} checks passed**")
         for c in checks:
-            icon = "✅" if c["ok"] else "❌"
-            st.write(f"{icon} **{c['name']}** — {c.get('detail', '')}")
-            if not c["ok"] and c.get("fix"):
-                st.caption(f"Fix: {c['fix']}")
+            dot = "tiga-check-ok" if c["ok"] else "tiga-check-fail"
+            fix = f'<div style="font-size:12px;color:var(--tiga-ink-60);margin-top:2px">Fix: {c["fix"]}</div>' if not c["ok"] and c.get("fix") else ""
+            st.markdown(
+                f'<div class="tiga-check-row"><span class="tiga-check-dot {dot}"></span>'
+                f'<div><strong>{c["name"]}</strong> — {c.get("detail", "")}{fix}</div></div>',
+                unsafe_allow_html=True,
+            )
 
     section_label("Pipeline activity")
     procs = api("get", "/api/processes") or []
@@ -849,8 +1027,12 @@ with tabs[6]:
     ad = api("get", f"/api/audit?page={int(pg)}&limit=50") or {}
     st.caption(f"{ad.get('total', 0):,} total entries")
     for e in ad.get("items", []):
-        detail = f" · _{e.get('detail')}_" if e.get("detail") else ""
-        st.markdown(f"`{e.get('ts', '')}` · **{e.get('action', '')}**{detail}")
+        detail = f" · <em>{e.get('detail')}</em>" if e.get("detail") else ""
+        st.markdown(
+            f'<div class="tiga-audit-row"><code>{e.get("ts", "")}</code> · '
+            f'<strong>{e.get("action", "")}</strong>{detail}</div>',
+            unsafe_allow_html=True,
+        )
     csv_audit = api("get", "/api/audit/export")
     if csv_audit:
         st.download_button(
