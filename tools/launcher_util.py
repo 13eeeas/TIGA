@@ -153,7 +153,7 @@ def _create_windows_shortcuts(desktop: Path) -> list[str]:
     open_admin = REPO_ROOT / "open-admin.bat"
     names = _shortcut_names()
     targets = [start_here, launcher, open_admin, uninstall]
-    icons = ["", "", ""]
+    icons = ["", "", "", ""]
 
     ps_lines = []
     for name, target, icon in zip(names, targets, icons):

@@ -12,6 +12,8 @@
 
 ### Corpus & config
 - [ ] Lock **3–5 project codes** and NAS `index_roots` (completed jobs staff can judge)
+- [x] One-click office flow: **`START-HERE.bat`** → configure → POC test
+- [x] Office guide: `docs/OFFICE_QUICKSTART.md`
 - [x] POC config template: `docs/config.poc.example.yaml`
 - [ ] Set `exclude_globs` for junk: caches, temp, backups, texture libs, autosaves
 - [ ] Confirm enterprise API vendor shortlist + env var names (no keys in repo)
