@@ -81,7 +81,36 @@ body{font-family:'Source Serif 4',Georgia,serif;background:var(--page-bg);color:
 @keyframes blobDrift3{from{transform:translate(0,0)scale(1)}to{transform:translate(30px,-40px)scale(0.92)}}
 
 /* ── LAYOUT ── */
-.container{position:relative;z-index:1;min-height:100vh;display:flex;flex-direction:column;align-items:center}
+.container{position:relative;z-index:1;min-height:100vh;display:flex;flex-direction:column;align-items:center;width:100%}
+
+/* ── CHAT SHELL (OpenAI-style) ── */
+.chat-shell{flex:1;width:100%;max-width:768px;display:flex;flex-direction:column;min-height:calc(100vh - 78px)}
+.chat-shell.idle{justify-content:center;padding:0 24px 48px}
+.chat-shell.active{justify-content:flex-end}
+.chat-scroll{flex:1;overflow-y:auto;width:100%;padding:8px 24px 12px;scroll-behavior:smooth}
+.chat-shell.idle .chat-scroll{flex:0;overflow:visible;padding:0 0 16px}
+.chat-empty{display:flex;justify-content:center;width:100%}
+.chat-shell.active .chat-empty{display:none}
+.chat-thread{display:flex;flex-direction:column;gap:4px;width:100%}
+.chat-shell.idle .chat-thread{display:none}
+
+/* ── CHAT TURNS ── */
+.chat-turn{padding:8px 0;animation:fadeUp .25s ease both}
+.chat-turn.user{display:flex;justify-content:flex-end}
+.user-bubble{background:var(--btn-bg);color:var(--page-bg);border:none;border-radius:20px 20px 4px 20px;padding:10px 18px;max-width:min(85%,520px);font-family:'Source Serif 4',Georgia,serif;font-size:15px;font-weight:300;line-height:1.45;text-align:left;cursor:pointer;transition:opacity .15s,transform .12s;box-shadow:0 2px 8px rgba(0,0,0,.12)}
+.user-bubble:hover{opacity:.88;transform:translateY(-1px)}
+.assistant-bubble{width:100%}
+.turn-summary{font-size:15px;line-height:1.72;font-weight:300;color:var(--ink);margin-bottom:10px}
+.turn-summary.loading{opacity:.55}
+.turn-meta{font-size:11px;color:var(--ink-60);font-weight:300;margin-top:12px;display:flex;flex-wrap:wrap;gap:6px}
+.turn-followups{display:flex;flex-wrap:wrap;gap:7px;margin-top:12px}
+.turn-error{margin-top:4px}
+
+/* ── COMPOSER (bottom input) ── */
+.composer{width:100%;flex-shrink:0;padding:0 24px 24px}
+.chat-shell.idle .composer{max-width:640px;margin:0 auto}
+.chat-shell.active .composer{padding-bottom:28px}
+.composer-inner{max-width:640px;margin:0 auto}
 
 /* ── HEADER ── */
 .header{width:100%;padding:22px 32px;display:flex;align-items:center;justify-content:space-between}
@@ -115,21 +144,16 @@ body{font-family:'Source Serif 4',Georgia,serif;background:var(--page-bg);color:
 .cat-wrap.searching .cat-ring{animation:ringPulse 1s ease-out infinite}
 @keyframes ringPulse{0%{opacity:.7;transform:scale(.75)}100%{opacity:0;transform:scale(1.6)}}
 
-/* ── HERO ── */
-.hero{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0 24px 100px;max-width:700px;width:100%;gap:16px;transition:padding .35s ease,gap .35s ease}
-.hero.compact{flex:0 0 auto;padding:0 24px 20px;gap:10px;justify-content:flex-start}
-.hero-title{font-family:'Lora',Georgia,serif;font-size:clamp(28px,4.5vw,42px);font-weight:400;text-align:center;letter-spacing:-.01em;line-height:1.3;color:var(--ink);animation:fadeUp .5s ease both;transition:color .35s,font-size .35s ease,opacity .35s ease}
-.hero.compact .hero-title{font-size:clamp(18px,2.8vw,24px);opacity:.85}
-.title-accent{font-style:italic;color:var(--coral);font-weight:400}
-@keyframes fadeUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
+/* ── HERO (removed — chat layout) ── */
+@keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}}
 
 /* ── SEARCH BOX ── */
-.search-wrap{width:100%;max-width:580px;animation:fadeUp .5s .12s ease both;opacity:0}
-.search-box{width:100%;background:var(--glass-bg);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border:1px solid var(--glass-border);border-bottom-color:var(--glass-border-lo);border-right-color:var(--glass-border-lo);border-radius:18px;box-shadow:var(--glass-shadow),inset 0 1.5px 0 var(--glass-inner),inset 0 -1px 0 rgba(0,0,0,.03);display:flex;align-items:center;padding:5px 5px 5px 18px;gap:10px;transition:box-shadow .25s,border-color .25s,background .35s}
+.search-wrap{width:100%;opacity:1}
+.search-box{width:100%;background:var(--glass-bg);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border:1px solid var(--glass-border);border-bottom-color:var(--glass-border-lo);border-right-color:var(--glass-border-lo);border-radius:24px;box-shadow:var(--glass-shadow),inset 0 1.5px 0 var(--glass-inner),inset 0 -1px 0 rgba(0,0,0,.03);display:flex;align-items:flex-end;padding:6px 6px 6px 16px;gap:8px;transition:box-shadow .25s,border-color .25s,background .35s}
 .search-box:focus-within{border-color:rgba(201,100,66,.45);box-shadow:0 8px 40px var(--coral-glow),0 2px 8px rgba(0,0,0,.06),inset 0 1.5px 0 var(--glass-inner),inset 0 -1px 0 rgba(0,0,0,.03)}
 .search-icon{color:var(--ink-60);flex-shrink:0;transition:color .35s}
-.search-input{flex:1;border:none;background:transparent;font-family:'Source Serif 4',Georgia,serif;font-size:15.5px;font-weight:300;color:var(--ink);outline:none;padding:15px 0;transition:color .35s}
+.search-input{flex:1;border:none;background:transparent;font-family:'Source Serif 4',Georgia,serif;font-size:15.5px;font-weight:300;color:var(--ink);outline:none;padding:12px 0;resize:none;min-height:24px;max-height:120px;line-height:1.45;transition:color .35s}
 .search-input::placeholder{color:var(--ink-60)}
 .search-btn{background:var(--btn-bg);border:none;border-radius:13px;width:46px;height:46px;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;box-shadow:0 2px 8px rgba(0,0,0,.15);transition:background .2s,transform .15s,box-shadow .2s}
 .search-btn:hover{background:var(--btn-hover);transform:scale(1.05);box-shadow:0 4px 16px rgba(201,100,66,.35)}
@@ -144,17 +168,12 @@ body{font-family:'Source Serif 4',Georgia,serif;background:var(--page-bg);color:
 @keyframes progressShimmer{0%{background-position:100% 0}100%{background-position:-200% 0}}
 
 /* ── HINT PILLS ── */
-.hint-pills{display:flex;flex-wrap:wrap;gap:7px;justify-content:center;padding:4px 0;width:100%;max-width:580px;animation:fadeUp .5s .28s ease both;opacity:0}
+.hint-pills{display:flex;flex-wrap:wrap;gap:7px;justify-content:center;padding:4px 0;width:100%;max-width:580px}
 .hint-pill{background:transparent;border:1px dashed var(--ink-12);border-radius:100px;padding:5px 14px;font-family:'Source Serif 4',Georgia,serif;font-size:12px;font-weight:300;color:var(--ink-60);cursor:pointer;transition:all .2s}
 .hint-pill:hover{border-style:solid;border-color:rgba(201,100,66,.45);color:var(--coral);background:var(--coral-glow)}
 
-/* ── RESULTS ── */
-.results-section{width:100%;max-width:700px;padding:0 24px 80px;display:flex;flex-direction:column;gap:14px;opacity:0;visibility:hidden;transform:translateY(10px);pointer-events:none;transition:opacity .3s ease,transform .3s ease,visibility .3s;scroll-margin-top:80px}
-.results-section.visible,.results-section.loading{opacity:1;visibility:visible;transform:none;pointer-events:all}
-.summary-card{background:var(--glass-bg);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border:1px solid var(--glass-border);border-bottom-color:var(--glass-border-lo);border-radius:16px;padding:18px 22px;box-shadow:var(--glass-shadow),inset 0 1.5px 0 var(--glass-inner);font-size:14.5px;line-height:1.72;font-weight:300;color:var(--ink);transition:background .35s,color .35s,opacity .25s ease}
-.summary-card.loading{opacity:.55}
-.summary-label{font-size:10.5px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:var(--coral);margin-bottom:8px}
-.results-list{display:flex;flex-direction:column;gap:8px;min-height:0}
+/* ── RESULTS (inside chat turns) ── */
+.turn-results{display:flex;flex-direction:column;gap:6px;margin-top:4px}
 .result-item{background:var(--glass-bg);border:1px solid var(--glass-border);border-bottom-color:var(--glass-border-lo);border-radius:14px;padding:13px 16px;display:flex;align-items:center;gap:13px;cursor:pointer;box-shadow:var(--glass-shadow),inset 0 1px 0 var(--glass-inner);transition:opacity .22s ease,transform .22s ease,box-shadow .2s,border-color .2s,background .35s;opacity:0;transform:translateY(6px)}
 .result-item.show{opacity:1;transform:none}
 .result-item:hover{border-color:rgba(201,100,66,.35);box-shadow:0 6px 24px var(--coral-glow),0 2px 8px rgba(0,0,0,.06),inset 0 1.5px 0 var(--glass-inner)}
@@ -215,7 +234,7 @@ body{font-family:'Source Serif 4',Georgia,serif;background:var(--page-bg);color:
 .modal-action-primary:hover{opacity:.85}
 
 /* ── FEEDBACK BAR ── */
-.feedback-bar{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(14px);background:var(--glass-bg);backdrop-filter:blur(28px) saturate(1.8);-webkit-backdrop-filter:blur(28px) saturate(1.8);border:1px solid var(--glass-border);border-radius:100px;padding:6px 14px;display:flex;align-items:center;gap:2px;box-shadow:var(--glass-shadow),inset 0 1.5px 0 var(--glass-inner);z-index:50;opacity:0;pointer-events:none;transition:opacity .35s,transform .35s,background .35s}
+.feedback-bar{position:fixed;bottom:96px;left:50%;transform:translateX(-50%) translateY(14px);background:var(--glass-bg);backdrop-filter:blur(28px) saturate(1.8);-webkit-backdrop-filter:blur(28px) saturate(1.8);border:1px solid var(--glass-border);border-radius:100px;padding:6px 14px;display:flex;align-items:center;gap:2px;box-shadow:var(--glass-shadow),inset 0 1.5px 0 var(--glass-inner);z-index:50;opacity:0;pointer-events:none;transition:opacity .35s,transform .35s,background .35s}
 .feedback-bar.visible{opacity:1;pointer-events:all;transform:translateX(-50%) translateY(0)}
 .fb-btn{width:34px;height:34px;border-radius:100px;border:none;background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--ink-60);transition:all .15s}
 .fb-btn:hover{background:var(--ink-12);color:var(--ink)}
@@ -310,21 +329,20 @@ body{font-family:'Source Serif 4',Georgia,serif;background:var(--page-bg);color:
 .empty-tip:hover{border-style:solid;border-color:rgba(201,100,66,.45);color:var(--coral);background:var(--coral-glow)}
 
 /* ── KEYBOARD HINT ── */
-.kbd-hint{font-size:11px;color:var(--ink-60);font-weight:300;text-align:center;margin-top:6px;opacity:.7}
+.kbd-hint{font-size:11px;color:var(--ink-60);font-weight:300;text-align:center;margin-top:8px;opacity:.55}
 .kbd-hint kbd{display:inline-block;padding:1px 5px;border-radius:4px;border:1px solid var(--ink-12);background:var(--glass-inner);font-family:inherit;font-size:10px}
+
+.show-more-wrap{display:flex;justify-content:center;padding:8px 0 4px}
+.chat-shell.idle .show-more-wrap{display:none}
 
 /* ── MOBILE ── */
 @media(max-width:640px){
   .header{padding:16px 18px}
-  .hero{padding:0 18px 60px}
-  .hero-title{font-size:26px}
-  .results-section,.search-wrap,.hint-pills{max-width:100%;padding-left:18px;padding-right:18px}
+  .composer,.chat-scroll{padding-left:16px;padding-right:16px}
+  .chat-shell.idle{padding:0 16px 32px}
   .settings-drawer{width:100%;max-width:100%}
-  .result-item{flex-wrap:nowrap}
-  .result-side{flex-shrink:0}
-  .feedback-bar{bottom:14px;max-width:calc(100% - 32px)}
-  .modal-overlay{padding:12px}
-  .results-query{white-space:normal}
+  .user-bubble{max-width:92%}
+  .feedback-bar{bottom:88px;max-width:calc(100% - 32px)}
   .new-search-btn.visible{display:none}
 }
 
@@ -391,63 +409,45 @@ body{font-family:'Source Serif 4',Georgia,serif;background:var(--page-bg);color:
     </div>
   </header>
 
-  <!-- ── HERO ── -->
-  <main class="hero" id="hero" role="main">
-    <h1 class="hero-title">Search the archive,<br><span class="title-accent">the way you remember it</span></h1>
-
-    <div class="search-wrap">
-      <div class="search-box" role="search">
-        <svg class="search-icon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-        </svg>
-        <input class="search-input" id="searchInput" type="search"
-          placeholder="What are you looking for?" autocomplete="off" spellcheck="false"
-          aria-label="Search the archive" enterkeyhint="search"/>
-        <button class="search-btn" onclick="doSearch()" aria-label="Search">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <line x1="5" y1="12" x2="19" y2="12"/>
-            <polyline points="12 5 19 12 12 19"/>
-          </svg>
-        </button>
+  <!-- ── CHAT ── -->
+  <div class="chat-shell idle" id="chatShell">
+    <div class="chat-scroll" id="chatScroll">
+      <div class="chat-empty" id="chatEmpty">
+        <div class="hint-pills" id="hintPills">
+          <button class="hint-pill" onclick="useHint(this)">facade glazing details</button>
+          <button class="hint-pill" onclick="useHint(this)">client meeting minutes</button>
+          <button class="hint-pill" onclick="useHint(this)">schematic design drawings</button>
+          <button class="hint-pill" onclick="useHint(this)">structural consultant report</button>
+          <button class="hint-pill" onclick="useHint(this)">planning submission documents</button>
+          <button class="hint-pill" onclick="useHint(this)">material specification</button>
+        </div>
       </div>
-      <!-- Progress bar — shown while searching -->
-      <div class="search-progress" id="searchProgress" role="progressbar" aria-hidden="true">
-        <div class="search-progress-bar"></div>
+      <div class="chat-thread" id="chatThread"></div>
+    </div>
+
+    <div class="composer" id="composer">
+      <div class="composer-inner">
+        <div class="search-wrap">
+          <div class="search-box" role="search">
+            <textarea class="search-input" id="searchInput" rows="1"
+              placeholder="Search the archive…" autocomplete="off" spellcheck="false"
+              aria-label="Search the archive" enterkeyhint="search"></textarea>
+            <button class="search-btn" onclick="doSearch()" aria-label="Search">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <line x1="12" y1="19" x2="12" y2="5"/>
+                <polyline points="5 12 12 5 19 12"/>
+              </svg>
+            </button>
+          </div>
+          <div class="search-progress" id="searchProgress" role="progressbar" aria-hidden="true">
+            <div class="search-progress-bar"></div>
+          </div>
+          <div class="search-status" id="searchStatus" aria-live="polite"></div>
+        </div>
+        <p class="kbd-hint" id="kbdHint">Enter to send · click a past query to reuse it</p>
       </div>
-      <div class="search-status" id="searchStatus" aria-live="polite"></div>
-      <p class="kbd-hint" id="kbdHint">Press <kbd>Enter</kbd> to search · <kbd>/</kbd> to focus</p>
     </div>
-
-    <!-- Hint pills — hidden after first search -->
-    <div class="hint-pills" id="hintPills">
-      <button class="hint-pill" onclick="useHint(this)">facade glazing details</button>
-      <button class="hint-pill" onclick="useHint(this)">client meeting minutes</button>
-      <button class="hint-pill" onclick="useHint(this)">schematic design drawings</button>
-      <button class="hint-pill" onclick="useHint(this)">structural consultant report</button>
-      <button class="hint-pill" onclick="useHint(this)">planning submission documents</button>
-      <button class="hint-pill" onclick="useHint(this)">material specification</button>
-    </div>
-  </main>
-
-  <!-- ── RESULTS ── -->
-  <section class="results-section" id="resultsSection" aria-live="polite" aria-label="Search results">
-    <div class="results-meta" id="resultsMeta" style="display:none">
-      <div class="results-query" id="resultsQuery"></div>
-      <div class="results-badges" id="resultsBadges"></div>
-    </div>
-    <div class="summary-card" id="summaryCard">
-      <div class="summary-label">Summary</div>
-      <div id="summaryText"></div>
-    </div>
-    <div class="results-list" id="resultsList" role="list"></div>
-    <div class="followups" id="followUps"></div>
-    <button class="show-more-btn" id="showMoreBtn" onclick="showMore()" style="display:none">Show more results</button>
-    <div class="show-more-dots" id="showMoreDots">
-      <div class="show-more-dot"></div>
-      <div class="show-more-dot"></div>
-      <div class="show-more-dot"></div>
-    </div>
-  </section>
+  </div>
 </div>
 
 <!-- ── MODAL ── -->
@@ -541,6 +541,8 @@ let _query     = '';
 let _offset    = 0;
 let _statusTimer = null;
 let _focusedIdx = -1;
+let _activeTurnEl = null;
+let _turnCounter = 0;
 
 const LOADING_STAGES = [
   'Searching the archive…',
@@ -574,13 +576,46 @@ const LOADING_STAGES = [
       else if (settingsOpen) toggleSettings();
       else if (document.getElementById('feedbackFormOverlay').classList.contains('open')) closeFeedbackFormDirect();
     }
-    if (document.getElementById('resultsSection').classList.contains('visible') && !isTyping(e)) {
+    if (document.getElementById('chatThread').children.length && !isTyping(e)) {
       if (e.key === 'ArrowDown') { e.preventDefault(); focusResult(_focusedIdx + 1); }
       if (e.key === 'ArrowUp')   { e.preventDefault(); focusResult(_focusedIdx - 1); }
-      if (e.key === 'Enter' && _focusedIdx >= 0) { e.preventDefault(); openPreview(_focusedIdx); }
+      if (e.key === 'Enter' && _focusedIdx >= 0 && !e.shiftKey) { e.preventDefault(); openPreview(_focusedIdx); }
+    }
+  });
+
+  // Textarea auto-grow + Enter to send
+  const input = document.getElementById('searchInput');
+  input.addEventListener('input', autoGrowInput);
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      doSearch(0);
     }
   });
 })();
+
+function autoGrowInput() {
+  const el = document.getElementById('searchInput');
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+}
+
+function scrollChatToBottom() {
+  const sc = document.getElementById('chatScroll');
+  requestAnimationFrame(() => { sc.scrollTop = sc.scrollHeight; });
+}
+
+function skeletonHtml(n) {
+  return Array(n).fill(0).map(() => `
+    <div class="skeleton-item" aria-hidden="true">
+      <div class="sk-icon"></div>
+      <div class="sk-body"><div class="sk-line sk-line-wide"></div><div class="sk-line"></div></div>
+    </div>`).join('');
+}
+
+function skeletonSummaryHtml() {
+  return '<div class="sk-body" style="gap:10px"><div class="sk-line sk-line-wide"></div><div class="sk-line"></div><div class="sk-line" style="width:36%"></div></div>';
+}
 
 function isTyping(e) {
   const t = e.target;
@@ -637,55 +672,72 @@ function stopLoadingStatus() {
 /* ── Reset search ───────────────────────────────────────── */
 function resetSearch() {
   document.getElementById('searchInput').value = '';
-  const section = document.getElementById('resultsSection');
-  section.classList.remove('visible', 'loading');
+  autoGrowInput();
+  document.getElementById('chatThread').innerHTML = '';
+  document.getElementById('chatShell').classList.add('idle');
+  document.getElementById('chatShell').classList.remove('active');
+  document.getElementById('chatEmpty').style.display = '';
   document.getElementById('feedbackBar').classList.remove('visible');
   document.getElementById('newSearchBtn').classList.remove('visible');
-  document.getElementById('resultsMeta').classList.remove('show');
-  document.getElementById('resultsMeta').style.display = 'none';
-  document.getElementById('summaryCard').style.display = '';
-  document.getElementById('summaryCard').classList.remove('loading');
-  document.getElementById('summaryText').textContent = '';
-  document.getElementById('resultsList').innerHTML = '';
-  document.getElementById('followUps').innerHTML = '';
-  document.getElementById('showMoreBtn').style.display = 'none';
-  document.getElementById('hero').classList.remove('compact');
-  const hints = document.getElementById('hintPills');
-  if (hints) hints.style.display = '';
   document.getElementById('kbdHint').style.display = '';
   _results = [];
   _query = '';
   _offset = 0;
   _focusedIdx = -1;
+  _activeTurnEl = null;
   document.getElementById('searchInput').focus();
   window.scrollTo({top: 0, behavior: 'smooth'});
 }
 
-/* ── Loading skeleton ───────────────────────────────────── */
-function showLoadingState() {
-  const section = document.getElementById('resultsSection');
-  const summary = document.getElementById('summaryCard');
-  const alreadyVisible = section.classList.contains('visible');
-  section.classList.add('loading');
-  if (!alreadyVisible) {
-    section.classList.remove('visible');
-    requestAnimationFrame(() => section.classList.add('visible'));
-  }
-  document.getElementById('hero').classList.add('compact');
+function addUserTurn(query) {
+  const shell = document.getElementById('chatShell');
+  shell.classList.remove('idle');
+  shell.classList.add('active');
+  document.getElementById('chatEmpty').style.display = 'none';
   document.getElementById('newSearchBtn').classList.add('visible');
-  document.getElementById('resultsMeta').style.display = 'none';
-  document.getElementById('resultsMeta').classList.remove('show');
-  document.getElementById('followUps').innerHTML = '';
-  document.getElementById('showMoreBtn').style.display = 'none';
-  summary.style.display = '';
-  summary.classList.add('loading');
-  document.getElementById('summaryText').innerHTML =
-    '<div class="sk-body" style="gap:10px"><div class="sk-line sk-line-wide"></div><div class="sk-line"></div><div class="sk-line" style="width:36%"></div></div>';
-  document.getElementById('resultsList').innerHTML = Array(4).fill(0).map(() => `
-    <div class="skeleton-item" aria-hidden="true">
-      <div class="sk-icon"></div>
-      <div class="sk-body"><div class="sk-line sk-line-wide"></div><div class="sk-line"></div></div>
-    </div>`).join('');
+
+  const turn = document.createElement('div');
+  turn.className = 'chat-turn user';
+  const btn = document.createElement('button');
+  btn.className = 'user-bubble';
+  btn.type = 'button';
+  btn.textContent = query;
+  btn.title = 'Click to search again';
+  btn.onclick = () => reuseQuery(query);
+  turn.appendChild(btn);
+  document.getElementById('chatThread').appendChild(turn);
+  scrollChatToBottom();
+}
+
+function reuseQuery(query) {
+  document.getElementById('searchInput').value = query;
+  autoGrowInput();
+  document.getElementById('searchInput').focus();
+  doSearch(0);
+}
+
+function startAssistantTurn() {
+  const turn = document.createElement('div');
+  turn.className = 'chat-turn assistant';
+  turn.id = 'turn-' + (++_turnCounter);
+  turn.innerHTML = `
+    <div class="assistant-bubble">
+      <div class="turn-summary loading">${skeletonSummaryHtml()}</div>
+      <div class="turn-results" role="list">${skeletonHtml(3)}</div>
+    </div>`;
+  document.getElementById('chatThread').appendChild(turn);
+  _activeTurnEl = turn;
+  scrollChatToBottom();
+}
+
+function getActiveResultsList() {
+  if (!_activeTurnEl) return null;
+  return _activeTurnEl.querySelector('.turn-results');
+}
+
+function getActiveSummaryEl() {
+  if (!_activeTurnEl) return null;
+  return _activeTurnEl.querySelector('.turn-summary');
 }
 
 /* ── Search ─────────────────────────────────────────────── */
@@ -699,22 +751,23 @@ async function doSearch(offset) {
 
   const cat    = document.getElementById('catWrap');
   const prog   = document.getElementById('searchProgress');
-  const smBtn  = document.getElementById('showMoreBtn');
-  const smDots = document.getElementById('showMoreDots');
 
   cat.classList.add('searching');
   prog.classList.add('active');
   startLoadingStatus();
 
   if (offset === 0) {
-    showLoadingState();
+    addUserTurn(q);
+    startAssistantTurn();
+    document.getElementById('searchInput').value = '';
+    autoGrowInput();
     document.getElementById('feedbackBar').classList.remove('visible');
-    const hints = document.getElementById('hintPills');
-    if (hints) hints.style.display = 'none';
     document.getElementById('kbdHint').style.display = 'none';
   } else {
-    smBtn.style.display  = 'none';
-    smDots.classList.add('active');
+    const list = getActiveResultsList();
+    if (list) list.insertAdjacentHTML('beforeend', skeletonHtml(2));
+    const smWrap = _activeTurnEl && _activeTurnEl.querySelector('.show-more-wrap');
+    if (smWrap) smWrap.innerHTML = '<div class="show-more-dots active" style="display:flex"><div class="show-more-dot"></div><div class="show-more-dot"></div><div class="show-more-dot"></div></div>';
   }
 
   try {
@@ -734,92 +787,114 @@ async function doSearch(offset) {
     cat.classList.remove('searching');
     prog.classList.remove('active');
     stopLoadingStatus();
-    smDots.classList.remove('active');
     showResults(data, offset > 0);
 
   } catch(e) {
     cat.classList.remove('searching');
     prog.classList.remove('active');
     stopLoadingStatus();
-    smDots.classList.remove('active');
     showError('Could not reach the server. Is TIGA running? ' + e.message);
   }
 }
 
 /* ── Render results ─────────────────────────────────────── */
 function showResults(data, append) {
-  const section = document.getElementById('resultsSection');
-  section.classList.remove('loading');
-
   if (!append) {
     _results = [];
     _focusedIdx = -1;
-    document.getElementById('resultsList').innerHTML = '';
-    document.getElementById('followUps').innerHTML = '';
-    renderResultsMeta(data);
-    document.getElementById('newSearchBtn').classList.add('visible');
-    document.getElementById('hero').classList.add('compact');
   }
 
   const newResults = data.results || [];
   const startIdx = _results.length;
   _results = _results.concat(newResults);
 
-  const summaryCard = document.getElementById('summaryCard');
-  summaryCard.classList.remove('loading');
+  const summaryEl = getActiveSummaryEl();
+  const listEl = getActiveResultsList();
+  if (!summaryEl || !listEl) return;
+
+  // Remove skeleton rows appended for "show more"
+  if (append) listEl.querySelectorAll('.skeleton-item').forEach(el => el.remove());
+
+  summaryEl.classList.remove('loading');
 
   if (!append && newResults.length === 0) {
-    summaryCard.style.display = 'none';
-    document.getElementById('resultsList').innerHTML = renderEmptyState(data);
+    summaryEl.style.display = 'none';
+    listEl.innerHTML = renderEmptyState(data);
   } else {
-    summaryCard.style.display = '';
-    if (!append) {
-      document.getElementById('summaryText').textContent = data.answer_summary || '—';
+    summaryEl.style.display = '';
+    if (!append) summaryEl.textContent = data.answer_summary || '—';
+    if (append) {
+      renderResultItems(newResults, startIdx, true, listEl);
+    } else {
+      listEl.innerHTML = '';
+      renderResultItems(newResults, startIdx, false, listEl);
     }
-    renderResultItems(newResults, startIdx, append);
   }
 
+  // Meta + follow-ups (first page only)
   if (!append) {
-    const fu = document.getElementById('followUps');
+    let metaRow = _activeTurnEl.querySelector('.turn-meta');
+    if (!metaRow) {
+      metaRow = document.createElement('div');
+      metaRow.className = 'turn-meta';
+      _activeTurnEl.querySelector('.assistant-bubble').appendChild(metaRow);
+    }
+    metaRow.innerHTML = buildMetaBadges(data);
+
+    let fuRow = _activeTurnEl.querySelector('.turn-followups');
+    if (!fuRow) {
+      fuRow = document.createElement('div');
+      fuRow.className = 'turn-followups';
+      _activeTurnEl.querySelector('.assistant-bubble').appendChild(fuRow);
+    }
+    fuRow.innerHTML = '';
     (data.follow_up_prompts || []).forEach(p => {
       const btn = document.createElement('button');
       btn.className = 'followup-pill';
       btn.textContent = p;
       btn.onclick = () => {
         document.getElementById('searchInput').value = p;
+        autoGrowInput();
         doSearch(0);
       };
-      fu.appendChild(btn);
+      fuRow.appendChild(btn);
     });
+
+    // Show more button inside turn
+    let smWrap = _activeTurnEl.querySelector('.show-more-wrap');
+    if (!smWrap) {
+      smWrap = document.createElement('div');
+      smWrap.className = 'show-more-wrap';
+      _activeTurnEl.querySelector('.assistant-bubble').appendChild(smWrap);
+    }
+    smWrap.innerHTML = newResults.length >= 5
+      ? '<button class="show-more-btn" onclick="showMore()">Show more results</button>'
+      : '';
+  } else {
+    const smWrap = _activeTurnEl.querySelector('.show-more-wrap');
+    if (smWrap) {
+      smWrap.innerHTML = newResults.length >= 5
+        ? '<button class="show-more-btn" onclick="showMore()">Show more results</button>'
+        : '';
+    }
   }
 
-  document.getElementById('showMoreBtn').style.display = newResults.length >= 5 ? 'block' : 'none';
-
-  section.classList.add('visible');
   document.getElementById('feedbackBar').classList.add('visible');
+  scrollChatToBottom();
 }
 
-function renderResultsMeta(data) {
-  const meta = document.getElementById('resultsMeta');
-  const queryEl = document.getElementById('resultsQuery');
-  const badges = document.getElementById('resultsBadges');
-  meta.style.display = 'flex';
-  queryEl.innerHTML = `Results for <em>${esc(_query)}</em>`;
-
+function buildMetaBadges(data) {
   const count = (data.results || []).length;
   const latency = data.latency_ms ? `${Math.round(data.latency_ms)}ms` : '';
   const conf = data.confidence_label || '';
   const confClass = conf === 'High' ? 'conf-high' : conf === 'Medium' ? 'conf-med' : conf ? 'conf-low' : '';
   const mode = data.mode ? data.mode.replace(/_/g, ' ') : '';
-
-  badges.innerHTML = [
+  return [
     count ? `<span class="meta-badge">${count} result${count !== 1 ? 's' : ''}</span>` : '',
     latency ? `<span class="meta-badge">${latency}</span>` : '',
     conf ? `<span class="meta-badge ${confClass}">${esc(conf)} confidence</span>` : '',
     mode ? `<span class="meta-badge">${esc(mode)}</span>` : '',
   ].filter(Boolean).join('');
-
-  requestAnimationFrame(() => meta.classList.add('show'));
 }
 
 function renderEmptyState(data) {
@@ -852,8 +927,7 @@ function useEmptyTip(el) {
   doSearch(0);
 }
 
-function renderResultItems(newResults, startIdx, append) {
-  const list = document.getElementById('resultsList');
+function renderResultItems(newResults, startIdx, append, list) {
   const items = [];
 
   newResults.forEach((r, i) => {
@@ -943,14 +1017,14 @@ function useHint(el) {
 }
 
 function showError(msg) {
-  const section = document.getElementById('resultsSection');
-  section.classList.remove('loading');
-  document.getElementById('summaryCard').classList.remove('loading');
-  document.getElementById('summaryCard').style.display = 'none';
-  document.getElementById('hero').classList.add('compact');
-  document.getElementById('resultsList').innerHTML =
-    `<div class="error-card">${esc(msg)}</div>`;
-  section.classList.add('visible');
+  if (!_activeTurnEl) startAssistantTurn();
+  const summaryEl = getActiveSummaryEl();
+  const listEl = getActiveResultsList();
+  if (summaryEl) { summaryEl.style.display = 'none'; summaryEl.classList.remove('loading'); }
+  if (listEl) listEl.innerHTML = `<div class="error-card turn-error">${esc(msg)}</div>`;
+  document.getElementById('chatShell').classList.remove('idle');
+  document.getElementById('chatShell').classList.add('active');
+  scrollChatToBottom();
 }
 
 /* ── Preview modal ──────────────────────────────────────── */
@@ -1125,10 +1199,6 @@ function showToast(msg) {
 function esc(s) {
   return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
-
-document.getElementById('searchInput').addEventListener('keydown', e => {
-  if (e.key === 'Enter') doSearch(0);
-});
 </script>
 </body>
 </html>
