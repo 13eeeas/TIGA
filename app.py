@@ -66,8 +66,8 @@ h1, h2, h3, h4, .stSubheader, div[data-testid="stHeading"] {
 .tiga-blob-2 {width: 340px; height: 340px; background: rgba(255,200,170,0.10); bottom: -60px; right: -40px;}
 .tiga-admin-header {position: relative; z-index: 1; display: flex; align-items: center; justify-content: space-between; padding: 8px 0 20px; margin-bottom: 4px; border-bottom: 1px solid var(--tiga-border);}
 .tiga-brand {display: flex; align-items: center; gap: 10px; color: var(--tiga-ink);}
-.tiga-cat-wrap {width: 28px; height: 36px; flex-shrink: 0;}
-.tiga-cat-svg {width: 28px; height: 36px; display: block;}
+.tiga-cat-wrap {width: 26px; height: 40px; flex-shrink: 0;}
+.tiga-cat-svg {width: 26px; height: 40px; display: block;}
 .tiga-brand-name {font-family: 'Lora', Georgia, serif; font-size: 1.35rem; font-weight: 500;}
 .tiga-brand-sub {font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--tiga-coral); margin-top: 1px;}
 .tiga-portal-link {font-size: 13px; color: var(--tiga-ink-60); text-decoration: none; padding: 7px 14px; border: 1px solid var(--tiga-border); border-radius: 100px; background: var(--tiga-surface);}
