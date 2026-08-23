@@ -767,7 +767,7 @@ async def api_query(
 
     else:
         # semantic — use existing hybrid RAG pipeline with synonym boosting
-        pool_k = max((req.top_k + req.offset) * 3, 20)
+        pool_k = cfg.retrieval_candidate_pool(max((req.top_k + req.offset), req.top_k))
         search_filters = req.filters or {}
         if route.project_code:
             search_filters = {**search_filters, "project_id": route.project_code}

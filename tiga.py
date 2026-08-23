@@ -104,15 +104,29 @@ typology_inference:
     cultural:     [museum, gallery, library, theatre, pavilion, expo]
 
 retrieval:
-  top_k_default: 5
+  top_k_default: 10
   hybrid_weight_bm25: 0.4
   hybrid_weight_vector: 0.6
-  # Cross-encoder reranker — dramatically improves result precision.
-  # Install: pip install sentence-transformers
-  # Model downloads ~80 MB on first use, runs on CPU in ~15-20 ms.
-  reranker_enabled: false
+  prefer_latest_default: true
+  latest_score_boost: 1.15
+  superseded_score_penalty: 0.55
+  reranker_enabled: true
   reranker_model: cross-encoder/ms-marco-MiniLM-L-6-v2
-  reranker_top_k: 20  # rerank top-N candidates before trimming to top_k_default
+  reranker_top_k: 50
+  reranker_chunk_chars: 1200
+
+compose:
+  provider: openai
+  api_enabled: true
+  model: gpt-4o-mini
+  max_tokens: 800
+  timeout_seconds: 45
+  evidence_pack_size: 12
+  chunk_char_cap: 1200
+  fallback_to_ollama: true
+  azure_endpoint: ""
+  azure_deployment: ""
+  azure_api_version: "2024-02-15-preview"
 
 ocr:
   enabled: false

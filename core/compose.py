@@ -1,30 +1,14 @@
 """
-core/compose.py — Answer composer.
-
-ResultView  — lightweight view of a SearchResult for rendering.
-ComposeResult — structured return type from compose_answer().
+core/compose.py — Answer composer (Einstein synthesis layer).
 
 compose_answer(query, results, session_id, cfg_obj, conn)
-  1. Build context from top-3 result snippets.
-  2. Load session history (last 6 turns) from DB.
-  3. Call Ollama /api/chat (stream=false) for answer.
-  4. Call Ollama for 3 follow-up prompts (separate call).
-  5. Compute confidence from result scores.
-  6. Persist: user query + assistant answer + citations to messages.
-  7. Log latency to events table.
+  1. Hydrate evidence pack (8–15 chunks, full text capped).
+  2. Load session history.
+  3. Call enterprise API (or Ollama fallback) for synthesis.
+  4. Optional follow-up prompts.
+  5. Persist session + audit log.
 
-Fallback (Ollama unavailable or times out):
-  answer_summary = "[Ollama unavailable — showing raw excerpts] " + top-3 snippets[:600]
-  follow_ups     = []
-
-Hard rule:
-  Citations come from results list only.  Never from Ollama output.
-  answer_summary is the LLM synthesis.
-  results list is the ground truth with citations.
-
-Streaming API (legacy / CLI):
-  compose_stream(query, results, history) — yield tokens
-  compose(query, results, history)        — return full string
+Hard rule: citations come from results list only — never from model output.
 """
 
 from __future__ import annotations
@@ -33,11 +17,9 @@ import json
 import logging
 import sqlite3
 import time
-import urllib.error
-import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Generator
+from typing import Any
 
 from config import cfg as _module_cfg, Config
 from core.db import (
@@ -47,19 +29,19 @@ from core.db import (
     log_event,
     touch_session,
 )
+from core.llm_providers import LLMError, chat_completion
 
 logger = logging.getLogger(__name__)
 
-_CONTEXT_RESULTS = 3       # top-N snippets included in Ollama context
-_SESSION_HISTORY = 6       # prior turns loaded from DB
-_FALLBACK_MAX    = 600     # max chars for raw-excerpt fallback
-_FALLBACK_PREFIX = "[Ollama unavailable — showing raw excerpts] "
+_SESSION_HISTORY = 6
+_FALLBACK_MAX = 1200
+_FALLBACK_PREFIX = "[Synthesis unavailable — showing raw excerpts] "
 
 _SYSTEM_PROMPT = (
-    "You are TIGA Hunt, an architecture firm research assistant. "
-    "Answer using ONLY the provided context. "
-    "If the context does not contain the answer, say so. "
-    "Do not invent facts. Cite sources by filename."
+    "You are TIGA Einstein, an architecture firm research assistant. "
+    "Answer using ONLY the provided evidence excerpts. "
+    "If the evidence does not contain the answer, say you cannot find it in the archive. "
+    "Do not invent facts. Reference sources by the citation label shown in each block."
 )
 
 _FOLLOWUP_PROMPT = (
@@ -69,96 +51,109 @@ _FOLLOWUP_PROMPT = (
 )
 
 
-# ---------------------------------------------------------------------------
-# ResultView
-# ---------------------------------------------------------------------------
-
 @dataclass
 class ResultView:
-    title:       str    # filename stem
+    title:       str
     rel_path:    str
-    file_path:   str    # absolute path on server filesystem (for open-in-folder)
+    file_path:   str
     citation:    str
     snippet:     str
     project_id:  str
     typology:    str
     ext:         str
     final_score: float
+    evidence_text: str = ""
 
     @classmethod
-    def from_search_result(cls, r: dict[str, Any]) -> "ResultView":
+    def from_search_result(
+        cls,
+        r: dict[str, Any],
+        *,
+        evidence_text: str = "",
+    ) -> "ResultView":
         rel = r.get("rel_path", "")
-        fn  = r.get("file_name", rel)
+        fn = r.get("file_name", rel)
+        snippet = r.get("snippet", "")
+        ev = evidence_text or r.get("chunk_text") or snippet
         return cls(
-            title       = Path(fn).stem if fn else "",
-            rel_path    = rel,
-            file_path   = r.get("file_path", ""),
-            citation    = r.get("citation", ""),
-            snippet     = r.get("snippet", ""),
-            project_id  = r.get("project_id", "Unknown"),
-            typology    = r.get("typology", "Unknown"),
-            ext         = Path(rel).suffix.lower() if rel else "",
-            final_score = float(r.get("final_score", 0.0)),
+            title=Path(fn).stem if fn else "",
+            rel_path=rel,
+            file_path=r.get("file_path", ""),
+            citation=r.get("citation", ""),
+            snippet=snippet,
+            project_id=r.get("project_id", "Unknown"),
+            typology=r.get("typology", "Unknown"),
+            ext=Path(rel).suffix.lower() if rel else "",
+            final_score=float(r.get("final_score", 0.0)),
+            evidence_text=ev,
         )
 
-
-# ---------------------------------------------------------------------------
-# ComposeResult
-# ---------------------------------------------------------------------------
 
 @dataclass
 class ComposeResult:
     answer_summary: str
-    follow_ups:     list[str]
-    confidence:     float
-    results:        list[ResultView]
-    latency_ms:     float
+    follow_ups: list[str]
+    confidence: float
+    results: list[ResultView]
+    latency_ms: float
+    compose_provider: str = ""
+    evidence_chunk_ids: list[str] = field(default_factory=list)
 
 
-# ---------------------------------------------------------------------------
-# Internal helpers
-# ---------------------------------------------------------------------------
+def _hydrate_chunk_texts(
+    conn: sqlite3.Connection,
+    results: list[dict[str, Any]],
+    char_cap: int,
+) -> dict[str, str]:
+    ids = [r["chunk_id"] for r in results if r.get("chunk_id")]
+    if not ids:
+        return {}
+    placeholders = ",".join("?" * len(ids))
+    rows = conn.execute(
+        f"SELECT chunk_id, text FROM chunks WHERE chunk_id IN ({placeholders})",
+        ids,
+    ).fetchall()
+    return {
+        r["chunk_id"]: (r["text"] or "")[:char_cap]
+        for r in rows
+    }
 
-def _ollama_chat_http(
-    messages: list[dict[str, str]],
-    cfg_obj: Config,
-) -> str:
-    """POST to Ollama /api/chat (stream=false). Returns content string."""
-    url = cfg_obj.ollama_base_url.rstrip("/") + "/api/chat"
-    payload = json.dumps({
-        "model":    cfg_obj.chat_model,
-        "messages": messages,
-        "stream":   False,
-        "options":  {"num_ctx": cfg_obj.num_ctx},
-    }).encode()
-    req = urllib.request.Request(
-        url, data=payload,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    with urllib.request.urlopen(req, timeout=cfg_obj.ollama_timeout) as resp:
-        data = json.loads(resp.read())
-    return data["message"]["content"]
+
+def _evidence_views(
+    results: list[dict[str, Any]],
+    conn: sqlite3.Connection,
+    cfg: Config,
+) -> list[ResultView]:
+    pack_size = cfg.compose_evidence_pack_size
+    char_cap = cfg.compose_chunk_char_cap
+    subset = results[:pack_size]
+    texts = _hydrate_chunk_texts(conn, subset, char_cap)
+    views: list[ResultView] = []
+    for r in subset:
+        cid = r.get("chunk_id", "")
+        ev = texts.get(cid) or r.get("chunk_text") or r.get("snippet", "")
+        views.append(ResultView.from_search_result(r, evidence_text=ev))
+    return views
 
 
 def _build_context(views: list[ResultView]) -> str:
     if not views:
         return "No relevant documents found."
     parts = []
-    for i, v in enumerate(views[:_CONTEXT_RESULTS], 1):
-        parts.append(f"[{i}] {v.citation}\n{v.snippet}")
+    for i, v in enumerate(views, 1):
+        body = v.evidence_text or v.snippet
+        parts.append(f"[{i}] {v.citation}\n{body}")
     return "\n\n".join(parts)
 
 
 def _confidence(views: list[ResultView]) -> float:
-    """Mean final_score, min-max normalised to [0,1]. Returns 0.0 for empty list."""
     if not views:
         return 0.0
     scores = [v.final_score for v in views]
     lo, hi = min(scores), max(scores)
     mean = sum(scores) / len(scores)
     if hi == lo:
-        return mean   # all same; already in [0,1]
+        return mean
     return (mean - lo) / (hi - lo)
 
 
@@ -175,17 +170,28 @@ def _load_history(conn: sqlite3.Connection, session_id: str) -> list[dict[str, s
         return []
 
 
-def _call_followups(query: str, context: str, cfg_obj: Config) -> list[str]:
-    """Ask Ollama for 3 short follow-up questions. Returns [] on any failure."""
+def _fallback_answer(views: list[ResultView]) -> str:
+    parts = [(v.evidence_text or v.snippet) for v in views[:5]]
+    raw = " … ".join(p for p in parts if p)
+    return _FALLBACK_PREFIX + raw[:_FALLBACK_MAX]
+
+
+def _call_followups(
+    query: str,
+    context: str,
+    cfg_obj: Config,
+) -> list[str]:
     try:
-        content = _ollama_chat_http(
+        content, _ = chat_completion(
             [
                 {"role": "system", "content": _SYSTEM_PROMPT},
-                {"role": "user",   "content": (
-                    f"Context:\n{context}\n\nQuery: {query}\n\n{_FOLLOWUP_PROMPT}"
-                )},
+                {
+                    "role": "user",
+                    "content": f"Context:\n{context}\n\nQuery: {query}\n\n{_FOLLOWUP_PROMPT}",
+                },
             ],
             cfg_obj,
+            purpose="followups",
         )
         lines = [ln.strip() for ln in content.splitlines() if ln.strip()]
         return lines[:3]
@@ -194,10 +200,6 @@ def _call_followups(query: str, context: str, cfg_obj: Config) -> list[str]:
         return []
 
 
-# ---------------------------------------------------------------------------
-# Primary public API
-# ---------------------------------------------------------------------------
-
 def compose_answer(
     query: str,
     results: list[dict[str, Any]],
@@ -205,31 +207,17 @@ def compose_answer(
     cfg_obj: Config | None = None,
     conn: sqlite3.Connection | None = None,
 ) -> ComposeResult:
-    """
-    Full answer-generation pipeline.
-
-    Args:
-        query:      Natural-language question.
-        results:    list[SearchResult] from core.query.search().
-        session_id: If set, history is loaded and messages are persisted.
-        cfg_obj:    Config override (for tests).
-        conn:       SQLite connection override (for tests).
-
-    Returns:
-        ComposeResult — answer, follow-ups, confidence, views, latency.
-
-    Hard rule: citations come from results list only, never from Ollama output.
-    """
     _cfg = cfg_obj or _module_cfg
     _own_conn = conn is None
     _conn = conn or get_connection(_cfg.get_db_path())
     t0 = time.perf_counter()
 
     try:
-        views = [ResultView.from_search_result(r) for r in results]
-        context = _build_context(views)
+        evidence_views = _evidence_views(results, _conn, _cfg)
+        display_views = [ResultView.from_search_result(r) for r in results]
+        context = _build_context(evidence_views)
+        chunk_ids = [r.get("chunk_id", "") for r in results[: _cfg.compose_evidence_pack_size]]
 
-        # Session setup + history
         history: list[dict[str, str]] = []
         if session_id:
             try:
@@ -239,52 +227,63 @@ def compose_answer(
             except Exception as e:
                 logger.warning("Session setup failed: %s", e)
 
-        # Build Ollama messages
         messages: list[dict[str, str]] = [
             {"role": "system", "content": _SYSTEM_PROMPT},
             *history,
-            {"role": "user", "content": f"Context:\n{context}\n\nQuestion: {query}"},
+            {"role": "user", "content": f"Evidence:\n{context}\n\nQuestion: {query}"},
         ]
 
-        # Step 3 — Call Ollama for answer
-        ollama_ok = False
+        synthesis_ok = False
+        provider_label = "fallback"
         try:
-            answer_summary = _ollama_chat_http(messages, _cfg)
-            ollama_ok = True
-        except Exception as e:
-            logger.warning("Ollama unavailable, using fallback: %s", e)
-            raw = " … ".join(v.snippet for v in views[:_CONTEXT_RESULTS])
-            answer_summary = _FALLBACK_PREFIX + raw[:_FALLBACK_MAX]
+            answer_summary, provider_label = chat_completion(
+                messages, _cfg, purpose="compose"
+            )
+            synthesis_ok = True
+        except LLMError as e:
+            logger.warning("Synthesis unavailable, using fallback: %s", e)
+            answer_summary = _fallback_answer(evidence_views)
 
-        # Step 4 — Follow-up prompts
-        follow_ups = _call_followups(query, context, _cfg) if ollama_ok else []
+        follow_ups = (
+            _call_followups(query, context, _cfg)
+            if synthesis_ok and _cfg.compose_api_enabled
+            else []
+        )
 
-        # Step 5 — Confidence
-        confidence = _confidence(views)
+        confidence = _confidence(evidence_views or display_views)
 
-        # Step 6 — Session persistence
         if session_id:
             try:
                 add_message(_conn, session_id, "user", query)
-                citations = [v.citation for v in views]
+                citations = [v.citation for v in display_views]
                 add_message(_conn, session_id, "assistant", answer_summary, citations)
                 touch_session(_conn, session_id)
             except Exception as e:
                 logger.warning("Session persistence failed: %s", e)
 
-        # Latency log
         latency_ms = (time.perf_counter() - t0) * 1000
         try:
-            log_event(_conn, "compose_answer", detail=f"{latency_ms:.0f}ms")
+            log_event(
+                _conn,
+                "compose_answer",
+                detail=json.dumps({
+                    "latency_ms": round(latency_ms, 1),
+                    "provider": provider_label,
+                    "evidence_chunks": len(evidence_views),
+                    "chunk_ids": chunk_ids,
+                }),
+            )
         except Exception as e:
             logger.warning("Latency log failed: %s", e)
 
         return ComposeResult(
-            answer_summary = answer_summary,
-            follow_ups     = follow_ups,
-            confidence     = confidence,
-            results        = views,
-            latency_ms     = latency_ms,
+            answer_summary=answer_summary,
+            follow_ups=follow_ups,
+            confidence=confidence,
+            results=display_views,
+            latency_ms=latency_ms,
+            compose_provider=provider_label,
+            evidence_chunk_ids=[c for c in chunk_ids if c],
         )
 
     finally:
@@ -301,16 +300,16 @@ def _build_context_block(results: list[dict[str, Any]]) -> str:
         return "No relevant documents found in the archive."
     lines = ["Retrieved documents (ranked by relevance):\n"]
     for i, r in enumerate(results, 1):
-        file_name = r.get("file_name")  or r.get("file_path", "")
-        project   = r.get("project_id") or r.get("project", "Unknown")
-        typology  = r.get("typology",   "Unknown")
-        preview   = r.get("snippet")    or r.get("surrogate", "")
-        citation  = r.get("citation")   or r.get("file_path", "")
+        file_name = r.get("file_name") or r.get("file_path", "")
+        project = r.get("project_id") or r.get("project", "Unknown")
+        typology = r.get("typology", "Unknown")
+        preview = r.get("chunk_text") or r.get("snippet") or r.get("surrogate", "")
+        citation = r.get("citation") or r.get("file_path", "")
         lines.append(
             f"[{i}] {file_name}\n"
             f"    Project: {project} | Type: {typology}\n"
             f"    Cite as: {citation}\n"
-            f"    Preview: {preview[:200]}\n"
+            f"    Preview: {preview[:400]}\n"
         )
     return "\n".join(lines)
 
@@ -319,18 +318,17 @@ def compose_stream(
     query: str,
     results: list[dict[str, Any]],
     history: list[dict[str, str]] | None = None,
-) -> Generator[str, None, None]:
-    """
-    Yield answer tokens from Ollama as they arrive (streaming).
-    history: list of {role, content} dicts for session memory.
-    """
+):
+    """Yield answer tokens — local Ollama streaming only (CLI legacy)."""
     import ollama as ollama_client
 
     messages: list[dict[str, str]] = [{"role": "system", "content": _SYSTEM_PROMPT}]
     if history:
-        messages.extend(history[-(_SESSION_HISTORY):])
-    messages.append({"role": "user", "content": _build_context_block(results)
-                     + f"\n\n---\nQuestion: {query}"})
+        messages.extend(history[-_SESSION_HISTORY:])
+    messages.append({
+        "role": "user",
+        "content": _build_context_block(results) + f"\n\n---\nQuestion: {query}",
+    })
 
     try:
         stream = ollama_client.chat(
@@ -353,5 +351,4 @@ def compose(
     results: list[dict[str, Any]],
     history: list[dict[str, str]] | None = None,
 ) -> str:
-    """Non-streaming version. Returns full answer string."""
     return "".join(compose_stream(query, results, history))

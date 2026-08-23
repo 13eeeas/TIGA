@@ -126,10 +126,11 @@ def rerank_candidates(
     to_rerank = candidates[:top_k]
     rest = candidates[top_k:]
 
-    # Build (query, passage) pairs.  Use the snippet rather than the full chunk
-    # text since the snippet is already truncated to ~160 chars — enough context
-    # for the cross-encoder and keeps the sequence length well within 512 tokens.
-    pairs = [(query, c.get("snippet", "") or "") for c in to_rerank]
+    # Build (query, passage) pairs. Prefer full chunk text when available.
+    pairs = [
+        (query, (c.get("chunk_text") or c.get("snippet") or "")[:512])
+        for c in to_rerank
+    ]
 
     try:
         import time as _time

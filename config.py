@@ -179,7 +179,31 @@ class Config:
             "reranker_model", "cross-encoder/ms-marco-MiniLM-L-6-v2"
         )
         # How many hybrid candidates to rerank before trimming to top_k_default.
-        self.reranker_top_k: int = ret.get("reranker_top_k", 20)
+        self.reranker_top_k: int = ret.get("reranker_top_k", 50)
+        self.reranker_chunk_chars: int = ret.get("reranker_chunk_chars", 1200)
+        self.prefer_latest_default: bool = ret.get("prefer_latest_default", True)
+        self.latest_score_boost: float = float(ret.get("latest_score_boost", 1.15))
+        self.superseded_score_penalty: float = float(
+            ret.get("superseded_score_penalty", 0.55)
+        )
+
+        # --- Compose / Einstein synthesis ---
+        comp = data.get("compose", {})
+        self.compose_provider: str = comp.get("provider", "openai")
+        self.compose_api_enabled: bool = comp.get("api_enabled", True)
+        self.compose_model: str = comp.get("model", "gpt-4o-mini")
+        self.compose_max_tokens: int = comp.get("max_tokens", 800)
+        self.compose_timeout: int = comp.get(
+            "timeout_seconds", comp.get("timeout", 45)
+        )
+        self.compose_evidence_pack_size: int = comp.get("evidence_pack_size", 12)
+        self.compose_chunk_char_cap: int = comp.get("chunk_char_cap", 1200)
+        self.compose_fallback_to_ollama: bool = comp.get("fallback_to_ollama", True)
+        self.compose_azure_endpoint: str = comp.get("azure_endpoint", "").strip()
+        self.compose_azure_deployment: str = comp.get("azure_deployment", "").strip()
+        self.compose_azure_api_version: str = comp.get(
+            "azure_api_version", "2024-02-15-preview"
+        )
 
         # --- OCR (opt-in only) ---
         ocr = data.get("ocr", {})
@@ -234,6 +258,13 @@ class Config:
 
     def get_report_dir(self) -> Path:
         return self.work_dir / "reports"
+
+    def retrieval_candidate_pool(self, top_k: int) -> int:
+        """Hybrid candidate count before rerank/trim."""
+        base = max(top_k * 3, 20)
+        if self.reranker_enabled:
+            return max(base, self.reranker_top_k)
+        return base
 
     def ensure_dirs(self) -> None:
         """Create all work subdirectories if they don't exist."""

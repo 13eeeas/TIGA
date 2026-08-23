@@ -356,6 +356,8 @@ def _run_bm25(
             COALESCE(f.typology,   'Unknown') AS typology,
             COALESCE(f.extension,  '')        AS extension,
             COALESCE(f.file_name,  '')        AS file_name,
+            COALESCE(f.is_latest, 0)          AS is_latest,
+            COALESCE(f.is_superseded, 0)      AS is_superseded,
             bm25(chunks_fts)                  AS bm25_raw,
             snippet(chunks_fts, 0, '', '', ' ... ', {_SNIPPET_TOKENS}) AS snippet
         FROM chunks_fts
@@ -444,6 +446,38 @@ def search(
             _conn.close()
 
 
+def _chunk_passage(meta: dict[str, Any], char_cap: int) -> str:
+    """Passage text for rerank / evidence (prefer stored chunk text)."""
+    raw = meta.get("text") or meta.get("snippet") or ""
+    return str(raw)[:char_cap]
+
+
+def _apply_version_ranking(
+    candidates: list[dict[str, Any]],
+    filters: dict[str, Any] | None,
+    cfg: Config,
+) -> None:
+    """
+    Soft-boost authoritative versions unless the query explicitly asks for history.
+    Mutates final_score in place and re-sorts.
+    """
+    if not cfg.prefer_latest_default or not candidates:
+        return
+    if filters:
+        if filters.get("is_superseded") or "is_latest" in filters:
+            return
+
+    boost = cfg.latest_score_boost
+    penalty = cfg.superseded_score_penalty
+    for c in candidates:
+        if c.get("is_superseded"):
+            c["final_score"] *= penalty
+        elif c.get("is_latest"):
+            c["final_score"] *= boost
+
+    candidates.sort(key=lambda r: (-r["final_score"], r["file_path"]))
+
+
 def _search_impl(
     query: str,
     top_k: int,
@@ -479,7 +513,8 @@ def _search_impl(
         _active_filters.pop("typology", None)
 
     # ── Step 1: BM25 (with synonym boosting) ─────────────────────────────────
-    bm25_rows = _run_bm25(query, top_k * 3, _active_filters, conn,
+    pool_limit = _cfg.retrieval_candidate_pool(top_k)
+    bm25_rows = _run_bm25(query, pool_limit, _active_filters, conn,
                           expanded_terms=expanded_terms)
     bm25_map: dict[str, dict[str, Any]] = {}
     if bm25_rows:
@@ -501,7 +536,7 @@ def _search_impl(
     # before passing to the vector lane — LanceDB only accepts project_id,
     # typology, ext.  _vector_compatible_filters() handles the conversion.
     vec_scores = _run_vector(
-        vector_query, top_k * 3, _vector_compatible_filters(_active_filters), _cfg
+        vector_query, pool_limit, _vector_compatible_filters(_active_filters), _cfg
     )
 
     # ── Step 3: Merge ─────────────────────────────────────────────────────────
@@ -517,20 +552,24 @@ def _search_impl(
             f"COALESCE(f.project_id,'Unknown') AS project_id, "
             f"COALESCE(f.typology,'Unknown')   AS typology, "
             f"COALESCE(f.extension,'')         AS extension, "
-            f"COALESCE(f.file_name,'')         AS file_name "
+            f"COALESCE(f.file_name,'')         AS file_name, "
+            f"COALESCE(f.is_latest, 0)        AS is_latest, "
+            f"COALESCE(f.is_superseded, 0)    AS is_superseded "
             f"FROM chunks c "
             f"JOIN files f ON f.file_id = c.file_id "
             f"WHERE c.chunk_id IN ({placeholders})",
             list(missing),
         ).fetchall()
         for row in extra:
+            row_dict = dict(row)
             bm25_map[row["chunk_id"]] = {
-                **dict(row),
+                **row_dict,
                 "bm25_raw":   0.0,
                 "bm25_score": 0.0,
-                "snippet":    row["text"][:_SNIPPET_MAX],
+                "snippet":    row_dict["text"][:_SNIPPET_MAX],
             }
 
+    char_cap = _cfg.reranker_chunk_chars
     # Score + sort
     candidates: list[dict[str, Any]] = []
     for cid in all_ids:
@@ -540,6 +579,7 @@ def _search_impl(
         bs = meta.get("bm25_score", 0.0)
         vs = vec_scores.get(cid, 0.0)
         final = alpha * vs + (1.0 - alpha) * bs
+        chunk_text = _chunk_passage(meta, char_cap)
         candidates.append({
             "chunk_id":   cid,
             "file_id":    meta["file_id"],
@@ -548,13 +588,17 @@ def _search_impl(
             "file_name":  meta.get("file_name", Path(meta["file_path"]).name),
             "project_id": meta.get("project_id", "Unknown"),
             "typology":   meta.get("typology", "Unknown"),
-            "snippet":    meta.get("snippet", meta.get("text", ""))[:_SNIPPET_MAX],
+            "snippet":    meta.get("snippet", chunk_text[:_SNIPPET_MAX]),
+            "chunk_text": chunk_text,
+            "is_latest":  int(meta.get("is_latest") or 0),
+            "is_superseded": int(meta.get("is_superseded") or 0),
             "bm25_score": bs,
             "vector_score": vs,
             "final_score":  final,
         })
 
     candidates.sort(key=lambda r: (-r["final_score"], r["file_path"]))
+    _apply_version_ranking(candidates, _active_filters, _cfg)
 
     # ── Step 3b: Cross-encoder reranking (optional) ────────────────────────────
     # When enabled, a cross-encoder reads (query, chunk) together and replaces

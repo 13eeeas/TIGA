@@ -50,6 +50,7 @@ def _fake_compose_result(answer: str = "Hospital brief covers design requirement
     v = ResultView(
         title       = "brief",
         rel_path    = "proj/brief.txt",
+        file_path   = "/tmp/proj/brief.txt",
         citation    = "proj/brief.txt#p1",
         snippet     = "hospital architecture brief design",
         project_id  = "2023_HOSP",
@@ -63,6 +64,7 @@ def _fake_compose_result(answer: str = "Hospital brief covers design requirement
         confidence     = 0.8,
         results        = [v],
         latency_ms     = 220.0,
+        compose_provider = "openai:test",
     )
 
 

@@ -12,7 +12,7 @@
 
 ### Corpus & config
 - [ ] Lock **3–5 project codes** and NAS `index_roots` (completed jobs staff can judge)
-- [ ] Create `tiga_work/config.poc.yaml` (or document fields) scoped to those roots only
+- [x] POC config template: `docs/config.poc.example.yaml`
 - [ ] Set `exclude_globs` for junk: caches, temp, backups, texture libs, autosaves
 - [ ] Confirm enterprise API vendor shortlist + env var names (no keys in repo)
 - [ ] Document expected index size / file count per project (baseline for “represent don’t replicate”)
@@ -38,7 +38,7 @@
 - [x] Content hash skip on unchanged chunks (`core/extract.py`)
 - [x] Path parser: revision, `is_superseded`, `is_latest` (`core/path_parser.py`)
 - [ ] Verify `update_is_latest()` runs after each index batch
-- [ ] **Default retrieval prefers latest** (not only when query says “latest”) — `[~]` router sets filter on keywords only
+- [x] **Default retrieval prefers latest** — soft boost/penalty in `core/query.py`
 - [ ] Near-duplicate linking or suppression (same text, multiple paths) — `[ ]` not built
 
 ### Extraction tiers
@@ -70,15 +70,15 @@
 
 ### Reranker (critical)
 - [x] Cross-encoder module (`core/reranker.py`)
-- [ ] **`reranker_enabled: true`** in POC config — currently default **false**
-- [ ] Rerank on **full chunk text** from DB, not 160-char FTS snippet — `[ ]` uses snippet today
-- [ ] **`reranker_top_k: 50`** → trim to `top_k` / evidence pool — currently default 20
-- [ ] `sentence-transformers` in requirements / setup for host
+- [x] **`reranker_enabled: true`** in default init + POC template
+- [x] Rerank on **full chunk text** from DB (via `chunk_text` / `reranker_chunk_chars`)
+- [x] **`reranker_top_k: 50`** in defaults
+- [x] `sentence-transformers` in requirements
 
 ### Evidence pool (for search results + Einstein)
-- [x] Hybrid pool `top_k * 3` candidates
-- [ ] Define **`evidence_pack_size: 8–15`** in config (new)
-- [ ] Compose + API receive full chunk text for evidence pack, not top-3 snippets only — `[~]` `_CONTEXT_RESULTS = 3` in `compose.py`
+- [x] Hybrid pool uses `retrieval_candidate_pool()` (≥50 when rerank on)
+- [x] **`evidence_pack_size: 12`** in compose config
+- [x] Compose loads full chunk text for evidence pack
 - [ ] Return enough ranked results in `/api/query` for UI + eval
 
 ### Citations
@@ -95,17 +95,17 @@
 **Gate:** synthesis quality without bulk egress.
 
 ### Provider layer (new)
-- [ ] `core/providers/` or `core/llm.py` — pluggable compose backend
-- [ ] Config block: `compose.provider: openai | anthropic | azure | ollama`
-- [ ] Config: model id, max tokens out, timeout, **kill switch** `compose.api_enabled: false`
-- [ ] API key from **env only** (`TIGA_OPENAI_API_KEY`, etc.) — never in yaml committed to git
-- [ ] Enterprise endpoint / base URL override (Azure/OpenAI enterprise)
+- [x] `core/llm_providers.py` — pluggable compose backend (OpenAI / Azure / Anthropic / Ollama)
+- [x] Config block: `compose.provider`, `api_enabled`, `model`, evidence pack sizes
+- [x] API key from **env only** (`TIGA_LLM_API_KEY`, `TIGA_OPENAI_API_KEY`, `TIGA_ANTHROPIC_API_KEY`)
+- [x] Enterprise endpoint / base URL override (Azure fields in config)
+- [ ] Firm enterprise contract + key in your office env
 
 ### Evidence-pack contract
-- [ ] Load chunk **full text** (cap e.g. 800–1200 chars/chunk) for pack members only
-- [ ] Hard cap: max chunks (8–15) + max total input tokens
-- [ ] System prompt: answer ONLY from context; refuse if missing; cite by filename
-- [ ] **Citations still from search `results` only** — never parse model output for paths
+- [x] Load chunk **full text** (cap via `chunk_char_cap`) for pack members
+- [x] Hard cap: `evidence_pack_size` (default 12)
+- [x] System prompt: answer ONLY from context
+- [x] Citations still from search `results` only
 
 ### Fallback & cost
 - [x] Ollama fallback pattern exists (`compose.py`)
@@ -245,15 +245,16 @@ Week 4   Track D + Track F (cards, 100-Q run, memo)
 
 ## Known gaps in repo today (start here)
 
-| Gap | File / area | Checklist item |
-|-----|-------------|----------------|
-| No enterprise API compose | `core/compose.py` | Track C |
-| Reranker off by default | `config.py` / yaml | Track B |
-| Rerank uses snippet not full text | `core/reranker.py` | Track B |
-| Only 3 snippets to LLM | `compose.py` `_CONTEXT_RESULTS` | Track B + C |
-| Eval = path recall only, not answer correctness | `core/eval.py` | Track F |
-| Latest boost query-triggered only | `core/router.py` | Track A |
-| Near-dup suppression missing | — | Track A |
+| Gap | File / area | Status |
+|-----|-------------|--------|
+| Enterprise API compose | `core/llm_providers.py`, `compose.py` | **Done** |
+| Reranker off by default | was `config.py` | **Fixed in init template** |
+| Rerank uses snippet not full text | `reranker.py`, `query.py` | **Fixed** |
+| Only 3 snippets to LLM | `compose.py` | **Fixed — evidence pack 12** |
+| Eval = path recall only | `core/eval.py` | Still TODO |
+| Latest boost query-triggered only | `core/query.py` | **Fixed — soft default** |
+| Near-dup suppression missing | — | TODO |
+| Index 3–5 POC projects | your NAS + config | **Your next step** |
 
 ---
 
