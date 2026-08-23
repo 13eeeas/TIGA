@@ -128,22 +128,27 @@ body{font-family:'Source Serif 4',Georgia,serif;background:var(--page-bg);color:
 [data-theme="dark"] .icon-sun{display:block}[data-theme="dark"] .icon-moon{display:none}
 @media(prefers-color-scheme:dark){:root:not([data-theme="light"]):not([data-theme="dark"]) .icon-sun{display:block}:root:not([data-theme="light"]):not([data-theme="dark"]) .icon-moon{display:none}}
 
-/* ── CAT (traced from Flow concept art — Gints Zilbalodis) ── */
+/* ── CAT (Flow-inspired — layered parts for animation) ── */
 .cat-wrap{width:26px;height:40px;position:relative;flex-shrink:0}
 .cat-svg{width:26px;height:40px;overflow:visible;display:block}
-.cat-body-group{transform-origin:26px 44px;animation:idleFloat 4s ease-in-out infinite}
+.cat-body-group{transform-origin:13px 34px;animation:idleFloat 4s ease-in-out infinite}
 @keyframes idleFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-1.5px)}}
-.cat-eye{transform-origin:center;animation:eyeBlink 5s ease-in-out infinite}
-@keyframes eyeBlink{0%,44%,48%,100%{transform:scaleY(1)}46%{transform:scaleY(0.1)}}
-.cat-wrap.searching .cat-body-group{animation:catLook 1.2s ease-in-out infinite alternate;transform-origin:26px 46px}
-@keyframes catLook{from{transform:rotate(-4deg)}to{transform:rotate(4deg)}}
-.cat-wrap.searching .cat-eye{animation:eyeGlow .8s ease-in-out infinite alternate, eyeBlink 5s ease-in-out infinite}
-@keyframes eyeGlow{from{filter:brightness(1)}to{filter:brightness(1.2)}}
+.cat-tail{transform-origin:7px 26px;animation:tailWag 3.2s ease-in-out infinite}
+@keyframes tailWag{0%,100%{transform:rotate(0deg)}35%{transform:rotate(5deg)}65%{transform:rotate(-3deg)}}
+.cat-head{transform-origin:13px 17px}
+.cat-ears{transform-origin:13px 7px;animation:earTwitch 5s ease-in-out infinite}
+@keyframes earTwitch{0%,88%,100%{transform:rotate(0deg)}90%{transform:rotate(-4deg)}94%{transform:rotate(2deg)}}
+.cat-eye-l,.cat-eye-r{transform-origin:center;animation:eyeBlink 5s ease-in-out infinite}
+@keyframes eyeBlink{0%,44%,48%,100%{transform:scaleY(1)}46%{transform:scaleY(0.08)}}
+.cat-wrap.searching .cat-head{animation:headLook 1.2s ease-in-out infinite alternate}
+@keyframes headLook{from{transform:rotate(-5deg)}to{transform:rotate(5deg)}}
+.cat-wrap.searching .cat-eye-l,.cat-wrap.searching .cat-eye-r{animation:eyeGlow .8s ease-in-out infinite alternate, eyeBlink 5s ease-in-out infinite}
+@keyframes eyeGlow{from{filter:brightness(1)}to{filter:brightness(1.25)}}
 .cat-ring{position:absolute;inset:-4px -2px;border-radius:50%;border:1.5px solid var(--coral);opacity:0;transform:scale(0.7);pointer-events:none}
 .cat-wrap.searching .cat-ring{animation:ringPulse 1s ease-out infinite}
 @keyframes ringPulse{0%{opacity:.7;transform:scale(.75)}100%{opacity:0;transform:scale(1.6)}}
-[data-theme="dark"] .cat-silhouette{fill:#EDE8E0}
-@media(prefers-color-scheme:dark){:root:not([data-theme="light"]) .cat-silhouette{fill:#EDE8E0}}
+[data-theme="dark"] .cat-body,[data-theme="dark"] .cat-skull,[data-theme="dark"] .cat-ear-l,[data-theme="dark"] .cat-ear-r,[data-theme="dark"] .cat-tail path,[data-theme="dark"] .cat-paw-front,[data-theme="dark"] .cat-paw-back,[data-theme="dark"] .cat-arm-shape{fill:#EDE8E0}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]) .cat-body,:root:not([data-theme="light"]) .cat-skull,:root:not([data-theme="light"]) .cat-ear-l,:root:not([data-theme="light"]) .cat-ear-r,:root:not([data-theme="light"]) .cat-tail path,:root:not([data-theme="light"]) .cat-paw-front,:root:not([data-theme="light"]) .cat-paw-back,:root:not([data-theme="light"]) .cat-arm-shape{fill:#EDE8E0}}
 
 /* ── HERO (removed — chat layout) ── */
 @keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
@@ -366,13 +371,44 @@ body{font-family:'Source Serif 4',Georgia,serif;background:var(--page-bg);color:
     <a class="logo-mark" href="#">
       <div class="cat-wrap" id="catWrap">
         <div class="cat-ring"></div>
-        <svg class="cat-svg" viewBox="0 0 52 80" fill="none" aria-hidden="true">
+        <svg class="cat-svg" viewBox="0 0 56 84" fill="none" aria-hidden="true">
           <g class="cat-body-group">
-            <path class="cat-silhouette" d="M 16.52 0.00 Q 16.52 0.87 16.34 1.06 Q 16.15 1.24 16.09 1.68 Q 16.02 2.11 15.71 2.67 Q 15.40 3.23 15.34 6.15 Q 15.28 9.07 15.53 10.68 Q 15.78 12.30 16.46 13.66 Q 17.14 15.03 17.08 16.89 Q 17.02 18.76 17.08 19.32 Q 17.14 19.88 17.64 21.12 Q 18.14 22.36 18.14 22.92 Q 18.14 23.48 18.01 23.79 Q 17.89 24.10 16.71 25.40 Q 15.53 26.71 12.86 28.57 Q 10.19 30.43 8.32 32.05 Q 6.46 33.66 4.53 35.65 Q 2.61 37.64 2.11 38.39 Q 1.61 39.13 1.18 39.57 Q 0.75 40.00 0.37 40.12 Q 0.00 40.25 0.00 56.46 Q 0.00 72.67 0.37 72.80 Q 0.75 72.92 1.86 74.04 Q 2.98 75.16 3.60 75.40 Q 4.22 75.65 4.72 76.09 Q 5.22 76.52 7.14 77.58 Q 9.07 78.63 9.50 79.07 Q 9.94 79.50 9.94 79.75 Q 9.94 80.00 22.92 80.00 Q 35.90 80.00 35.90 79.75 Q 35.90 79.50 36.34 79.07 Q 36.77 78.63 38.01 78.26 Q 39.25 77.89 40.19 77.45 Q 41.12 77.02 41.86 76.52 Q 42.61 76.02 44.04 74.66 Q 45.47 73.29 45.84 73.17 Q 46.21 73.04 46.21 68.39 Q 46.21 63.73 45.34 63.42 Q 44.47 63.11 43.29 63.42 Q 42.11 63.73 40.93 64.97 Q 39.75 66.21 39.38 66.34 Q 39.01 66.46 38.63 66.34 Q 38.26 66.21 37.64 65.59 Q 37.02 64.97 36.21 64.72 Q 35.40 64.47 34.66 63.73 Q 33.91 62.98 33.66 62.17 Q 33.42 61.37 33.35 60.12 Q 33.29 58.88 33.04 57.95 Q 32.80 57.02 32.80 56.46 Q 32.80 55.90 33.91 54.91 Q 35.03 53.91 35.34 52.86 Q 35.65 51.80 35.71 51.12 Q 35.78 50.43 36.02 50.12 Q 36.27 49.81 36.27 49.57 Q 36.27 49.32 36.96 48.51 Q 37.64 47.70 37.76 47.20 Q 37.89 46.71 38.70 45.47 Q 39.50 44.22 40.12 42.80 Q 40.75 41.37 40.93 39.44 Q 41.12 37.52 41.24 37.39 Q 41.37 37.27 41.37 36.09 Q 41.37 34.91 40.87 32.92 Q 40.37 30.93 40.12 30.68 Q 39.88 30.43 39.88 30.12 Q 39.88 29.81 39.69 29.57 Q 39.50 29.32 39.44 28.14 Q 39.38 26.96 39.19 26.71 Q 39.01 26.46 39.01 25.90 Q 39.01 25.34 39.75 24.04 Q 40.50 22.73 40.99 21.43 Q 41.49 20.12 41.61 19.32 Q 41.74 18.51 41.61 16.71 Q 41.49 14.91 41.80 14.53 Q 42.11 14.16 42.48 13.35 Q 42.86 12.55 43.11 10.25 Q 43.35 7.95 43.29 5.78 Q 43.23 3.60 42.92 2.36 Q 42.61 1.12 42.30 0.81 Q 41.99 0.50 41.99 0.25 Q 41.99 0.00 38.20 0.00 Q 34.41 0.00 34.29 0.43 Q 34.16 0.87 32.42 3.04 Q 30.68 5.22 29.69 5.34 Q 28.70 5.47 28.32 5.34 Q 27.95 5.22 27.33 4.60 Q 26.71 3.98 26.27 3.17 Q 25.84 2.36 24.97 1.43 Q 24.10 0.50 24.10 0.25 L 24.10 0.00 Z" fill="#1C1917"/>
-            <circle class="cat-eye" cx="15.90" cy="26.34" r="4.22" fill="#E8B830"/>
-            <circle cx="15.90" cy="26.76" r="1.18" fill="#1C1917"/>
-            <circle class="cat-eye" cx="30.06" cy="25.59" r="4.22" fill="#E8B830"/>
-            <circle cx="30.06" cy="26.01" r="1.18" fill="#1C1917"/>
+            <g class="cat-tail">
+              <path d="M 14 52 C 5 50 1 42 4 32 C 6 26 10 28 12 34 C 14 40 15 48 14 52 Z" fill="#1C1917"/>
+            </g>
+            <g class="cat-legs">
+              <path class="cat-body" d="M 27 35 C 21 36 15 42 13 52 C 11 62 13 72 20 77 C 26 80 34 80 40 76 C 46 72 46 62 43 52 C 40 42 34 36 27 35 Z" fill="#1C1917"/>
+              <ellipse class="cat-paw-back" cx="19" cy="76" rx="3.2" ry="2" fill="#1C1917"/>
+            </g>
+            <g class="cat-arm">
+              <path class="cat-arm-shape" d="M 34 48 C 38 52 40 62 39 72 C 38 76 36 77 34 74 C 33 68 32 58 34 48 Z" fill="#1C1917"/>
+              <path class="cat-paw-front" d="M 37 74 C 40 77 43 77 45 74 C 46 72 44 70 41 71 Z" fill="#1C1917"/>
+            </g>
+            <g class="cat-head">
+              <path class="cat-skull" d="M 29 13 C 37 12 42 18 41 25 C 40 31 36 36 31 37 C 27 38 22 37 18 33 C 14 29 13 23 15 18 C 17 14 23 12 29 13 Z" fill="#1C1917"/>
+              <g class="cat-ears">
+                <path class="cat-ear-l" d="M 16 17 L 12 3 L 24 19 Z" fill="#1C1917"/>
+                <path class="cat-ear-r" d="M 40 15 L 44 2 L 36 18 Z" fill="#1C1917"/>
+                <path class="cat-ear-inner-l" d="M 17 16 L 14.5 8 L 21 17.5 Z" fill="#C96442"/>
+                <path class="cat-ear-inner-r" d="M 39 15 L 41.5 7 L 37 16.5 Z" fill="#C96442"/>
+              </g>
+              <g class="cat-face">
+                <g class="cat-eyes">
+                  <g class="cat-eye-l">
+                    <ellipse cx="20.5" cy="27" rx="3.4" ry="3.9" fill="#E8B830"/>
+                    <circle class="cat-pupil-l" cx="21" cy="28" r="1.35" fill="#1C1917"/>
+                    <circle class="cat-eye-shine-l" cx="21.7" cy="25.8" r="0.7" fill="#FFF" opacity="0.9"/>
+                  </g>
+                  <g class="cat-eye-r">
+                    <ellipse cx="30" cy="26" rx="3.9" ry="4.4" fill="#E8B830"/>
+                    <circle class="cat-pupil-r" cx="30.5" cy="27.1" r="1.55" fill="#1C1917"/>
+                    <circle class="cat-eye-shine-r" cx="31.4" cy="24.6" r="0.8" fill="#FFF" opacity="0.9"/>
+                  </g>
+                </g>
+                <path class="cat-nose" d="M 25.5 32.5 L 23.2 36 Q 25.5 37.2 27.8 36 Z" fill="#E8928A"/>
+                <path class="cat-mouth" d="M 25.5 37.2 Q 23.2 38.6 21.5 38" stroke="#1C1917" stroke-width="0.55" stroke-linecap="round" fill="none" opacity="0.4"/>
+              </g>
+            </g>
           </g>
         </svg>
       </div>
