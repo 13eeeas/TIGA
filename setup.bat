@@ -12,14 +12,36 @@ echo.
 :: 1. Python check
 :: ---------------------------------------------------------------------------
 
-python --version >nul 2>&1
-if errorlevel 1 (
+set "PYTHON_CMD="
+set "CODEX_PYTHON=%USERPROFILE%\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe"
+
+if exist ".venv\Scripts\python.exe" (
+    ".venv\Scripts\python.exe" --version >nul 2>&1
+    if not errorlevel 1 set "PYTHON_CMD=.venv\Scripts\python.exe"
+)
+
+if not defined PYTHON_CMD (
+    if exist "%CODEX_PYTHON%" set "PYTHON_CMD=%CODEX_PYTHON%"
+)
+
+if not defined PYTHON_CMD (
+    where python >nul 2>&1
+    if not errorlevel 1 set "PYTHON_CMD=python"
+)
+
+if not defined PYTHON_CMD (
+    where py >nul 2>&1
+    if not errorlevel 1 set "PYTHON_CMD=py -3"
+)
+
+if not defined PYTHON_CMD (
     echo [ERROR] Python not found.
     echo         Download from: https://www.python.org/downloads/
     echo         Make sure to tick "Add Python to PATH" during install.
     pause & exit /b 1
 )
-for /f "tokens=2" %%v in ('python --version 2^>^&1') do set PY_VER=%%v
+
+for /f "tokens=2" %%v in ('%PYTHON_CMD% --version 2^>^&1') do set PY_VER=%%v
 echo [OK] Python %PY_VER%
 
 :: ---------------------------------------------------------------------------
@@ -28,7 +50,7 @@ echo [OK] Python %PY_VER%
 
 if not exist ".venv" (
     echo Creating virtual environment...
-    python -m venv .venv
+    %PYTHON_CMD% -m venv .venv
     if errorlevel 1 ( echo [ERROR] Failed to create .venv & pause & exit /b 1 )
     echo [OK] .venv created
 ) else (
@@ -97,7 +119,7 @@ if errorlevel 1 (
 where ollama >nul 2>&1
 if not errorlevel 1 (
     echo.
-    echo Pulling nomic-embed-text (embedding model, ~274 MB)...
+    echo Pulling nomic-embed-text ^(embedding model, ~274 MB^)...
     ollama pull nomic-embed-text
     if errorlevel 1 (
         echo [WARN] Could not pull nomic-embed-text — run manually: ollama pull nomic-embed-text
@@ -105,7 +127,7 @@ if not errorlevel 1 (
         echo [OK] nomic-embed-text ready
     )
 
-    echo Pulling mistral (chat model, ~4 GB)...
+    echo Pulling mistral ^(chat model, ~4 GB^)...
     ollama pull mistral
     if errorlevel 1 (
         echo [WARN] Could not pull mistral — run manually: ollama pull mistral
