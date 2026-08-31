@@ -97,6 +97,16 @@ def test_path_normalization_returns_posix(tmp_path: Path) -> None:
         ), f"Path is not absolute: {posix}"
 
 
+def test_long_unc_path_uses_unc_extended_prefix() -> None:
+    """Long UNC paths must retain their network-share semantics on Windows."""
+    from config import _win_long_path
+
+    source = Path("\\\\EgnyteDrive\\woha\\" + "a" * 260)
+    result = _win_long_path(source)
+
+    assert str(result).startswith("\\\\?\\UNC\\EgnyteDrive\\woha\\")
+
+
 def test_ollama_available_returns_bool_not_raises(tmp_path: Path) -> None:
     """ollama_available() always returns a bool, never raises."""
     from config import ollama_available

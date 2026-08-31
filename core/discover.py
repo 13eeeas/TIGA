@@ -494,22 +494,18 @@ def discover(index_roots: list[Path] | None = None) -> list[Path]:
             logger.warning("index_root not found, skipping: %s", root)
             continue
         logger.info("Scanning (dry run): %s", root)
-        try:
-            for path in root.rglob("*"):
-                if not path.is_file():
-                    continue
-                safe = _win_safe(path)
-                if _is_excluded(safe, _module_cfg.exclude_globs):
-                    continue
-                if not _is_included(safe, _module_cfg.include_globs):
-                    continue
-                try:
-                    if safe.stat().st_size <= _module_cfg.max_file_bytes:
-                        found.append(safe)
-                except OSError:
-                    continue
-        except PermissionError as e:
-            logger.warning("Permission denied scanning %s: %s", root, e)
+        exclude_dir_names = _exclude_dir_names(_module_cfg.exclude_globs)
+        for path in _iter_files(root, exclude_dir_names):
+            safe = _win_safe(path)
+            if _is_excluded(safe, _module_cfg.exclude_globs):
+                continue
+            if not _is_included(safe, _module_cfg.include_globs):
+                continue
+            try:
+                if safe.stat().st_size <= _module_cfg.max_file_bytes:
+                    found.append(safe)
+            except OSError:
+                continue
 
     found.sort()
     logger.info("Discovered %d candidate files", len(found))

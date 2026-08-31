@@ -14,7 +14,7 @@ import yaml
 
 from config import load_config
 from core.db import get_connection, file_id_from_path
-from core.discover import run_discover, _classify_lane
+from core.discover import discover, run_discover, _classify_lane
 
 
 # ---------------------------------------------------------------------------
@@ -93,6 +93,23 @@ def test_discovers_files_in_multiple_roots(tmp_path: Path, conn) -> None:
     assert count == 3
     assert stats["discovered"] == 3
     assert stats["total"] == 3
+
+
+def test_dry_run_uses_resilient_scandir_iterator(tmp_path: Path) -> None:
+    """Dry-run discovery must use the network-safe iterator, not Path.rglob."""
+    root = tmp_path / "archive"
+    root.mkdir()
+    candidate = root / "brief.pdf"
+    candidate.write_bytes(b"pdf content")
+
+    with (
+        patch("core.discover._iter_files", return_value=iter([candidate])) as iterator,
+        patch.object(Path, "rglob", side_effect=OSError(1006, "stale network handle")),
+    ):
+        found = discover([root])
+
+    iterator.assert_called_once()
+    assert found == [candidate]
 
 
 # ---------------------------------------------------------------------------

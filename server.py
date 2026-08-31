@@ -558,7 +558,7 @@ async def health() -> dict[str, Any]:
     status = "ok"
     if not hunt_ok:
         status = "degraded"
-    elif cfg.compose_api_enabled and not api_ready and not ollama_ok:
+    elif not ollama_ok:
         status = "degraded"
     return {
         "status": status,

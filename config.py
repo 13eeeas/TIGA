@@ -83,6 +83,8 @@ def _win_long_path(p: Path) -> Path:
     if platform.system() == "Windows":
         s = str(p)
         if len(s) > _WIN_PATH_LIMIT and not s.startswith("\\\\?\\"):
+            if s.startswith("\\\\"):
+                return Path("\\\\?\\UNC\\" + s[2:])
             return Path("\\\\?\\" + s)
     return p
 
