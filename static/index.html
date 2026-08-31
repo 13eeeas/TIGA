@@ -564,7 +564,20 @@ function showResults(data, append) {
     document.getElementById('summaryText').textContent = data.answer_summary || '—';
   }
 
-  const newResults = data.results || [];
+  // File-locator responses from older running workers expose matches as
+  // `files`; normalise those rows so the same result cards can render them.
+  const hasPagedResults = Boolean(data.results && data.results.length);
+  const newResults = (hasPagedResults ? data.results : (data.files || []).map(file => ({
+    title:       file.file_name || file.file_path || 'Untitled file',
+    rel_path:    file.file_path || '',
+    file_path:   file.file_path || '',
+    citation:    file.file_path || file.file_id || '',
+    snippet:     file.folder_stage || file.content_type || 'File match',
+    project_id:  file.project_id || file.project_code || '',
+    typology:    file.content_type || file.doc_type || '',
+    ext:         file.extension || '',
+    final_score: 1,
+  })));
   const startIdx = _results.length;
   _results = _results.concat(newResults);
 
@@ -627,7 +640,7 @@ function showResults(data, append) {
   }
 
   const showMore = document.getElementById('showMoreBtn');
-  showMore.style.display = newResults.length >= 5 ? 'block' : 'none';
+  showMore.style.display = hasPagedResults && newResults.length >= 5 ? 'block' : 'none';
 
   document.getElementById('resultsSection').classList.add('visible');
   document.getElementById('feedbackBar').classList.add('visible');

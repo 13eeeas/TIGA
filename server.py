@@ -830,6 +830,23 @@ async def api_query(
         files_result = exec_result.get("files", [])
         confidence = exec_result.get("confidence", 0.7)
         follow_up_prompts = []
+        # File-locator queries return database rows rather than ResultViews.
+        # Convert and page them so Hunt can render them like semantic results.
+        file_views = [
+            ResultView(
+                title=str(file.get("file_name") or file.get("file_path") or "Untitled file"),
+                rel_path=str(file.get("file_path") or ""),
+                file_path=str(file.get("file_path") or ""),
+                citation=str(file.get("file_path") or file.get("file_id") or ""),
+                snippet=str(file.get("folder_stage") or file.get("content_type") or "File match"),
+                project_id=str(file.get("project_id") or file.get("project_code") or ""),
+                typology=str(file.get("content_type") or file.get("doc_type") or ""),
+                ext=str(file.get("extension") or ""),
+                final_score=1.0,
+            )
+            for file in files_result
+        ]
+        results_page = file_views[req.offset : req.offset + req.top_k]
 
     elif mode == "cross_project":
         exec_result = execute_cross_project_query(route, conn=conn)
@@ -884,7 +901,7 @@ async def api_query(
     duration_ms = (time.perf_counter() - t_start) * 1000
 
     # ── Log query ────────────────────────────────────────────────────────────
-    result_count = len(results_page) + (len(files_result) if files_result else 0)
+    result_count = len(files_result) if files_result is not None else len(results_page)
     _log_query(req.query, route.project_code, mode, confidence, result_count, duration_ms)
 
     # Field test collector — rich Hunt events for office → dev refinement

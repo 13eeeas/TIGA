@@ -486,6 +486,18 @@ class QueryRouter:
             best_mode = "semantic"
             best_score = 0.5
 
+        # A bare topic phrase (for example, "NUS BIZ3 brief") is a request to
+        # search document content, not a request to list every file of a type.
+        # Reserve metadata-only file lookup for explicit locator language or a
+        # recognised file-location concept.
+        explicit_file_request = (
+            any(kw in q for kw in _FILE_LOCATOR_KEYWORDS)
+            or bool(tags & _FILE_LOCATOR_CONCEPTS)
+        )
+        if best_mode == "file_locator" and not explicit_file_request:
+            best_mode = "semantic"
+            best_score = semantic_score
+
         # Project code present → prefer structured over low-signal semantic
         # (e.g. "What's project 261 about?" has no concept tags but clear project intent)
         if detected_code and best_mode == "semantic" and best_score <= 0.25:

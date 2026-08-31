@@ -153,7 +153,23 @@ def _rel_path(file_path: str, roots: list[Path]) -> str:
         try:
             return p.relative_to(root).as_posix()
         except ValueError:
-            continue
+            # Windows mapped drives can resolve to their UNC provider path
+            # (for example F:\Shared -> //EgnyteDrive/woha/Shared).  Compare
+            # canonical paths as well, so citations remain rooted correctly.
+            try:
+                return p.resolve().relative_to(root.resolve()).as_posix()
+            except (OSError, ValueError):
+                # A mapped drive may retain its drive letter while the index
+                # stores the provider UNC path.  Match the shared trailing
+                # components (everything after the drive) in that case.
+                root_parts = [part for part in root.as_posix().split("/") if part]
+                path_parts = [part for part in p.as_posix().split("/") if part]
+                if root_parts and root_parts[0].endswith(":"):
+                    root_parts = root_parts[1:]
+                for start in range(len(path_parts)):
+                    if [x.lower() for x in path_parts[start:start + len(root_parts)]] == [x.lower() for x in root_parts]:
+                        return "/".join(path_parts[start + len(root_parts):])
+                continue
     return p.name
 
 

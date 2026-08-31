@@ -102,6 +102,12 @@ def _semantic_route():
     return RouteResult(mode="semantic", project_code=None, filters={}, confidence=0.8)
 
 
+def _file_locator_route():
+    """Return a mock RouteResult that forces file-locator mode."""
+    from core.router import RouteResult
+    return RouteResult(mode="file_locator", project_code=None, filters={}, confidence=0.8)
+
+
 def test_query_endpoint_returns_answer_payload(client) -> None:
     """Query endpoint returns answer_summary, follow_ups, confidence, results, session_id."""
     mock_router = type("R", (), {
@@ -170,6 +176,59 @@ def test_query_empty_string_returns_400(client) -> None:
     """Blank query string → HTTP 400."""
     resp = client.post("/api/query", json={"query": "   "})
     assert resp.status_code == 400
+
+
+def test_file_locator_query_returns_paginated_renderable_results(client) -> None:
+    """File-locator rows are exposed in results so the Hunt UI can display them."""
+    mock_router = type("R", (), {
+        "load_project_codes": lambda self, c: None,
+        "classify": lambda self, q, project_code=None: _file_locator_route(),
+    })()
+    files = [
+        {
+            "file_id": f"file-{i}",
+            "file_path": f"F:/Project/Drawing {i}.pdf",
+            "file_name": f"Drawing {i}.pdf",
+            "extension": ".pdf",
+            "project_code": "NUS_BIZ3",
+            "project_id": "NUS_BIZ3",
+            "folder_stage": "IFC",
+            "doc_type": "Drawing",
+            "content_type": "PDF",
+        }
+        for i in range(6)
+    ]
+    with (
+        patch("server.get_router", return_value=mock_router),
+        patch("server.execute_file_locator_query", return_value={
+            "answer_text": "Found 6 file(s).",
+            "files": files,
+            "confidence": 0.7,
+        }),
+    ):
+        resp = client.post("/api/query", json={"query": "find drawings", "top_k": 5})
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["answer_summary"] == "Found 6 file(s)."
+    assert len(data["results"]) == 5
+    assert data["results"][0]["title"] == "Drawing 0.pdf"
+    assert data["results"][0]["file_path"] == "F:/Project/Drawing 0.pdf"
+
+    with (
+        patch("server.get_router", return_value=mock_router),
+        patch("server.execute_file_locator_query", return_value={
+            "answer_text": "Found 6 file(s).",
+            "files": files,
+            "confidence": 0.7,
+        }),
+    ):
+        second_page = client.post(
+            "/api/query", json={"query": "find drawings", "top_k": 5, "offset": 5}
+        )
+
+    assert second_page.status_code == 200
+    assert len(second_page.json()["results"]) == 1
 
 
 # ---------------------------------------------------------------------------
