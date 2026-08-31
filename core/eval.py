@@ -39,7 +39,13 @@ _ROUTING_EVAL_FILENAME = "eval_questions.json"
 # Citation validator
 # ---------------------------------------------------------------------------
 
-def validate_citation(citation: str, db_path: str, root_paths: list[str]) -> bool:
+def validate_citation(
+    citation: str,
+    db_path: str,
+    root_paths: list[str],
+    *,
+    allow_indexed_fallback: bool = False,
+) -> bool:
     """
     Validate a citation string against disk + DB.
 
@@ -80,7 +86,21 @@ def validate_citation(citation: str, db_path: str, root_paths: list[str]) -> boo
                 continue
 
         if found_abs is None:
-            return False
+            if not allow_indexed_fallback:
+                return False
+            # Offline/mapped-drive fallback: keep evidence only when the exact
+            # indexed chunk still belongs to a file whose stored path ends in
+            # the cited relative path. This never invents a citation.
+            conn = _sqlite3.connect(db_path, check_same_thread=False)
+            try:
+                row = conn.execute(
+                    "SELECT 1 FROM chunks c JOIN files f ON f.file_id=c.file_id "
+                    "WHERE c.ref_value=? AND replace(f.file_path, '\\', '/') LIKE ? LIMIT 1",
+                    (ref, "%/" + rel.replace("\\", "/")),
+                ).fetchone()
+                return row is not None
+            finally:
+                conn.close()
 
         # Check 2: chunk exists in DB
         file_id = file_id_from_path(found_abs.as_posix())

@@ -676,7 +676,11 @@ def _search_impl(
         rel = _rel_path(cand["file_path"], roots)
         citation = _make_citation(cand["file_path"], rel, cand["ref_value"], roots)
 
-        if not validate_citation(citation, db_path, root_paths):
+        roots_available = any(Path(root).exists() for root in root_paths)
+        if not validate_citation(
+            citation, db_path, root_paths,
+            allow_indexed_fallback=not roots_available,
+        ):
             logger.error("Invalid citation excluded from results: %s", citation)
             continue
 
