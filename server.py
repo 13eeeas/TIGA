@@ -860,7 +860,10 @@ async def api_query(
         pool_k = cfg.retrieval_candidate_pool(max((req.top_k + req.offset), req.top_k))
         search_filters = req.filters or {}
         if route.project_code:
-            search_filters = {**search_filters, "project_id": route.project_code}
+            # The first index for a project may pre-date project-code
+            # enrichment. Scope by the stable archive path until structured
+            # project metadata is available.
+            search_filters = {**search_filters, "project_path_contains": route.project_code}
         # Pass expanded_terms for BM25/vector boosting (Chunk 7)
         _expanded_terms = (
             route.expanded_query.expanded_terms

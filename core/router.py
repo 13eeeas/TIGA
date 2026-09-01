@@ -751,6 +751,11 @@ class QueryRouter:
 
     def _detect_project_code(self, q: str) -> str | None:
         """Look for a known project code or 3-4 digit number in the query."""
+        # Project labels in live archives are often human names rather than a
+        # clean database code. Keep these compact, high-confidence patterns so
+        # a named project can be scoped before retrieval.
+        if re.search(r"\bnus\s+biz\s*3\b", q):
+            return "NUS BIZ3"
         # Check known codes first
         for code in sorted(self._known_codes, key=lambda c: -len(c)):
             if re.search(rf'\b{re.escape(code)}\b', q):

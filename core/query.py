@@ -337,6 +337,9 @@ def _run_bm25(
         if "project_id" in filters:
             filter_clauses.append("f.project_id = ?")
             params.append(filters["project_id"])
+        if "project_path_contains" in filters:
+            filter_clauses.append("lower(replace(f.file_path, '\\', '/')) LIKE ?")
+            params.append("%" + str(filters["project_path_contains"]).lower() + "%")
         if "typology" in filters:
             filter_clauses.append("f.typology = ?")
             params.append(filters["typology"])
