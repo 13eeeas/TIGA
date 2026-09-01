@@ -95,34 +95,38 @@ def _rebuild_fts(conn: sqlite3.Connection) -> None:
 
         CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
             text,
+            title,
+            path,
             chunk_id UNINDEXED,
-            content='chunks',
-            content_rowid='rowid',
             tokenize='porter ascii'
         );
 
         CREATE TRIGGER IF NOT EXISTS chunks_fts_insert
         AFTER INSERT ON chunks BEGIN
-            INSERT INTO chunks_fts(rowid, text, chunk_id)
-            VALUES (new.rowid, new.text, new.chunk_id);
+            INSERT INTO chunks_fts(rowid, text, title, path, chunk_id)
+            SELECT new.rowid, new.text, f.file_name, f.file_path, new.chunk_id
+            FROM files f WHERE f.file_id = new.file_id;
         END;
 
         CREATE TRIGGER IF NOT EXISTS chunks_fts_update
         AFTER UPDATE ON chunks BEGIN
-            INSERT INTO chunks_fts(chunks_fts, rowid, text, chunk_id)
-            VALUES ('delete', old.rowid, old.text, old.chunk_id);
-            INSERT INTO chunks_fts(rowid, text, chunk_id)
-            VALUES (new.rowid, new.text, new.chunk_id);
+            DELETE FROM chunks_fts WHERE rowid = old.rowid;
+            INSERT INTO chunks_fts(rowid, text, title, path, chunk_id)
+            SELECT new.rowid, new.text, f.file_name, f.file_path, new.chunk_id
+            FROM files f WHERE f.file_id = new.file_id;
         END;
 
         CREATE TRIGGER IF NOT EXISTS chunks_fts_delete
         AFTER DELETE ON chunks BEGIN
-            INSERT INTO chunks_fts(chunks_fts, rowid, text, chunk_id)
-            VALUES ('delete', old.rowid, old.text, old.chunk_id);
+            DELETE FROM chunks_fts WHERE rowid = old.rowid;
         END;
     """)
-    # Repopulate FTS from the content table (chunks)
-    conn.execute("INSERT INTO chunks_fts(chunks_fts) VALUES('rebuild')")
+    # Repopulate the fielded index from chunk text plus file metadata.
+    conn.execute(
+        "INSERT INTO chunks_fts(rowid, text, title, path, chunk_id) "
+        "SELECT c.rowid, c.text, f.file_name, f.file_path, c.chunk_id "
+        "FROM chunks c JOIN files f ON f.file_id = c.file_id"
+    )
     conn.commit()
 
 

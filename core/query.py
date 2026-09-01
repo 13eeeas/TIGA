@@ -379,7 +379,7 @@ def _run_bm25(
             COALESCE(f.file_name,  '')        AS file_name,
             COALESCE(f.is_latest, 0)          AS is_latest,
             COALESCE(f.is_superseded, 0)      AS is_superseded,
-            bm25(chunks_fts)                  AS bm25_raw,
+            bm25(chunks_fts, 1.0, 8.0, 3.0)   AS bm25_raw,
             snippet(chunks_fts, 0, '', '', ' ... ', {_SNIPPET_TOKENS}) AS snippet
         FROM chunks_fts
         JOIN chunks c ON c.rowid = chunks_fts.rowid
@@ -627,6 +627,21 @@ def _search_impl(
 
     candidates.sort(key=lambda r: (-r["final_score"], r["file_path"]))
     _apply_version_ranking(candidates, _active_filters, _cfg)
+
+    # Numeric/structured fact queries must surface chunks that actually state
+    # the requested field. This is deterministic evidence ranking, not LLM
+    # inference (e.g. "what is the GFA in the brief?").
+    fact_terms = {"gfa", "nfa", "afa", "site area", "plot ratio", "storeys", "units"}
+    query_l = query.lower()
+    requested_facts = [term for term in fact_terms if term in query_l]
+    if requested_facts:
+        for candidate in candidates:
+            haystack = (candidate["chunk_text"] + " " + candidate["file_name"]).lower()
+            if any(term in haystack for term in requested_facts):
+                candidate["final_score"] += 1.0
+                if "brief" in query_l and "brief" in candidate["file_path"].lower():
+                    candidate["final_score"] += 0.5
+        candidates.sort(key=lambda r: (-r["final_score"], r["file_path"]))
 
     # ── Step 3a: Archive / Google-classic boosts (path, filename, project code) ─
     if getattr(_cfg, "path_boost_enabled", True):
