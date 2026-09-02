@@ -137,6 +137,7 @@ _FILE_LOCATOR_KEYWORDS = frozenset([
 
 _FILE_TYPE_KEYWORDS = frozenset([
     "bim", "revit", ".rvt", "cad", ".dwg", "autocad",
+    "rhino", ".3dm", "grasshopper", ".gh", "sketchup", ".skp",
     "photoshop", ".psd", "illustrator", ".ai",
     "indesign", ".indd", "powerpoint", ".pptx", "presentation", "deck",
     "spreadsheet", ".xlsx", "excel", ".xls",
@@ -269,6 +270,8 @@ _STAGE_KEYWORDS: dict[str, str] = {
 # File type keywords → content_type value
 _CONTENT_TYPE_MAP: dict[str, str] = {
     "bim": "BIM", "revit": "BIM", ".rvt": "BIM",
+    # Native 3D authoring files are often not text-extractable, so their
+    # type is best identified by extension rather than content_type.
     "cad": "CAD", ".dwg": "CAD", "autocad": "CAD",
     "photoshop": "Photoshop", ".psd": "Photoshop",
     "illustrator": "Illustrator", ".ai": "Illustrator",
@@ -285,6 +288,15 @@ _CONTENT_TYPE_MAP: dict[str, str] = {
     "pdf": "PDF",
     "video": "Video",
     "email": "Email", "msg": "Email", "eml": "Email",
+}
+
+# File-type words whose meaning is an extension (rather than a content_type).
+# Kept separately because older indexes commonly record 3D source files as
+# content_type="unknown".
+_EXTENSION_TYPE_MAP: dict[str, tuple[str, ...]] = {
+    "rhino": (".3dm", ".3dmbak"), ".3dm": (".3dm",),
+    "grasshopper": (".gh", ".ghx"), ".gh": (".gh",),
+    "sketchup": (".skp",), ".skp": (".skp",),
 }
 
 
@@ -486,6 +498,16 @@ class QueryRouter:
             best_mode = "semantic"
             best_score = 0.5
 
+        # An inventory question is a deterministic database aggregation, not a
+        # semantic-answer request.  Route it even when it has no "find" verb.
+        if any(phrase in q for phrase in (
+            "what type of document", "what types of document",
+            "what type of file", "what types of file", "document types",
+            "file types", "types of documents", "types of files",
+        )):
+            best_mode = "file_locator"
+            best_score = max(best_score, 0.8)
+
         # A bare topic phrase (for example, "NUS BIZ3 brief") is a request to
         # search document content, not a request to list every file of a type.
         # Reserve metadata-only file lookup for explicit locator language or a
@@ -493,6 +515,11 @@ class QueryRouter:
         explicit_file_request = (
             any(kw in q for kw in _FILE_LOCATOR_KEYWORDS)
             or bool(tags & _FILE_LOCATOR_CONCEPTS)
+            or any(phrase in q for phrase in (
+                "what type of document", "what types of document",
+                "what type of file", "what types of file", "document types",
+                "file types", "types of documents", "types of files",
+            ))
         )
         if best_mode == "file_locator" and not explicit_file_request:
             best_mode = "semantic"
@@ -643,6 +670,35 @@ class QueryRouter:
                     f["content_type"] = ct
                     break
 
+        for kw, extensions in _EXTENSION_TYPE_MAP.items():
+            if kw in q:
+                f["extensions"] = extensions
+                break
+
+        # "Rhino model" is usually a location request: source-model folders
+        # are named Model/Site Model even when individual filenames vary.
+        if "extensions" in f and "model" in q:
+            f["path_terms"] = ["model"]
+
+        # Folder requests should match the path itself.  Preserve only useful
+        # path terms, excluding wording such as "show me" and file-type words.
+        if "folder" in q or "directory" in q:
+            stop = {word for phrase in _FILE_LOCATOR_KEYWORDS | _FILE_TYPE_KEYWORDS
+                    for word in phrase.split()} | {
+                "the", "a", "an", "in", "for", "of", "files", "file",
+                "folder", "directory", "where", "is", "are", "me", "all",
+            }
+            terms = [t for t in re.findall(r"[a-z0-9]+", q) if t not in stop and len(t) > 1]
+            if terms:
+                f["path_terms"] = terms
+
+        if any(phrase in q for phrase in (
+            "what type of document", "what types of document",
+            "what type of file", "what types of file", "document types",
+            "file types", "types of documents", "types of files",
+        )):
+            f["group_by"] = "content_type"
+
         # Folder stage from raw string (if not already set by concept)
         if "folder_stage" not in f:
             for kw, stage in _STAGE_KEYWORDS.items():
@@ -653,7 +709,8 @@ class QueryRouter:
         # Flags
         if "transmittals" in tags or any(kw in q for kw in ["issued to client", "outgoing", "sent to client"]):
             f["is_issued"] = 1
-        if any(kw in q for kw in ["superseded", "archived", "old versions", "old"]):
+        if any(re.search(rf"\b{re.escape(kw)}\b", q) for kw in
+               ["superseded", "archived", "old versions", "old"]):
             f["is_superseded"] = 1
         if any(kw in q for kw in ["latest", "current version", "most recent", "current revision"]):
             f["is_latest"] = 1
@@ -742,6 +799,10 @@ class QueryRouter:
                 if kw in q:
                     f["content_type"] = ct
                     break
+        for kw, extensions in _EXTENSION_TYPE_MAP.items():
+            if kw in q:
+                f["extensions"] = extensions
+                break
 
         # Stage / phase detection
         if "folder_stage" not in f:

@@ -18,7 +18,8 @@ import yaml
 
 from config import load_config
 from core.db import get_connection, file_id_from_path
-from core.query import search, _make_citation, _normalise_bm25, _normalise
+from core.query import search, execute_file_locator_query, _make_citation, _normalise_bm25, _normalise
+from core.router import QueryRouter
 
 
 # ---------------------------------------------------------------------------
@@ -100,6 +101,32 @@ def test_normalise_vec_best_gets_1():
     norm = _normalise(scores)
     assert abs(norm[0] - 1.0) < 1e-9
     assert abs(norm[-1] - 0.0) < 1e-9
+
+
+def test_rhino_locator_uses_extension_and_model_path(tmp_path: Path, conn) -> None:
+    """Native Rhino files remain discoverable even when content_type is unknown."""
+    model = tmp_path / "NUS BIZ3" / "10 3D" / "Rhino" / "Site Model" / "Base Model.3dm"
+    model.parent.mkdir(parents=True)
+    model.write_bytes(b"rhino")
+    conn.execute(
+        "INSERT INTO files (file_id, file_path, file_name, extension, status, content_type) "
+        "VALUES ('rhino', ?, 'Base Model.3dm', '.3dm', 'INDEXED', 'unknown')",
+        (model.as_posix(),),
+    )
+    conn.commit()
+
+    route = QueryRouter().classify("where is the rhino model")
+    assert route.mode == "file_locator"
+    assert route.filters["extensions"] == (".3dm", ".3dmbak")
+    assert route.filters["path_terms"] == ["model"]
+    result = execute_file_locator_query(route, conn=conn)
+    assert [f["file_name"] for f in result["files"]] == ["Base Model.3dm"]
+
+
+def test_document_inventory_routes_to_file_locator() -> None:
+    route = QueryRouter().classify("what types of documents are in this project")
+    assert route.mode == "file_locator"
+    assert route.filters["group_by"] == "content_type"
 
 
 def test_make_citation_single_root(tmp_path: Path) -> None:

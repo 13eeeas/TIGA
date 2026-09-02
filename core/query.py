@@ -883,12 +883,26 @@ def execute_file_locator_query(
 
         project_code = route.project_code or filters.get("project_code")
         if project_code:
-            # Match against project_code column OR project_id column
-            clauses.append("(project_code = ? OR project_id LIKE ?)")
-            params.extend([project_code, f"%{project_code}%"])
+            # Older archives can be indexed before project cards are created;
+            # in those databases project_code/project_id are Unknown.  The
+            # indexed path remains a reliable project scope.
+            clauses.append(
+                "(project_code = ? OR project_id LIKE ? OR "
+                "lower(replace(file_path, '\\\\', '/')) LIKE ?)"
+            )
+            params.extend([project_code, f"%{project_code}%", f"%{str(project_code).lower()}%"])
         if "content_type" in filters:
             clauses.append("content_type = ?")
             params.append(filters["content_type"])
+        if "extensions" in filters:
+            extensions = tuple(filters["extensions"])
+            if extensions:
+                clauses.append("extension IN (" + ",".join("?" for _ in extensions) + ")")
+                params.extend(extensions)
+        if "path_terms" in filters:
+            for term in filters["path_terms"]:
+                clauses.append("lower(replace(file_path, '\\\\', '/')) LIKE ?")
+                params.append(f"%{str(term).lower()}%")
         if "folder_stage" in filters:
             clauses.append("folder_stage = ?")
             params.append(filters["folder_stage"])
@@ -909,6 +923,29 @@ def execute_file_locator_query(
             params.append(filters["date_to"])
 
         where = "WHERE " + " AND ".join(clauses)
+        if filters.get("group_by") == "content_type":
+            rows = _conn.execute(
+                f"""SELECT COALESCE(NULLIF(content_type, ''), 'Other / unclassified') AS content_type,
+                           COUNT(*) AS file_count
+                    FROM files {where}
+                    GROUP BY COALESCE(NULLIF(content_type, ''), 'Other / unclassified')
+                    ORDER BY file_count DESC, content_type ASC
+                    LIMIT 30""",
+                params,
+            ).fetchall()
+            files = [{
+                "file_id": f"type:{r['content_type']}",
+                "file_path": "",
+                "file_name": f"{r['content_type']} ({r['file_count']} files)",
+                "content_type": r["content_type"],
+                "doc_type": "Document type",
+                "extension": "type",
+            } for r in rows]
+            answer = ("Document types in this indexed project: " +
+                      ", ".join(f"{r['content_type']} ({r['file_count']})" for r in rows) + ".") if rows else "No indexed documents found."
+            return {"answer_text": answer, "files": files, "mode": "file_locator",
+                    "sources": [], "confidence": 0.9 if rows else 0.0}
+
         rows = _conn.execute(
             f"""SELECT file_id, file_path, file_name, extension,
                        project_code, project_id, folder_stage, discipline,
