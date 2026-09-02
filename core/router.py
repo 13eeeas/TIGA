@@ -498,9 +498,14 @@ class QueryRouter:
             best_mode = "semantic"
             best_score = semantic_score
 
-        # Project code present → prefer structured over low-signal semantic
-        # (e.g. "What's project 261 about?" has no concept tags but clear project intent)
-        if detected_code and best_mode == "semantic" and best_score <= 0.25:
+        # Project-code-only questions can use a project card. A named document
+        # or evidence query ("NUS BIZ3 brief", "GFA in the brief") must stay
+        # semantic even when its generic semantic score is low.
+        project_card_only = any(kw in q for kw in (
+            "what's project", "what is project", "project overview",
+            "project name", "project code", "what project is",
+        ))
+        if detected_code and project_card_only and best_mode == "semantic" and best_score <= 0.25:
             best_mode = "structured"
             best_score = 0.35
 
