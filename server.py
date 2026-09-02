@@ -426,6 +426,7 @@ class QueryRequest(BaseModel):
     offset: int = 0
     session_id: str | None = None
     filters: dict[str, str] | None = None
+    compose: bool = False  # LLM synthesis is opt-in; search stays fast/local.
 
 
 class ResultItem(BaseModel):
@@ -829,12 +830,20 @@ async def api_query(
             else None
         )
         sr = search(req.query, top_k=pool_k, filters=search_filters or None,
-                    conn=conn, expanded_terms=expanded_terms)
-        cr = compose_answer(req.query, list(sr), session_id=session_id, conn=conn)
-        answer_summary = cr.answer_summary
-        follow_up_prompts = cr.follow_ups
-        confidence = cr.confidence
-        mixed = sorted(cr.results + _aggregate_dirs(cr.results),
+                    conn=conn, expanded_terms=expanded_terms, use_vector=req.compose,
+                    validate_citations=req.compose)
+        if req.compose:
+            cr = compose_answer(req.query, list(sr), session_id=session_id, conn=conn)
+            answer_summary = cr.answer_summary
+            follow_up_prompts = cr.follow_ups
+            confidence = cr.confidence
+            base_results = cr.results
+        else:
+            base_results = [ResultView.from_search_result(r) for r in sr]
+            answer_summary = f"Found {len(base_results)} relevant evidence result(s)."
+            follow_up_prompts = []
+            confidence = max((r.final_score for r in base_results), default=0.0)
+        mixed = sorted(base_results + _aggregate_dirs(base_results),
                        key=lambda x: x.final_score, reverse=True)
         results_page = mixed[req.offset : req.offset + req.top_k]
 

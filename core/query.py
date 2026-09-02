@@ -438,6 +438,8 @@ def search(
     cfg_obj: Config | None = None,
     conn: sqlite3.Connection | None = None,
     expanded_terms: list[str] | None = None,
+    use_vector: bool = True,
+    validate_citations: bool = True,
 ) -> list[SearchResult]:
     """
     Hybrid BM25 + vector search. Returns validated-citation results only.
@@ -461,7 +463,8 @@ def search(
 
     try:
         return _search_impl(query, _top_k, offset, filters, session_id, _cfg, _conn,
-                            expanded_terms=expanded_terms)
+                            expanded_terms=expanded_terms, use_vector=use_vector,
+                            validate_citations=validate_citations)
     finally:
         if _own_conn:
             _conn.close()
@@ -508,6 +511,8 @@ def _search_impl(
     _cfg: Config,
     conn: sqlite3.Connection,
     expanded_terms: list[str] | None = None,
+    use_vector: bool = True,
+    validate_citations: bool = True,
 ) -> list[SearchResult]:
 
     alpha = _cfg.hybrid_alpha
@@ -563,8 +568,9 @@ def _search_impl(
     # Strip BM25-only filter keys (project_scope, content_type, folder_stage)
     # before passing to the vector lane — LanceDB only accepts project_id,
     # typology, ext.  _vector_compatible_filters() handles the conversion.
-    vec_scores = _run_vector(
-        vector_query, pool_limit, _vector_compatible_filters(_active_filters), _cfg
+    vec_scores = (
+        _run_vector(vector_query, pool_limit, _vector_compatible_filters(_active_filters), _cfg)
+        if use_vector else {}
     )
 
     # ── Step 3: Merge ─────────────────────────────────────────────────────────
@@ -689,16 +695,16 @@ def _search_impl(
             logger.warning("reranker unavailable (using hybrid order): %s", _re_exc)
 
     # ── Steps 4 & 5: Citation generation + validation ─────────────────────────
+    # When source roots are offline, every candidate already originates from the
+    # joined chunks/files rows in this connection. Avoid reopening SQLite once
+    # per result merely to prove that same relationship again.
+    roots_available = validate_citations and any(Path(root).exists() for root in root_paths)
     results: list[SearchResult] = []
     for cand in candidates[offset:]:
         rel = _rel_path(cand["file_path"], roots)
         citation = _make_citation(cand["file_path"], rel, cand["ref_value"], roots)
 
-        roots_available = any(Path(root).exists() for root in root_paths)
-        if not validate_citation(
-            citation, db_path, root_paths,
-            allow_indexed_fallback=not roots_available,
-        ):
+        if roots_available and not validate_citation(citation, db_path, root_paths):
             logger.error("Invalid citation excluded from results: %s", citation)
             continue
 

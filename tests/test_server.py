@@ -119,7 +119,7 @@ def test_query_endpoint_returns_answer_payload(client) -> None:
         patch("server.compose_answer", return_value=_fake_compose_result()),
         patch("server.get_router", return_value=mock_router),
     ):
-        resp = client.post("/api/query", json={"query": "hospital brief"})
+        resp = client.post("/api/query", json={"query": "hospital brief", "compose": True})
 
     assert resp.status_code == 200
     data = resp.json()
