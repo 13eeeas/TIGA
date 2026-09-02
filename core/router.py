@@ -297,6 +297,14 @@ _EXTENSION_TYPE_MAP: dict[str, tuple[str, ...]] = {
     "rhino": (".3dm", ".3dmbak"), ".3dm": (".3dm",),
     "grasshopper": (".gh", ".ghx"), ".gh": (".gh",),
     "sketchup": (".skp",), ".skp": (".skp",),
+    "archicad": (".pln", ".pla"), "vectorworks": (".vwx",),
+    "microstation": (".dgn",), "navisworks": (".nwd", ".nwc", ".nwf"),
+    "ifc": (".ifc",), "3ds max": (".max",), "3ds": (".3ds",),
+    "blender": (".blend",), "cinema 4d": (".c4d",),
+    "lumion": (".ls", ".lsf"), "twinmotion": (".tm",),
+    "unreal": (".uproject",), "unity": (".unity",),
+    "fbx": (".fbx",), "obj": (".obj",), "gltf": (".gltf", ".glb"),
+    "vray": (".vrscene",), "enscape": (".vrscene",),
 }
 
 
@@ -675,6 +683,21 @@ class QueryRouter:
                 f["extensions"] = extensions
                 break
 
+        # Exact extension queries must work without maintaining an alias for
+        # every niche application: "find .xyz files" searches .xyz directly.
+        if "extensions" not in f:
+            requested_exts = tuple(
+                f".{ext.lower()}" for ext in re.findall(r"(?<!\w)\.([a-z0-9]{1,12})\b", q)
+            )
+            if requested_exts:
+                f["extensions"] = requested_exts
+
+        # A named format is more precise than a broad synonym concept.  For
+        # example, Lumion files may be indexed as unknown, not Image; keeping
+        # an inferred Image filter would silently hide the correct .ls files.
+        if "extensions" in f:
+            f.pop("content_type", None)
+
         # "Rhino model" is usually a location request: source-model folders
         # are named Model/Site Model even when individual filenames vary.
         if "extensions" in f and "model" in q:
@@ -687,6 +710,22 @@ class QueryRouter:
                     for word in phrase.split()} | {
                 "the", "a", "an", "in", "for", "of", "files", "file",
                 "folder", "directory", "where", "is", "are", "me", "all",
+            }
+            terms = [t for t in re.findall(r"[a-z0-9]+", q) if t not in stop and len(t) > 1]
+            if terms:
+                f["path_terms"] = terms
+
+        # When the user explicitly asks to locate something but did not name a
+        # known type, search its filename/path rather than returning arbitrary
+        # files.  Content retrieval remains the fallback when this finds none.
+        if (not f.get("content_type") and not f.get("extensions")
+                and not f.get("path_terms")
+                and any(kw in q for kw in _FILE_LOCATOR_KEYWORDS)):
+            stop = {word for phrase in _FILE_LOCATOR_KEYWORDS | _QUALIFIER_KEYWORDS
+                    for word in phrase.split()} | {
+                "the", "a", "an", "in", "for", "of", "files", "file",
+                "document", "documents", "folder", "directory", "where",
+                "is", "are", "me", "all", "this", "project",
             }
             terms = [t for t in re.findall(r"[a-z0-9]+", q) if t not in stop and len(t) > 1]
             if terms:

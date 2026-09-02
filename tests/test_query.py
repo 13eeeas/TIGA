@@ -129,6 +129,18 @@ def test_document_inventory_routes_to_file_locator() -> None:
     assert route.filters["group_by"] == "content_type"
 
 
+def test_file_locator_accepts_unknown_explicit_extension_and_path_terms() -> None:
+    """No application-specific alias is needed for an exact file extension."""
+    router = QueryRouter()
+    extension_route = router.classify("find .usd files")
+    assert extension_route.mode == "file_locator"
+    assert extension_route.filters["extensions"] == (".usd",)
+
+    folder_route = router.classify("show me the consultant folder")
+    assert folder_route.mode == "file_locator"
+    assert folder_route.filters["path_terms"] == ["consultant"]
+
+
 def test_make_citation_single_root(tmp_path: Path) -> None:
     """Single root → citation has no bracket prefix."""
     roots = [tmp_path / "archive"]

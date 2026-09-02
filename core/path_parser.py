@@ -29,7 +29,9 @@ logger = logging.getLogger(__name__)
 
 _EXT_CONTENT_TYPE: dict[str, str] = {
     ".rvt": "BIM", ".ifc": "BIM", ".nwd": "BIM", ".nwc": "BIM", ".rfa": "BIM",
+    ".pln": "BIM", ".pla": "BIM", ".vwx": "BIM", ".nwf": "BIM",
     ".dwg": "CAD", ".dxf": "CAD", ".dgn": "CAD",
+    ".3dm": "Rhino", ".3dmbak": "Rhino", ".gh": "Grasshopper", ".ghx": "Grasshopper",
     ".psd": "Photoshop", ".psb": "Photoshop",
     ".ai": "Illustrator", ".eps": "Illustrator",
     ".indd": "InDesign", ".indt": "InDesign",
@@ -40,6 +42,10 @@ _EXT_CONTENT_TYPE: dict[str, str] = {
     ".tiff": "Image", ".tif": "Image", ".bmp": "Image", ".webp": "Image",
     ".lsm": "Render Scene", ".tma": "Render Scene", ".skp": "Render Scene",
     ".max": "Render Scene", ".c4d": "Render Scene", ".blend": "Render Scene",
+    ".3ds": "Render Scene", ".fbx": "Render Scene", ".obj": "Render Scene",
+    ".gltf": "Render Scene", ".glb": "Render Scene", ".vrscene": "Render Scene",
+    ".ls": "Render Scene", ".lsf": "Render Scene", ".tm": "Render Scene",
+    ".uproject": "Render Scene", ".unity": "Render Scene",
     ".docx": "Word", ".doc": "Word",
     ".mp4": "Video", ".mov": "Video", ".avi": "Video",
     ".txt": "Text", ".md": "Text",
