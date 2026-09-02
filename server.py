@@ -816,6 +816,28 @@ async def api_query(
     results_page: list[ResultView] = []
     fallback_suggestion: str | None = None
 
+    def run_semantic_fallback() -> None:
+        """Run evidence retrieval when metadata routing has no answer."""
+        nonlocal answer_summary, follow_up_prompts, confidence, results_page
+        pool_k = cfg.retrieval_candidate_pool(max((req.top_k + req.offset), req.top_k))
+        search_filters = req.filters or {}
+        if route.project_code:
+            search_filters = {**search_filters, "project_path_contains": route.project_code}
+        expanded_terms = (
+            route.expanded_query.expanded_terms
+            if route.expanded_query and route.expanded_query.expanded_terms
+            else None
+        )
+        sr = search(req.query, top_k=pool_k, filters=search_filters or None,
+                    conn=conn, expanded_terms=expanded_terms)
+        cr = compose_answer(req.query, list(sr), session_id=session_id, conn=conn)
+        answer_summary = cr.answer_summary
+        follow_up_prompts = cr.follow_ups
+        confidence = cr.confidence
+        mixed = sorted(cr.results + _aggregate_dirs(cr.results),
+                       key=lambda x: x.final_score, reverse=True)
+        results_page = mixed[req.offset : req.offset + req.top_k]
+
     # ── Dispatch to appropriate executor ────────────────────────────────────
     if mode == "structured":
         exec_result = execute_structured_query(route, conn=conn)
@@ -856,31 +878,17 @@ async def api_query(
         follow_up_prompts = []
 
     else:
-        # semantic — use existing hybrid RAG pipeline with synonym boosting
-        pool_k = cfg.retrieval_candidate_pool(max((req.top_k + req.offset), req.top_k))
-        search_filters = req.filters or {}
-        if route.project_code:
-            # The first index for a project may pre-date project-code
-            # enrichment. Scope by the stable archive path until structured
-            # project metadata is available.
-            search_filters = {**search_filters, "project_path_contains": route.project_code}
-        # Pass expanded_terms for BM25/vector boosting (Chunk 7)
-        _expanded_terms = (
-            route.expanded_query.expanded_terms
-            if route.expanded_query and route.expanded_query.expanded_terms
-            else None
-        )
-        sr = search(req.query, top_k=pool_k, filters=search_filters or None, conn=conn,
-                    expanded_terms=_expanded_terms)
-        cr = compose_answer(req.query, list(sr), session_id=session_id, conn=conn)
-        answer_summary = cr.answer_summary
-        follow_up_prompts = cr.follow_ups
-        confidence = cr.confidence
+        run_semantic_fallback()
 
-        # Mix in directory pseudo-results, re-sort by score
-        dir_results = _aggregate_dirs(cr.results)
-        mixed = sorted(cr.results + dir_results, key=lambda x: x.final_score, reverse=True)
-        results_page = mixed[req.offset : req.offset + req.top_k]
+    # Metadata routes are useful when they return evidence; otherwise continue
+    # into content retrieval rather than showing an empty result panel.
+    no_structured_evidence = (
+        mode == "structured"
+        and (not data_result or answer_summary.lower().startswith("no project"))
+    )
+    if no_structured_evidence or (mode == "file_locator" and not files_result):
+        mode = "semantic"
+        run_semantic_fallback()
 
     # ── Fallback suggestion for low confidence ───────────────────────────────
     if confidence < 0.6 or (mode == "file_locator" and not files_result):
