@@ -35,6 +35,7 @@ _EXT_CONTENT_TYPE: dict[str, str] = {
     ".psd": "Photoshop", ".psb": "Photoshop",
     ".ai": "Illustrator", ".eps": "Illustrator",
     ".indd": "InDesign", ".indt": "InDesign",
+    ".afphoto": "Affinity Photo", ".afdesign": "Affinity Designer", ".afpub": "Affinity Publisher",
     ".pptx": "Presentation", ".ppt": "Presentation", ".key": "Presentation",
     ".xlsx": "Spreadsheet", ".xls": "Spreadsheet", ".csv": "Spreadsheet",
     ".pdf": "PDF",

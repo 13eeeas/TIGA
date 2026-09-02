@@ -138,8 +138,8 @@ _FILE_LOCATOR_KEYWORDS = frozenset([
 _FILE_TYPE_KEYWORDS = frozenset([
     "bim", "revit", ".rvt", "cad", ".dwg", "autocad",
     "rhino", ".3dm", "grasshopper", ".gh", "sketchup", ".skp",
-    "photoshop", ".psd", "illustrator", ".ai",
-    "indesign", ".indd", "powerpoint", ".pptx", "presentation", "deck",
+    "photoshop", "psd", ".psd", "illustrator", "adobe illustrator", ".ai",
+    "indesign", "indd", ".indd", "affinity", "powerpoint", ".pptx", "presentation", "deck",
     "spreadsheet", ".xlsx", "excel", ".xls",
     "render", "viz", "visualisation", "visualization", "image", "jpg", "png",
     "minutes", "transmittal", "rfi", "specification", "spec", "brief",
@@ -294,6 +294,11 @@ _CONTENT_TYPE_MAP: dict[str, str] = {
 # Kept separately because older indexes commonly record 3D source files as
 # content_type="unknown".
 _EXTENSION_TYPE_MAP: dict[str, tuple[str, ...]] = {
+    "photoshop": (".psd", ".psb"), "psd": (".psd",), "psb": (".psb",),
+    "illustrator": (".ai", ".eps"), "adobe illustrator": (".ai", ".eps"),
+    "indesign": (".indd", ".indt"), "indd": (".indd",), "indt": (".indt",),
+    "affinity photo": (".afphoto",), "affinity designer": (".afdesign",),
+    "affinity publisher": (".afpub",),
     "rhino": (".3dm", ".3dmbak"), ".3dm": (".3dm",),
     "grasshopper": (".gh", ".ghx"), ".gh": (".gh",),
     "sketchup": (".skp",), ".skp": (".skp",),
@@ -306,6 +311,13 @@ _EXTENSION_TYPE_MAP: dict[str, tuple[str, ...]] = {
     "fbx": (".fbx",), "obj": (".obj",), "gltf": (".gltf", ".glb"),
     "vray": (".vrscene",), "enscape": (".vrscene",),
 }
+
+
+def _matches_term(query: str, term: str) -> bool:
+    """Match a file/application term without accidental substring hits."""
+    if term.startswith("."):
+        return bool(re.search(re.escape(term) + r"\b", query))
+    return bool(re.search(rf"\b{re.escape(term)}\b", query))
 
 
 # ---------------------------------------------------------------------------
@@ -523,6 +535,7 @@ class QueryRouter:
         explicit_file_request = (
             any(kw in q for kw in _FILE_LOCATOR_KEYWORDS)
             or bool(tags & _FILE_LOCATOR_CONCEPTS)
+            or any(_matches_term(q, term) for term in _EXTENSION_TYPE_MAP)
             or any(phrase in q for phrase in (
                 "what type of document", "what types of document",
                 "what type of file", "what types of file", "document types",
@@ -624,7 +637,7 @@ class QueryRouter:
         # File type mentions (fallback)
         if not tags & _FILE_LOCATOR_CONCEPTS:
             for kw in _FILE_TYPE_KEYWORDS:
-                if kw in q:
+                if _matches_term(q, kw):
                     score += 0.25
         # Qualifier phrases
         for kw in _QUALIFIER_KEYWORDS:
@@ -674,12 +687,12 @@ class QueryRouter:
         # If no concept match, fall back to raw string matching
         if "content_type" not in f:
             for kw, ct in _CONTENT_TYPE_MAP.items():
-                if kw in q:
+                if _matches_term(q, kw):
                     f["content_type"] = ct
                     break
 
         for kw, extensions in _EXTENSION_TYPE_MAP.items():
-            if kw in q:
+            if _matches_term(q, kw):
                 f["extensions"] = extensions
                 break
 
@@ -741,7 +754,7 @@ class QueryRouter:
         # Folder stage from raw string (if not already set by concept)
         if "folder_stage" not in f:
             for kw, stage in _STAGE_KEYWORDS.items():
-                if kw in q:
+                if _matches_term(q, kw):
                     f["folder_stage"] = stage
                     break
 
@@ -835,18 +848,18 @@ class QueryRouter:
         # already handled by a file_locator concept
         if "content_type" not in f:
             for kw, ct in _CONTENT_TYPE_MAP.items():
-                if kw in q:
+                if _matches_term(q, kw):
                     f["content_type"] = ct
                     break
         for kw, extensions in _EXTENSION_TYPE_MAP.items():
-            if kw in q:
+            if _matches_term(q, kw):
                 f["extensions"] = extensions
                 break
 
         # Stage / phase detection
         if "folder_stage" not in f:
             for kw, stage in _STAGE_KEYWORDS.items():
-                if kw in q:
+                if _matches_term(q, kw):
                     f["folder_stage"] = stage
                     break
 

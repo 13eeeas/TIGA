@@ -141,6 +141,19 @@ def test_file_locator_accepts_unknown_explicit_extension_and_path_terms() -> Non
     assert folder_route.filters["path_terms"] == ["consultant"]
 
 
+@pytest.mark.parametrize(("query", "extensions"), [
+    ("find Photoshop files", (".psd", ".psb")),
+    ("find PSD files", (".psd",)),
+    ("find InDesign files", (".indd", ".indt")),
+    ("find INDD files", (".indd",)),
+    ("find Lumion files", (".ls", ".lsf")),
+])
+def test_application_names_and_extensions_resolve_to_native_files(query, extensions) -> None:
+    route = QueryRouter().classify(query)
+    assert route.mode == "file_locator"
+    assert route.filters["extensions"] == extensions
+
+
 def test_make_citation_single_root(tmp_path: Path) -> None:
     """Single root → citation has no bracket prefix."""
     roots = [tmp_path / "archive"]
