@@ -154,6 +154,19 @@ def test_application_names_and_extensions_resolve_to_native_files(query, extensi
     assert route.filters["extensions"] == extensions
 
 
+def test_file_request_overrides_stakeholder_card_routing() -> None:
+    """"Find structural drawings" must locate files, not query consultants."""
+    route = QueryRouter().classify("find structural drawings")
+    assert route.mode == "file_locator"
+    assert route.filters["path_terms"] == ["structural", "drawings"]
+
+
+def test_named_project_discussion_uses_evidence_not_project_card() -> None:
+    route = QueryRouter().classify("NUS BIZ3 acoustic M&E discussion")
+    assert route.mode == "semantic"
+    assert route.project_code == "NUS BIZ3"
+
+
 def test_make_citation_single_root(tmp_path: Path) -> None:
     """Single root → citation has no bracket prefix."""
     roots = [tmp_path / "archive"]

@@ -528,12 +528,32 @@ class QueryRouter:
             best_mode = "file_locator"
             best_score = max(best_score, 0.8)
 
+        # An explicit request to find or locate a file is a metadata/path
+        # operation even if a stakeholder synonym (for example "structural")
+        # also matched a project-card field.
+        has_locator_verb = any(kw in q for kw in _FILE_LOCATOR_KEYWORDS)
+        if has_locator_verb and not any(kw in q for kw in (
+            "why", "how", "explain", "summarise", "summarize", "compare",
+            "discussed", "discussion", "evidence", "mention", "takeaways",
+        )):
+            best_mode = "file_locator"
+            best_score = max(file_locator_score, 0.7)
+
+        # A named-project report, brief, discussion, clarification, or
+        # requirement query needs document evidence, not project-card fields.
+        if detected_code and any(kw in q for kw in (
+            "brief", "report", "discussion", "clarification", "corrigendum",
+            "requirement", "programme", "program", "presentation", "deck",
+        )) and not has_locator_verb:
+            best_mode = "semantic"
+            best_score = max(semantic_score, 0.45)
+
         # A bare topic phrase (for example, "NUS BIZ3 brief") is a request to
         # search document content, not a request to list every file of a type.
         # Reserve metadata-only file lookup for explicit locator language or a
         # recognised file-location concept.
         explicit_file_request = (
-            any(kw in q for kw in _FILE_LOCATOR_KEYWORDS)
+            has_locator_verb
             or bool(tags & _FILE_LOCATOR_CONCEPTS)
             or any(_matches_term(q, term) for term in _EXTENSION_TYPE_MAP)
             or any(phrase in q for phrase in (
@@ -754,6 +774,10 @@ class QueryRouter:
         # Folder stage from raw string (if not already set by concept)
         if "folder_stage" not in f:
             for kw, stage in _STAGE_KEYWORDS.items():
+                # Presentation is a content type; adding a folder-stage filter
+                # here often hides valid decks stored under dated folders.
+                if kw in ("presentation",):
+                    continue
                 if _matches_term(q, kw):
                     f["folder_stage"] = stage
                     break
@@ -859,6 +883,8 @@ class QueryRouter:
         # Stage / phase detection
         if "folder_stage" not in f:
             for kw, stage in _STAGE_KEYWORDS.items():
+                if kw in ("presentation",):
+                    continue
                 if _matches_term(q, kw):
                     f["folder_stage"] = stage
                     break

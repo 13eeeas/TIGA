@@ -96,7 +96,7 @@ from core.query import (
     search, execute_structured_query,
     execute_file_locator_query, execute_cross_project_query,
 )
-from core.router import get_router
+from core.router import _FILE_LOCATOR_CONCEPTS, _STRUCTURED_CONCEPTS, get_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -824,11 +824,15 @@ async def api_query(
         search_filters = req.filters or {}
         if route.project_code:
             search_filters = {**search_filters, "project_path_contains": route.project_code}
-        expanded_terms = (
-            route.expanded_query.expanded_terms
-            if route.expanded_query and route.expanded_query.expanded_terms
-            else None
-        )
+        # YAML synonym sets are valuable for routing, but expanding a
+        # stakeholder/file-location set into an evidence query can overwhelm
+        # the user's specific terms (e.g. "acoustic M&E discussion").  Keep
+        # those sets for routing only; semantic concepts may still expand.
+        expanded_terms = None
+        if route.expanded_query and route.expanded_query.expanded_terms:
+            tags = set(route.expanded_query.concept_tags)
+            if not tags.intersection(_STRUCTURED_CONCEPTS | _FILE_LOCATOR_CONCEPTS):
+                expanded_terms = route.expanded_query.expanded_terms
         sr = search(req.query, top_k=pool_k, filters=search_filters or None,
                     conn=conn, expanded_terms=expanded_terms, use_vector=req.compose,
                     validate_citations=req.compose)
