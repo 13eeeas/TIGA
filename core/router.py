@@ -312,6 +312,11 @@ _EXTENSION_TYPE_MAP: dict[str, tuple[str, ...]] = {
     "vray": (".vrscene",), "enscape": (".vrscene",),
 }
 
+_PRESENTATION_FAMILY_TERMS = frozenset({
+    "presentation", "presentations", "ppt", "pptx", "powerpoint",
+    "power point", "deck", "decks", "slides", "slide deck",
+})
+
 
 def _matches_term(query: str, term: str) -> bool:
     """Match a file/application term without accidental substring hits."""
@@ -528,6 +533,10 @@ class QueryRouter:
             best_mode = "file_locator"
             best_score = max(best_score, 0.8)
 
+        if any(_matches_term(q, term) for term in _PRESENTATION_FAMILY_TERMS):
+            best_mode = "file_locator"
+            best_score = max(file_locator_score, 0.75)
+
         # An explicit request to find or locate a file is a metadata/path
         # operation even if a stakeholder synonym (for example "structural")
         # also matched a project-card field.
@@ -556,6 +565,7 @@ class QueryRouter:
             has_locator_verb
             or bool(tags & _FILE_LOCATOR_CONCEPTS)
             or any(_matches_term(q, term) for term in _EXTENSION_TYPE_MAP)
+            or any(_matches_term(q, term) for term in _PRESENTATION_FAMILY_TERMS)
             or any(phrase in q for phrase in (
                 "what type of document", "what types of document",
                 "what type of file", "what types of file", "document types",
@@ -730,6 +740,12 @@ class QueryRouter:
         # an inferred Image filter would silently hide the correct .ls files.
         if "extensions" in f:
             f.pop("content_type", None)
+
+        # A presentation may be a native deck or an issued/exported PDF.
+        # content_type alone misses the latter because PDFs retain PDF metadata.
+        if any(_matches_term(q, term) for term in _PRESENTATION_FAMILY_TERMS):
+            f.pop("content_type", None)
+            f["presentation_family"] = True
 
         # "Rhino model" is usually a location request: source-model folders
         # are named Model/Site Model even when individual filenames vary.

@@ -167,6 +167,13 @@ def test_named_project_discussion_uses_evidence_not_project_card() -> None:
     assert route.project_code == "NUS BIZ3"
 
 
+@pytest.mark.parametrize("query", ["presentation", "ppt", "PowerPoint", "PDF presentation"])
+def test_presentation_terms_use_native_and_pdf_deck_family(query) -> None:
+    route = QueryRouter().classify(query)
+    assert route.mode == "file_locator"
+    assert route.filters["presentation_family"] is True
+
+
 def test_make_citation_single_root(tmp_path: Path) -> None:
     """Single root → citation has no bracket prefix."""
     roots = [tmp_path / "archive"]

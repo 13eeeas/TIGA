@@ -894,6 +894,14 @@ def execute_file_locator_query(
         if "content_type" in filters:
             clauses.append("content_type = ?")
             params.append(filters["content_type"])
+        if filters.get("presentation_family"):
+            clauses.append(
+                "(content_type = 'Presentation' OR "
+                "(extension = '.pdf' AND ("
+                "lower(file_name) LIKE '%presentation%' OR lower(file_name) LIKE '%deck%' "
+                "OR lower(file_name) LIKE '%slide%' OR lower(file_path) LIKE '%presentation%' "
+                "OR lower(file_path) LIKE '%deck%' OR lower(file_path) LIKE '%slide%')))"
+            )
         if "extensions" in filters:
             extensions = tuple(filters["extensions"])
             if extensions:
