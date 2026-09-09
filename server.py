@@ -6,6 +6,11 @@ Endpoints
   POST /api/query                — hybrid search + compose answer
   GET  /api/status               — index stats + Ollama availability
   GET  /api/projects             — distinct project_ids + file counts
+  GET  /api/project/{code}       — project data card
+  GET  /api/atlas/projects       — wiki project list (auto + curation status)
+  GET  /api/atlas/page/{code}    — auto Grokopedia page + wiki overlay
+  POST /api/atlas/page/{code}/pin|hide|fact|ask
+  GET  /projects                 — Projects wiki UI (Atlas in Hunt)
   POST /api/session              — create new session, returns {session_id}
   GET  /api/session/{session_id} — message history for session
   GET  /health                   — liveness check {status, ollama}
@@ -1007,6 +1012,124 @@ async def api_get_project(
     if card is None:
         raise HTTPException(status_code=404, detail=f"Project '{code}' not found")
     return card
+
+
+# ---------------------------------------------------------------------------
+# Atlas wiki (auto Grokopedia + community curation) — inside Hunt
+# ---------------------------------------------------------------------------
+
+class AtlasPinRequest(BaseModel):
+    role: str = "other"
+    path: str
+    title: str = ""
+    note: str = ""
+
+
+class AtlasHideRequest(BaseModel):
+    path: str
+
+
+class AtlasFactRequest(BaseModel):
+    key: str
+    label: str
+    value: str
+    cite_paths: list[str] = []
+    status: str = "draft"
+
+
+class AtlasAskRequest(BaseModel):
+    question: str
+
+
+@app.get("/api/atlas/projects")
+async def api_atlas_projects(
+    conn: sqlite3.Connection = Depends(get_db),
+) -> list[dict[str, Any]]:
+    from core.atlas_wiki import list_wiki_projects
+    return list_wiki_projects(conn)
+
+
+@app.get("/api/atlas/page/{code}")
+async def api_atlas_page(
+    code: str,
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict[str, Any]:
+    """Auto-draft + wiki overlay project Grokopedia page."""
+    from core.atlas_wiki import get_wiki_page
+    return get_wiki_page(code, conn=conn)
+
+
+@app.post("/api/atlas/page/{code}/pin")
+async def api_atlas_pin(code: str, req: AtlasPinRequest) -> dict[str, Any]:
+    from core.atlas_wiki import wiki_pin
+    if not req.path:
+        raise HTTPException(status_code=400, detail="path required")
+    pin = wiki_pin(code, role=req.role, path=req.path, title=req.title, note=req.note)
+    _audit("Atlas wiki pin", f"{code} {req.role} → {req.path}")
+    return {"ok": True, "pin": pin}
+
+
+@app.post("/api/atlas/page/{code}/hide")
+async def api_atlas_hide(code: str, req: AtlasHideRequest) -> dict[str, Any]:
+    from core.atlas_wiki import wiki_hide
+    if not req.path:
+        raise HTTPException(status_code=400, detail="path required")
+    wiki_hide(code, req.path)
+    _audit("Atlas wiki hide", f"{code} hide {req.path}")
+    return {"ok": True}
+
+
+@app.post("/api/atlas/page/{code}/unhide")
+async def api_atlas_unhide(code: str, req: AtlasHideRequest) -> dict[str, Any]:
+    from core.atlas_wiki import wiki_unhide
+    wiki_unhide(code, req.path)
+    return {"ok": True}
+
+
+@app.post("/api/atlas/page/{code}/fact")
+async def api_atlas_fact(code: str, req: AtlasFactRequest) -> dict[str, Any]:
+    from core.atlas_wiki import wiki_fact
+    if not req.key or not req.value:
+        raise HTTPException(status_code=400, detail="key and value required")
+    fact = wiki_fact(
+        code,
+        key=req.key,
+        label=req.label,
+        value=req.value,
+        cite_paths=req.cite_paths,
+        status=req.status,
+    )
+    _audit("Atlas wiki fact", f"{code}.{req.key}={req.value!r}")
+    return {"ok": True, "fact": fact}
+
+
+@app.post("/api/atlas/page/{code}/ask")
+async def api_atlas_ask(
+    code: str,
+    req: AtlasAskRequest,
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict[str, Any]:
+    """Einstein-lite: answer from pins + cited facts only."""
+    from core.atlas_wiki import get_wiki_page, wiki_compose
+    if not req.question.strip():
+        raise HTTPException(status_code=400, detail="question required")
+    page = get_wiki_page(code, conn=conn)
+    result = wiki_compose(page, req.question.strip())
+    _audit("Atlas ask", f"{code}: {req.question[:80]}")
+    return result
+
+
+@app.get("/projects", response_class=HTMLResponse, include_in_schema=False)
+async def serve_projects() -> HTMLResponse:
+    html_file = Path(__file__).parent / "static" / "projects.html"
+    return HTMLResponse(html_file.read_text(encoding="utf-8"))
+
+
+@app.get("/ask", response_class=HTMLResponse, include_in_schema=False)
+async def serve_ask() -> HTMLResponse:
+    """Ask lands on Projects — pick a page, then use Ask panel (Einstein later)."""
+    html_file = Path(__file__).parent / "static" / "projects.html"
+    return HTMLResponse(html_file.read_text(encoding="utf-8"))
 
 
 class CorrectRequest(BaseModel):

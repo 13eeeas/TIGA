@@ -4,6 +4,7 @@ Office-LAN archive search for architecture firms.
 Plain English → cited evidence first, then a short grounded answer.
 
 **Charter:** [`docs/CONSTITUTION.md`](docs/CONSTITUTION.md)  
+**Projects wiki (Atlas in Hunt):** [`docs/ATLAS_IN_HUNT.md`](docs/ATLAS_IN_HUNT.md) · open `/projects`  
 **Office setup:** [`docs/OFFICE_QUICKSTART.md`](docs/OFFICE_QUICKSTART.md)  
 **Audit log:** [`docs/AUDIT_LOG.md`](docs/AUDIT_LOG.md)
 

@@ -252,6 +252,10 @@ body{font-family:'Source Serif 4',Georgia,serif;background:var(--page-bg);color:
 
 .status-loading{color:var(--ink-60);font-size:13px;font-weight:300;padding:8px 0}
 
+.top-nav{display:flex;gap:4px;margin-right:8px;align-items:center}
+.top-nav-link{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-60);padding:6px 10px;border-radius:999px;text-decoration:none}
+.top-nav-link:hover,.top-nav-link.active{background:var(--toggle-bg);color:var(--ink)}
+
 /* ── TOAST ── */
 .toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%) translateY(10px);background:var(--glass-bg);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid var(--glass-border);border-radius:100px;padding:8px 20px;font-size:13px;font-weight:300;color:var(--ink);box-shadow:var(--glass-shadow);z-index:200;opacity:0;pointer-events:none;transition:opacity .25s,transform .25s}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
@@ -293,6 +297,11 @@ body{font-family:'Source Serif 4',Georgia,serif;background:var(--page-bg);color:
     </a>
 
     <div class="header-right">
+      <nav class="top-nav" aria-label="Primary">
+        <a class="top-nav-link active" href="/">Search</a>
+        <a class="top-nav-link" href="/projects">Projects</a>
+        <a class="top-nav-link" href="/projects#ask">Ask</a>
+      </nav>
       <!-- Theme toggle -->
       <button class="icon-btn" id="themeToggle" title="Toggle theme" aria-label="Toggle colour theme">
         <svg class="icon-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">

@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="auto">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TIGA · Projects</title>
+<link href="https://fonts.googleapis.com/css2?family=Lora:wght@400;500&family=Source+Serif+4:opsz,wght@8..60,300;8..60,400&display=swap" rel="stylesheet">
+<style>
+:root {
+  --coral:#C96442; --page-bg:#fff; --ink:#1A1410; --ink-60:rgba(26,20,16,.52);
+  --ink-12:rgba(26,20,16,.09); --glass-bg:rgba(255,255,255,.7); --glass-border:rgba(255,255,255,.8);
+  --glass-shadow:0 8px 32px rgba(0,0,0,.07); --chip:#f3ebe4; --ok:#2f6f4e; --warn:#8a4b16; --bad:#8b2e2e;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --page-bg:#0F0E0C; --ink:#EDE8E0; --ink-60:rgba(237,232,224,.5); --ink-12:rgba(237,232,224,.08);
+    --glass-bg:rgba(30,26,22,.72); --glass-border:rgba(255,255,255,.1); --chip:#2a221c;
+  }
+}
+*{box-sizing:border-box} body{margin:0;font-family:'Source Serif 4',Georgia,serif;background:var(--page-bg);color:var(--ink);min-height:100vh}
+a{color:var(--coral);text-decoration:none}
+.wrap{max-width:980px;margin:0 auto;padding:1.25rem 1.25rem 4rem}
+.nav{display:flex;gap:.35rem;align-items:center;margin-bottom:1.5rem;flex-wrap:wrap}
+.nav a,.nav .brand{font-size:.78rem;letter-spacing:.12em;text-transform:uppercase;padding:.4rem .7rem;border-radius:999px;color:var(--ink-60)}
+.nav .brand{color:var(--coral);font-weight:500;padding-left:0}
+.nav a.active,.nav a:hover{background:var(--chip);color:var(--ink)}
+h1{font-family:Lora,Georgia,serif;font-weight:500;font-size:clamp(1.8rem,4vw,2.4rem);margin:.2rem 0 .5rem}
+.lede{color:var(--ink-60);margin:0 0 1.25rem;max-width:40rem}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:.85rem}
+.card{display:block;background:var(--glass-bg);border:1px solid var(--ink-12);border-radius:14px;padding:1rem;cursor:pointer;transition:transform .15s,border-color .15s;color:inherit}
+.card:hover{transform:translateY(-2px);border-color:var(--coral)}
+.card .code{font-size:.75rem;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-60)}
+.card h2{font-size:1.05rem;margin:.4rem 0 .3rem;font-weight:500}
+.meta{font-size:.85rem;color:var(--ink-60)}
+.badge{display:inline-block;font-size:.68rem;letter-spacing:.05em;text-transform:uppercase;padding:.15rem .4rem;border-radius:6px;border:1px solid var(--ink-12);margin-left:.35rem}
+.badge.pub{background:rgba(47,111,78,.12);color:var(--ok)}
+.badge.draft{color:var(--warn)}
+.back{font-size:.85rem;color:var(--ink-60);margin-bottom:1rem;display:inline-block}
+.hero-row{display:flex;flex-wrap:wrap;gap:.5rem;margin:0 0 1rem}
+.chip{background:var(--chip);border:1px solid var(--ink-12);border-radius:8px;padding:.3rem .55rem;font-size:.82rem}
+.section{background:var(--glass-bg);border:1px solid var(--ink-12);border-radius:14px;padding:1rem 1.1rem;margin:0 0 .85rem}
+.section h3{margin:0 0 .35rem;font-size:1rem;font-weight:500}
+.hint{color:var(--ink-60);font-size:.88rem;margin:0 0 .75rem}
+.item{border-top:1px solid var(--ink-12);padding:.7rem 0}
+.item:first-of-type{border-top:0;padding-top:0}
+.item-head{font-weight:500}
+.path{font-size:.78rem;color:var(--ink-60);margin-top:.25rem;word-break:break-all}
+.snip{font-size:.9rem;color:var(--ink-60);margin-top:.3rem}
+.actions{display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.45rem}
+button{font:inherit;font-size:.75rem;letter-spacing:.04em;text-transform:uppercase;border:1px solid var(--ink-12);background:var(--chip);color:var(--ink);padding:.35rem .55rem;border-radius:8px;cursor:pointer}
+button.primary{background:var(--ink);color:var(--page-bg)}
+button.danger{color:var(--bad);background:transparent}
+button:disabled{opacity:.5}
+.fact-grid,.pin-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:.65rem}
+.fact,.pin{border:1px solid var(--ink-12);border-radius:10px;padding:.75rem;background:rgba(255,255,255,.35)}
+.fact.rumor{border-color:#e0b58a;background:rgba(247,234,216,.5)}
+.fact .label,.pin .role{font-size:.7rem;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-60)}
+.fact .val{font-size:1.05rem;margin:.25rem 0}
+.form{display:grid;gap:.5rem}
+.form label{display:grid;gap:.2rem;font-size:.78rem;color:var(--ink-60)}
+.form input,.form select,textarea{font:inherit;padding:.45rem .5rem;border:1px solid var(--ink-12);border-radius:8px;background:transparent;color:var(--ink)}
+.health{display:flex;gap:1rem;align-items:center}
+.grade{font-size:1.8rem;font-weight:600}
+.toast{position:fixed;bottom:1.2rem;right:1.2rem;background:var(--ink);color:var(--page-bg);padding:.55rem .8rem;border-radius:999px;font-size:.85rem;opacity:0;pointer-events:none;transition:opacity .2s}
+.toast.show{opacity:1}
+.ask-out{white-space:pre-wrap;font-size:.85rem;background:rgba(26,20,16,.92);color:#f3efe6;padding:.9rem;border-radius:10px;max-height:360px;overflow:auto;margin-top:.75rem}
+.hidden{display:none}
+.empty{color:var(--ink-60);font-size:.92rem}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <nav class="nav">
+    <a class="brand" href="/">TIGA</a>
+    <a href="/">Search</a>
+    <a class="active" href="/projects">Projects</a>
+    <a href="/projects#ask">Ask</a>
+  </nav>
+
+  <div id="listView">
+    <h1>Project wiki</h1>
+    <p class="lede">Auto-drafted from Hunt (Grokopedia-style). Anyone can pin, hide, and cite facts — Wikipedia-style. No coding.</p>
+    <div class="grid" id="projectGrid"><p class="empty">Loading projects…</p></div>
+  </div>
+
+  <div id="pageView" class="hidden">
+    <a class="back" href="#" id="backBtn">← All projects</a>
+    <div class="hero-row" id="chips"></div>
+    <h1 id="pageTitle">Project</h1>
+    <p class="lede" id="pageSummary"></p>
+    <div class="section">
+      <div class="health">
+        <div class="grade" id="grade">—</div>
+        <div>
+          <div id="healthState"></div>
+          <div class="meta" id="healthDetail"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section" id="pinsSec">
+      <h3>Authoritative pins</h3>
+      <p class="hint">Human-confirmed sources of truth. Auto candidates below are not trusted until pinned.</p>
+      <div class="pin-grid" id="pins"></div>
+    </div>
+
+    <div class="section" id="factsSec">
+      <h3>Cited facts</h3>
+      <p class="hint">Auto facts start uncited (rumors). Add a path cite to keep them — wiki style.</p>
+      <div class="fact-grid" id="facts"></div>
+      <form class="form" id="factForm" style="margin-top:1rem">
+        <h3 style="margin:0;font-size:.95rem">Add / update fact</h3>
+        <label>Key <input name="key" required placeholder="client"></label>
+        <label>Label <input name="label" required placeholder="Client"></label>
+        <label>Value <input name="value" required placeholder="NUS"></label>
+        <label>Citation path <input name="cite" required placeholder="/Projects/.../file.pdf"></label>
+        <label>Status
+          <select name="status"><option>draft</option><option>verified</option><option>disputed</option></select>
+        </label>
+        <button class="primary" type="submit">Save fact</button>
+      </form>
+    </div>
+
+    <div class="section" id="docsSec"></div>
+
+    <div class="section" id="ask">
+      <h3>Ask (Einstein)</h3>
+      <p class="hint">Answers only from pins + cited facts. Locked until the page has a pin.</p>
+      <form class="form" id="askForm">
+        <label>Question <input name="question" required placeholder="What is the latest GA set?"></label>
+        <button class="primary" type="submit">Ask</button>
+      </form>
+      <pre class="ask-out hidden" id="askOut"></pre>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+<script>
+const $ = (id) => document.getElementById(id);
+let currentCode = null;
+let currentPage = null;
+
+function toast(msg) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 1600);
+}
+
+async function api(path, opts) {
+  const res = await fetch(path, opts);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || data.error || res.statusText);
+  return data;
+}
+
+async function loadList() {
+  const projects = await api('/api/atlas/projects');
+  const grid = $('projectGrid');
+  if (!projects.length) {
+    grid.innerHTML = '<p class="empty">No indexed projects yet. Index in Hunt first, then refresh.</p>';
+    return;
+  }
+  grid.innerHTML = projects.map(p => `
+    <button class="card" data-code="${escapeAttr(p.project_id)}">
+      <div class="code">${escapeHtml(p.project_id)}</div>
+      <h2>${escapeHtml(p.project_id)}</h2>
+      <div class="meta">${p.file_count} files · ${p.wiki_pins} pin(s)
+        <span class="badge ${p.status === 'curated' ? 'pub' : 'draft'}">${p.status}</span>
+      </div>
+    </button>`).join('');
+  grid.querySelectorAll('.card').forEach(btn => {
+    btn.addEventListener('click', () => openPage(btn.dataset.code));
+  });
+}
+
+async function openPage(code) {
+  currentCode = code;
+  $('listView').classList.add('hidden');
+  $('pageView').classList.remove('hidden');
+  location.hash = 'p/' + encodeURIComponent(code);
+  await refreshPage();
+}
+
+async function refreshPage() {
+  currentPage = await api('/api/atlas/page/' + encodeURIComponent(currentCode));
+  renderPage(currentPage);
+}
+
+function renderPage(p) {
+  const proj = p.project || {};
+  $('pageTitle').textContent = proj.name || proj.code;
+  $('pageSummary').textContent = p.summary || '';
+  const h = p.health || {};
+  $('grade').textContent = h.grade || '—';
+  $('healthState').textContent = `${h.state || ''} · ${h.score || 0}/100`;
+  $('healthDetail').textContent = (h.checks || []).map(c => (c.ok ? '✓ ' : '! ') + c.detail).join(' · ');
+  $('chips').innerHTML = ['typology','stage','location','client','status']
+    .filter(k => proj[k])
+    .map(k => `<span class="chip"><strong>${k}</strong> ${escapeHtml(String(proj[k]))}</span>`)
+    .join('');
+
+  const pins = p.pins || [];
+  $('pins').innerHTML = pins.length ? pins.map(pin => `
+    <div class="pin">
+      <div class="role">${escapeHtml(pin.role || 'other')}</div>
+      <div>${escapeHtml(pin.title || pin.path || '')}</div>
+      <div class="path">${escapeHtml(pin.path || '')}</div>
+    </div>`).join('') : '<p class="empty">No pins yet — pin a candidate below.</p>';
+
+  const facts = p.facts || [];
+  $('facts').innerHTML = facts.length ? facts.map(f => {
+    const cited = (f.cite_paths || []).length > 0;
+    return `<div class="fact ${cited ? '' : 'rumor'}">
+      <div class="label">${escapeHtml(f.label || f.key)} · ${escapeHtml(f.status || 'draft')}</div>
+      <div class="val">${escapeHtml(f.value || '—')}</div>
+      <div class="path">${cited ? escapeHtml((f.cite_paths || []).join(', ')) : 'No citation — rumor'}</div>
+      ${!cited ? `<div class="actions"><button data-cite-fact="${escapeAttr(f.key)}" data-label="${escapeAttr(f.label || f.key)}" data-value="${escapeAttr(f.value || '')}">Add cite…</button></div>` : ''}
+    </div>`;
+  }).join('') : '<p class="empty">No facts yet.</p>';
+
+  const sections = p.sections || {};
+  const order = [['key_documents','Key documents'],['drawings_models','Drawings & models'],['correspondence','Correspondence & authority']];
+  $('docsSec').innerHTML = order.map(([key, title]) => {
+    const items = (sections[key] && sections[key].items) || [];
+    const body = items.length ? items.map(it => `
+      <div class="item">
+        <div class="item-head">${escapeHtml(it.title || '')}
+          <span class="badge ${it.pinned ? 'pub' : 'draft'}">${it.pinned ? 'pinned' : 'candidate'}</span>
+        </div>
+        <div class="path">${escapeHtml(it.path || '')}</div>
+        ${it.snippet ? `<div class="snip">${escapeHtml(it.snippet)}</div>` : ''}
+        <div class="actions">
+          ${!it.pinned ? `<button data-pin-path="${escapeAttr(it.path)}" data-pin-title="${escapeAttr(it.title || '')}" data-pin-role="${escapeAttr(it.suggested_role || 'other')}">Pin as truth</button>` : ''}
+          <button class="danger" data-hide-path="${escapeAttr(it.path)}">Hide</button>
+        </div>
+      </div>`).join('') : '<p class="empty">No candidates from Hunt yet.</p>';
+    return `<h3>${title}</h3><p class="hint">Auto from Hunt search — pin what is authoritative.</p>${body}`;
+  }).join('<hr style="border:none;border-top:1px solid var(--ink-12);margin:1rem 0">');
+
+  $('docsSec').querySelectorAll('[data-pin-path]').forEach(btn => {
+    btn.onclick = () => pin(btn.dataset.pinPath, btn.dataset.pinTitle, btn.dataset.pinRole);
+  });
+  $('docsSec').querySelectorAll('[data-hide-path]').forEach(btn => {
+    btn.onclick = () => hide(btn.dataset.hidePath);
+  });
+  $('facts').querySelectorAll('[data-cite-fact]').forEach(btn => {
+    btn.onclick = () => {
+      const cite = prompt('Citation NAS path for this fact:');
+      if (!cite) return;
+      saveFact(btn.dataset.citeFact, btn.dataset.label, btn.dataset.value, cite, 'verified');
+    };
+  });
+}
+
+async function pin(path, title, role) {
+  await api('/api/atlas/page/' + encodeURIComponent(currentCode) + '/pin', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ path, title, role, note: 'Pinned in Projects wiki' })
+  });
+  toast('Pinned');
+  await refreshPage();
+}
+
+async function hide(path) {
+  if (!confirm('Hide this candidate from the page?')) return;
+  await api('/api/atlas/page/' + encodeURIComponent(currentCode) + '/hide', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ path })
+  });
+  toast('Hidden');
+  await refreshPage();
+}
+
+async function saveFact(key, label, value, cite, status) {
+  await api('/api/atlas/page/' + encodeURIComponent(currentCode) + '/fact', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ key, label, value, cite_paths: [cite], status })
+  });
+  toast('Fact saved');
+  await refreshPage();
+}
+
+$('backBtn').onclick = (e) => {
+  e.preventDefault();
+  currentCode = null;
+  $('pageView').classList.add('hidden');
+  $('listView').classList.remove('hidden');
+  location.hash = '';
+  loadList();
+};
+
+$('factForm').onsubmit = async (e) => {
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  await saveFact(fd.get('key'), fd.get('label'), fd.get('value'), fd.get('cite'), fd.get('status'));
+  e.target.reset();
+};
+
+$('askForm').onsubmit = async (e) => {
+  e.preventDefault();
+  if (!currentCode) { toast('Open a project first'); return; }
+  const q = new FormData(e.target).get('question');
+  const out = $('askOut');
+  out.classList.remove('hidden');
+  out.textContent = 'Thinking…';
+  try {
+    const data = await api('/api/atlas/page/' + encodeURIComponent(currentCode) + '/ask', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ question: q })
+    });
+    out.textContent = data.answer || JSON.stringify(data, null, 2);
+  } catch (err) {
+    out.textContent = err.message;
+  }
+};
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function escapeAttr(s) { return escapeHtml(s).replace(/\n/g, ' '); }
+
+(async function init() {
+  await loadList();
+  const m = location.hash.match(/^#p\/(.+)$/);
+  if (m) openPage(decodeURIComponent(m[1]));
+  else if (location.hash === '#ask') toast('Open a project, then use Ask at the bottom');
+})();
+</script>
+</body>
+</html>
