@@ -50,6 +50,8 @@ def test_config_loads_defaults(tmp_path: Path) -> None:
     assert cfg.ocr_enabled is False
     assert cfg.einstein_enable is False
     assert len(cfg.index_roots) == 1
+    assert "**/_tiga_quarantine/**" in cfg.exclude_globs
+    assert "**/__MACOSX/**" in cfg.exclude_globs
 
 
 def test_env_var_overrides_work_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

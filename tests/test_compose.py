@@ -17,6 +17,7 @@ from core.db import get_connection, upsert_chunk, upsert_file
 from core.compose import (
     ComposeResult,
     ResultView,
+    _SYSTEM_PROMPT,
     _confidence,
     compose_answer,
 )
@@ -88,6 +89,12 @@ def test_result_view_from_search_result() -> None:
 
 def test_confidence_zero_when_no_results() -> None:
     assert _confidence([]) == 0.0
+
+
+def test_system_prompt_enforces_cited_question_scoped_answers() -> None:
+    assert "Answer only the question asked" in _SYSTEM_PROMPT
+    assert "Cite every material claim inline" in _SYSTEM_PROMPT
+    assert "never mix GFA with non-GFA" in _SYSTEM_PROMPT
 
 
 def test_fallback_used_when_llm_unavailable(tmp_path: Path, conn) -> None:

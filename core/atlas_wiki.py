@@ -412,6 +412,12 @@ def wiki_fact(
 
 
 def evidence_pack(page: dict[str, Any], max_n: int = 12) -> list[dict[str, Any]]:
+    """Build an Ask context from human pins and explicitly cited facts only.
+
+    Hunt candidates remain useful for page discovery, but they are proposals,
+    not durable evidence, and must never cross the Einstein/Ask trust boundary
+    until a contributor pins them.
+    """
     pack: list[dict[str, Any]] = []
     for pin in page.get("pins") or []:
         pack.append({"kind": "pin", **{k: pin.get(k) for k in ("role", "title", "path", "note")}})
@@ -428,18 +434,6 @@ def evidence_pack(page: dict[str, Any], max_n: int = 12) -> list[dict[str, Any]]
                 "status": fact.get("status"),
             }
         )
-    for key in ("key_documents", "drawings_models", "correspondence"):
-        for item in (page.get("sections", {}).get(key, {}) or {}).get("items") or []:
-            if item.get("pinned"):
-                continue
-            pack.append(
-                {
-                    "kind": "candidate",
-                    "title": item.get("title"),
-                    "path": item.get("path"),
-                    "snippet": (item.get("snippet") or "")[:240],
-                }
-            )
     return pack[:max_n]
 
 

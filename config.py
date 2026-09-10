@@ -53,6 +53,9 @@ DEFAULT_METADATA_ONLY_EXTS: list[str] = [
 ]
 DEFAULT_EXCLUDE_GLOBS: list[str] = [
     "**/.git/**",
+    # TIGA Kit quarantine is an explicit holding area, never index material.
+    "**/_tiga_quarantine/**",
+    "**/__MACOSX/**",
     "**/~$*",
     "**/*.tmp",
     "**/node_modules/**",

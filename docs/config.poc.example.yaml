@@ -12,6 +12,9 @@ include_globs:
   - '**/*'
 exclude_globs:
   - '**/.git/**'
+  # Keep aligned with TIGA-Kit/config/tiga_junk.json hunt_extra_excludes.
+  - '**/_tiga_quarantine/**'
+  - '**/__MACOSX/**'
   - '**/~$*'
   - '**/*.tmp'
   - '**/node_modules/**'
