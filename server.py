@@ -120,6 +120,45 @@ def get_db() -> Generator[sqlite3.Connection, None, None]:
         conn.close()
 
 
+def _normalise_index_path(path: str | Path) -> str:
+    """Normalise local/UNC paths before comparing configured index roots."""
+    value = str(path).replace("\\", "/").casefold().rstrip("/")
+    # pathlib may represent a long UNC path as //?/UNC/server/share.
+    if value.startswith("//?/unc/"):
+        value = "//" + value[len("//?/unc/"):]
+    elif value.startswith("//?/"):
+        value = value[len("//?/"):]
+    return value
+
+
+def _project_index_summary(conn: sqlite3.Connection) -> dict[str, Any]:
+    """Return configured roots and which ones have at least one indexed file."""
+    rows = conn.execute(
+        "SELECT file_path FROM files WHERE status = 'INDEXED'"
+    ).fetchall()
+    indexed_paths = [_normalise_index_path(row["file_path"]) for row in rows]
+    projects: list[dict[str, Any]] = []
+
+    for root in cfg.index_roots:
+        normalised_root = _normalise_index_path(root)
+        file_count = sum(
+            path == normalised_root or path.startswith(normalised_root + "/")
+            for path in indexed_paths
+        )
+        projects.append({
+            "name": root.name,
+            "root": str(root),
+            "files_indexed": file_count,
+            "indexed": file_count > 0,
+        })
+
+    return {
+        "configured_projects": len(projects),
+        "indexed_projects": sum(project["indexed"] for project in projects),
+        "projects": projects,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Module-level pipeline state (thread-safe via lock)
 # ---------------------------------------------------------------------------
@@ -1303,6 +1342,15 @@ async def pipeline_status() -> dict:
         state["validate"] = dict(_validate_state)
     with _poc_test_lock:
         state["poc_test"] = dict(_poc_test_state)
+    try:
+        conn = get_connection(cfg.get_db_path())
+        try:
+            state.update(_project_index_summary(conn))
+        finally:
+            conn.close()
+    except Exception as exc:
+        logger.warning("Could not calculate indexed project count: %s", exc)
+        state.update({"configured_projects": len(cfg.index_roots), "indexed_projects": 0, "projects": []})
     return state
 
 

@@ -157,6 +157,16 @@ tabs = st.tabs([
 
 with tabs[0]:
     st.subheader("Pipeline Controls")
+    pipeline_status = api("get", "/api/pipeline/status", timeout=10) or {}
+    project_count = pipeline_status.get("indexed_projects", 0)
+    configured_count = pipeline_status.get("configured_projects", 0)
+    p1, p2 = st.columns(2)
+    p1.metric("Projects indexed", f"{project_count} / {configured_count}")
+    p2.metric("Pipeline indexed files", sum(
+        project.get("files_indexed", 0)
+        for project in pipeline_status.get("projects", [])
+    ))
+    st.caption("A project counts as indexed once at least one file under its configured root is in the INDEXED state.")
     btn_cols = st.columns(4)
     actions = [
         ("Run Discover",      "/api/pipeline/discover",   "Triggered: Run Discover"),

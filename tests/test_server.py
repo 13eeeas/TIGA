@@ -339,7 +339,12 @@ def test_validate_reports_endpoint(client) -> None:
 def test_pipeline_status_includes_validate(client) -> None:
     resp = client.get("/api/pipeline/status")
     assert resp.status_code == 200
-    assert "validate" in resp.json()
+    data = resp.json()
+    assert "validate" in data
+    assert isinstance(data["configured_projects"], int)
+    assert isinstance(data["indexed_projects"], int)
+    assert data["indexed_projects"] <= data["configured_projects"]
+    assert isinstance(data["projects"], list)
 
 
 def test_collect_labels_endpoint(client) -> None:
