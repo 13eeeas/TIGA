@@ -25,6 +25,7 @@ import logging
 import os
 import re
 import sqlite3
+from copy import copy
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
@@ -36,12 +37,24 @@ from config import cfg as _module_cfg, Config
 logger = logging.getLogger(__name__)
 
 SEED_QUERIES = [
-    ("overview", "overview brief presentation"),
-    ("authority", "URA BCA submission approval waiver"),
-    ("drawings", "GA plan section elevation drawing"),
-    ("model", "Rhino Revit BIM model"),
-    ("correspondence", "email letter consultant client"),
+    ("overview", "project brief development brief design brief tender brief"),
+    ("authority", "invitation letter tender EOI submission approval authority"),
+    ("drawings", "submission plan section elevation drawing"),
+    ("model", "master model Rhino Revit BIM"),
+    ("correspondence", "consultant response letter correspondence meeting minutes"),
 ]
+
+_SECTION_LIMIT = 8
+_BUCKET_LIMIT = 4
+_LOW_VALUE_EXTS = {".udsmesh", ".log", ".tmp", ".bak", ".autosave", ".db"}
+_GENERIC_IMAGE_RE = re.compile(r"^(?:img|image|render|screenshot|copy)?[\s_-]*\d{1,4}$", re.I)
+_QUALITY_TERMS = {
+    "overview": ("brief", "overview", "tender", "development", "design", "eoi"),
+    "authority": ("invitation", "submission", "approval", "authority", "tender", "eoi", "gebiz"),
+    "drawings": ("plan", "section", "elevation", "drawing", "submission", "ga"),
+    "model": ("revit", "rhino", "bim", "model", "master", "ifc"),
+    "correspondence": ("letter", "response", "minutes", "correspondence", "consultant", "email"),
+}
 
 PIN_ROLES = (
     "overview_deck",
@@ -99,8 +112,10 @@ def save_overlay(code: str, overlay: dict[str, Any], cfg_obj: Config | None = No
 
 def list_wiki_projects(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     rows = conn.execute(
-        "SELECT COALESCE(project_id, 'Unknown') AS project_id, COUNT(*) AS file_count "
-        "FROM files GROUP BY project_id ORDER BY file_count DESC"
+        "SELECT project_id, COUNT(*) AS file_count, "
+        "SUM(CASE WHEN status = 'INDEXED' THEN 1 ELSE 0 END) AS indexed_count "
+        "FROM files WHERE project_id IS NOT NULL AND project_id != '' "
+        "AND project_id != 'Unknown' GROUP BY project_id ORDER BY file_count DESC"
     ).fetchall()
     out = []
     for r in rows:
@@ -112,6 +127,7 @@ def list_wiki_projects(conn: sqlite3.Connection) -> list[dict[str, Any]]:
             {
                 "project_id": code,
                 "file_count": r["file_count"],
+                "indexed_count": r["indexed_count"],
                 "wiki_pins": pin_n,
                 "wiki_facts": fact_n,
                 "status": "curated" if pin_n >= 1 else "auto-draft",
@@ -149,43 +165,277 @@ def _suggest_role(path: str, title: str, bucket: str) -> str:
 
 
 def _auto_candidates(code: str, cfg_obj: Config, conn: sqlite3.Connection) -> list[dict[str, Any]]:
-    from core.query import search
-
     items: list[dict[str, Any]] = []
-    seen: set[str] = set()
-    for bucket, q in SEED_QUERIES:
+    seen_paths: set[str] = set()
+    for bucket, _query in SEED_QUERIES:
         try:
-            hits = search(
-                f"{code} {q}",
-                top_k=5,
-                filters={"project_id": code},
-                cfg_obj=cfg_obj,
-                conn=conn,
-                use_vector=True,
+            terms = _QUALITY_TERMS[bucket]
+            clauses = " OR ".join(
+                "LOWER(f.file_name) LIKE ?" for _ in terms
             )
+            if bucket == "model":
+                clauses += " OR LOWER(f.extension) IN ('.rvt', '.rfa', '.ifc', '.3dm', '.skp', '.nwd')"
+            hits = conn.execute(
+                f"""
+                SELECT f.file_path, f.file_name, f.extension, f.content_type,
+                       f.is_latest, f.is_superseded, f.file_date,
+                       COALESCE((SELECT c.text FROM chunks c
+                                 WHERE c.file_id = f.file_id
+                                 ORDER BY c.created_at, c.ref_value LIMIT 1), '') AS snippet
+                FROM files f
+                WHERE f.project_id = ? AND f.status = 'INDEXED'
+                  AND ({clauses})
+                ORDER BY COALESCE(f.is_superseded, 0) ASC,
+                         COALESCE(f.is_latest, 0) DESC,
+                         COALESCE(f.file_date, '') DESC,
+                         f.file_name ASC
+                LIMIT 80
+                """,
+                (code, *(f"%{term}%" for term in terms)),
+            ).fetchall()
         except Exception as exc:  # noqa: BLE001
             logger.warning("atlas seed search failed %s: %s", bucket, exc)
             continue
         for h in hits:
-            path = h.get("file_path") or h.get("rel_path") or ""
-            if not path or path in seen:
+            h = dict(h)
+            path = h.get("file_path") or ""
+            if not path or path in seen_paths:
                 continue
-            seen.add(path)
             title = h.get("file_name") or Path(path).name
+            ext = Path(title).suffix.lower()
+            stem = Path(title).stem.strip()
+            title_key = re.sub(r"[^a-z0-9]+", " ", stem.lower()).strip()
+            if (
+                ext in _LOW_VALUE_EXTS
+                or not title_key
+                or (ext in {".jpg", ".jpeg", ".png", ".webp"} and _GENERIC_IMAGE_RE.match(stem))
+            ):
+                continue
+            blob = title.lower()
+            score = 0.35
+            score += 0.035 * sum(term in blob for term in _QUALITY_TERMS[bucket])
+            if ext in {".pdf", ".doc", ".docx", ".ppt", ".pptx", ".msg", ".eml"}:
+                score += 0.04
+            if bucket == "model" and ext in {".rvt", ".rfa", ".ifc", ".3dm", ".skp", ".nwd"}:
+                score += 0.12
+            if bucket == "overview" and "brief" in blob:
+                score += 0.18
+            if bucket == "overview" and any(term in blob for term in ("price schedule", "attachment", "form of tender")):
+                score -= 0.16
+            if bucket == "authority" and any(term in blob for term in ("invitation letter", "response to", "approval")):
+                score += 0.1
+            if bucket == "drawings" and "submission" in blob:
+                score += 0.08
+            if h.get("is_latest"):
+                score += 0.06
+            if h.get("is_superseded"):
+                score -= 0.2
+            if any(term in blob for term in ("gis export", "landuse", "texture", "material library", "policy")):
+                score -= 0.12
+            seen_paths.add(path)
             items.append(
                 {
                     "title": title,
                     "path": path,
-                    "snippet": (h.get("snippet") or "")[:300],
-                    "score": h.get("final_score"),
+                    "snippet": re.sub(r"\s+", " ", h.get("snippet") or "")[:300],
+                    "score": round(score, 4),
                     "via": f"auto:{bucket}",
                     "section": _classify(path, title, bucket),
                     "suggested_role": _suggest_role(path, title, bucket),
                     "kind": "candidate",
                     "pinned": False,
+                    "title_key": title_key,
+                    "seed_bucket": bucket,
                 }
             )
-    return items
+    best_by_title: dict[str, dict[str, Any]] = {}
+    for item in items:
+        key = item.pop("title_key")
+        existing = best_by_title.get(key)
+        if existing is None or (item.get("score") or 0.0) > (existing.get("score") or 0.0):
+            best_by_title[key] = item
+    ranked = sorted(best_by_title.values(), key=lambda item: item.get("score") or 0.0, reverse=True)
+    section_counts: dict[str, int] = {}
+    bucket_counts: dict[str, int] = {}
+    selected: list[dict[str, Any]] = []
+    for item in ranked:
+        section = item["section"]
+        bucket = item.pop("seed_bucket")
+        if (
+            section_counts.get(section, 0) >= _SECTION_LIMIT
+            or bucket_counts.get(bucket, 0) >= _BUCKET_LIMIT
+        ):
+            continue
+        section_counts[section] = section_counts.get(section, 0) + 1
+        bucket_counts[bucket] = bucket_counts.get(bucket, 0) + 1
+        selected.append(item)
+    return selected
+
+
+def _project_profile(code: str, conn: sqlite3.Connection) -> dict[str, Any]:
+    """Build a compact, factual project snapshot from indexed metadata."""
+    totals = conn.execute(
+        "SELECT COUNT(*) AS total, "
+        "SUM(CASE WHEN status = 'INDEXED' THEN 1 ELSE 0 END) AS indexed, "
+        "SUM(CASE WHEN content_type = 'PDF' THEN 1 ELSE 0 END) AS pdfs, "
+        "SUM(CASE WHEN content_type IN ('CAD','BIM','Rhino','Render Scene') THEN 1 ELSE 0 END) AS models, "
+        "SUM(CASE WHEN content_type = 'Image' THEN 1 ELSE 0 END) AS images "
+        "FROM files WHERE project_id = ?",
+        (code,),
+    ).fetchone()
+    types = conn.execute(
+        "SELECT COALESCE(NULLIF(content_type, ''), 'Other') AS label, COUNT(*) AS count "
+        "FROM files WHERE project_id = ? GROUP BY label ORDER BY count DESC LIMIT 5",
+        (code,),
+    ).fetchall()
+    stages = conn.execute(
+        "SELECT DISTINCT folder_stage FROM files WHERE project_id = ? "
+        "AND folder_stage IS NOT NULL AND folder_stage != '' "
+        "AND LOWER(folder_stage) != 'unknown' ORDER BY folder_stage",
+        (code,),
+    ).fetchall()
+    return {
+        "total_files": int(totals["total"] or 0),
+        "indexed_files": int(totals["indexed"] or 0),
+        "pdf_count": int(totals["pdfs"] or 0),
+        "model_count": int(totals["models"] or 0),
+        "image_count": int(totals["images"] or 0),
+        "top_types": [{"label": r["label"], "count": r["count"]} for r in types],
+        "stages": [r["folder_stage"] for r in stages[:6]],
+    }
+
+
+def _auto_summary(project: dict[str, Any], profile: dict[str, Any]) -> str:
+    name = project.get("name") or project.get("code") or "This project"
+    total = profile.get("total_files", 0)
+    indexed = profile.get("indexed_files", 0)
+    parts = [
+        f"{name} is represented in Hunt by {total:,} file records, with {indexed:,} currently indexed."
+    ]
+    coverage = []
+    if profile.get("pdf_count"):
+        coverage.append(f"{profile['pdf_count']:,} PDFs")
+    if profile.get("model_count"):
+        coverage.append(f"{profile['model_count']:,} CAD and model files")
+    if profile.get("image_count"):
+        coverage.append(f"{profile['image_count']:,} images")
+    if coverage:
+        parts.append("The archive includes " + ", ".join(coverage) + ".")
+    parts.append("This is an index snapshot; pin authoritative sources and cite facts before treating the page as published knowledge.")
+    return " ".join(parts)
+
+
+def draft_wiki_article(
+    code: str,
+    *,
+    conn: sqlite3.Connection,
+    cfg_obj: Config | None = None,
+) -> dict[str, Any]:
+    """Generate a cited narrative draft without promoting candidates to truth."""
+    from core.llm_providers import chat_completion
+
+    cfg = cfg_obj or _module_cfg
+    page = get_wiki_page(code, conn=conn, cfg_obj=cfg)
+    evidence: list[dict[str, str]] = []
+    for section in page.get("sections", {}).values():
+        for item in section.get("items", []):
+            if item.get("kind") != "candidate" or not item.get("snippet"):
+                continue
+            evidence.append(
+                {
+                    "title": item.get("title", ""),
+                    "path": item.get("path", ""),
+                    "excerpt": item.get("snippet", "")[:700],
+                }
+            )
+    evidence = evidence[:16]
+    if len(evidence) < 2:
+        raise ValueError("Atlas needs at least two text-bearing candidates to draft an article")
+
+    numbered = [{"source": i + 1, **item} for i, item in enumerate(evidence)]
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You are the editorial engine for an architecture project wiki. "
+                "Write only claims supported by the supplied excerpts. Never infer client, location, "
+                "dates, status, scope, or design intent when absent. Cite every paragraph with one or "
+                "more source numbers like [1] or [2][4]. Return strict JSON only with keys overview "
+                "(string), sections (array of objects with heading and body), and open_questions "
+                "(array of strings). Use 3-5 useful sections and concise professional prose."
+            ),
+        },
+        {
+            "role": "user",
+            "content": json.dumps(
+                {"project": page.get("project", {}), "evidence": numbered},
+                ensure_ascii=False,
+            ),
+        },
+    ]
+    draft_cfg = copy(cfg)
+    draft_cfg.chat_model = os.environ.get("TIGA_ATLAS_MODEL", "qwen3:8b")
+    draft_cfg.ollama_timeout = max(cfg.ollama_timeout, 90)
+    def parse_article(raw_text: str) -> dict[str, Any]:
+        cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw_text.strip(), flags=re.I)
+        first_brace, last_brace = cleaned.find("{"), cleaned.rfind("}")
+        if first_brace >= 0 and last_brace > first_brace:
+            cleaned = cleaned[first_brace:last_brace + 1]
+        try:
+            parsed = json.loads(cleaned)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"LLM did not return JSON: {cleaned[:180]!r}") from exc
+        if isinstance(parsed.get("sections"), dict):
+            parsed["sections"] = [
+                {"heading": heading, "body": body}
+                for heading, body in parsed["sections"].items()
+            ]
+        if not isinstance(parsed.get("overview"), str) or not isinstance(parsed.get("sections"), list):
+            raise ValueError("LLM returned an invalid Atlas article")
+        return parsed
+
+    raw, provider = chat_completion(messages, draft_cfg, purpose="atlas-wiki-draft")
+    article = parse_article(raw)
+    section_text = " ".join(
+        str(s.get("body", "")) for s in article.get("sections", []) if isinstance(s, dict)
+    )
+    if len(article.get("sections", [])) < 2 or not re.search(r"\[\d+\]", article["overview"] + section_text):
+        messages.extend(
+            [
+                {"role": "assistant", "content": raw},
+                {
+                    "role": "user",
+                    "content": (
+                        "Revise this now. Return JSON only. Include at least three non-empty section "
+                        "objects and put numbered evidence citations such as [1] at the end of every "
+                        "overview and section paragraph. Do not omit the sections."
+                    ),
+                },
+            ]
+        )
+        raw, provider = chat_completion(messages, draft_cfg, purpose="atlas-wiki-draft-repair")
+        article = parse_article(raw)
+    article["sections"] = [
+        {"heading": str(s.get("heading", "Section")), "body": str(s.get("body", ""))}
+        for s in article["sections"][:6]
+        if isinstance(s, dict) and s.get("body")
+    ]
+    article_text = article["overview"] + " " + " ".join(s["body"] for s in article["sections"])
+    if len(article["sections"]) < 2 or not re.search(r"\[\d+\]", article_text):
+        raise ValueError("LLM draft lacked cited narrative sections; no draft was saved")
+    article["open_questions"] = [str(q) for q in (article.get("open_questions") or [])[:8]]
+    article.update(
+        {
+            "provider": provider,
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "sources": numbered,
+            "status": "ai-draft",
+        }
+    )
+    overlay = load_overlay(code, cfg)
+    overlay["article_draft"] = article
+    save_overlay(code, overlay, cfg)
+    return article
 
 
 def _auto_facts_from_card(card: dict[str, Any] | None) -> list[dict[str, Any]]:
@@ -259,6 +509,7 @@ def get_wiki_page(
     card = get_project_card(code, conn=conn)
     overlay = load_overlay(code, cfg)
     candidates = _auto_candidates(code, cfg, conn)
+    profile = _project_profile(code, conn)
 
     project = {
         "code": code,
@@ -275,10 +526,7 @@ def get_wiki_page(
         if v not in (None, "", []):
             project[k] = v
 
-    summary = overlay.get("summary") or (
-        f"Auto-draft Grokopedia page for {project['name']}. "
-        "Hunt proposed candidates — confirm pins and cite facts like a wiki."
-    )
+    summary = overlay.get("summary") or _auto_summary(project, profile)
 
     pins = list(overlay.get("pins") or [])
     pin_paths = {p.get("path") for p in pins if p.get("path")}
@@ -327,6 +575,7 @@ def get_wiki_page(
             "card_found": card is not None,
             "candidate_count": len(candidates),
         },
+        "profile": profile,
     }
     page["health"] = compute_health(page)
     if page["health"]["published"]:

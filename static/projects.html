@@ -1,331 +1,51 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="auto">
+<html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TIGA · Projects</title>
-<link href="https://fonts.googleapis.com/css2?family=Lora:wght@400;500&family=Source+Serif+4:opsz,wght@8..60,300;8..60,400&display=swap" rel="stylesheet">
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TIGA Atlas</title>
 <style>
-:root {
-  --coral:#C96442; --page-bg:#fff; --ink:#1A1410; --ink-60:rgba(26,20,16,.52);
-  --ink-12:rgba(26,20,16,.09); --glass-bg:rgba(255,255,255,.7); --glass-border:rgba(255,255,255,.8);
-  --glass-shadow:0 8px 32px rgba(0,0,0,.07); --chip:#f3ebe4; --ok:#2f6f4e; --warn:#8a4b16; --bad:#8b2e2e;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --page-bg:#0F0E0C; --ink:#EDE8E0; --ink-60:rgba(237,232,224,.5); --ink-12:rgba(237,232,224,.08);
-    --glass-bg:rgba(30,26,22,.72); --glass-border:rgba(255,255,255,.1); --chip:#2a221c;
-  }
-}
-*{box-sizing:border-box} body{margin:0;font-family:'Source Serif 4',Georgia,serif;background:var(--page-bg);color:var(--ink);min-height:100vh}
-a{color:var(--coral);text-decoration:none}
-.wrap{max-width:980px;margin:0 auto;padding:1.25rem 1.25rem 4rem}
-.nav{display:flex;gap:.35rem;align-items:center;margin-bottom:1.5rem;flex-wrap:wrap}
-.nav a,.nav .brand{font-size:.78rem;letter-spacing:.12em;text-transform:uppercase;padding:.4rem .7rem;border-radius:999px;color:var(--ink-60)}
-.nav .brand{color:var(--coral);font-weight:500;padding-left:0}
-.nav a.active,.nav a:hover{background:var(--chip);color:var(--ink)}
-h1{font-family:Lora,Georgia,serif;font-weight:500;font-size:clamp(1.8rem,4vw,2.4rem);margin:.2rem 0 .5rem}
-.lede{color:var(--ink-60);margin:0 0 1.25rem;max-width:40rem}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:.85rem}
-.card{display:block;background:var(--glass-bg);border:1px solid var(--ink-12);border-radius:14px;padding:1rem;cursor:pointer;transition:transform .15s,border-color .15s;color:inherit}
-.card:hover{transform:translateY(-2px);border-color:var(--coral)}
-.card .code{font-size:.75rem;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-60)}
-.card h2{font-size:1.05rem;margin:.4rem 0 .3rem;font-weight:500}
-.meta{font-size:.85rem;color:var(--ink-60)}
-.badge{display:inline-block;font-size:.68rem;letter-spacing:.05em;text-transform:uppercase;padding:.15rem .4rem;border-radius:6px;border:1px solid var(--ink-12);margin-left:.35rem}
-.badge.pub{background:rgba(47,111,78,.12);color:var(--ok)}
-.badge.draft{color:var(--warn)}
-.back{font-size:.85rem;color:var(--ink-60);margin-bottom:1rem;display:inline-block}
-.hero-row{display:flex;flex-wrap:wrap;gap:.5rem;margin:0 0 1rem}
-.chip{background:var(--chip);border:1px solid var(--ink-12);border-radius:8px;padding:.3rem .55rem;font-size:.82rem}
-.section{background:var(--glass-bg);border:1px solid var(--ink-12);border-radius:14px;padding:1rem 1.1rem;margin:0 0 .85rem}
-.section h3{margin:0 0 .35rem;font-size:1rem;font-weight:500}
-.hint{color:var(--ink-60);font-size:.88rem;margin:0 0 .75rem}
-.item{border-top:1px solid var(--ink-12);padding:.7rem 0}
-.item:first-of-type{border-top:0;padding-top:0}
-.item-head{font-weight:500}
-.path{font-size:.78rem;color:var(--ink-60);margin-top:.25rem;word-break:break-all}
-.snip{font-size:.9rem;color:var(--ink-60);margin-top:.3rem}
-.actions{display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.45rem}
-button{font:inherit;font-size:.75rem;letter-spacing:.04em;text-transform:uppercase;border:1px solid var(--ink-12);background:var(--chip);color:var(--ink);padding:.35rem .55rem;border-radius:8px;cursor:pointer}
-button.primary{background:var(--ink);color:var(--page-bg)}
-button.danger{color:var(--bad);background:transparent}
-button:disabled{opacity:.5}
-.fact-grid,.pin-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:.65rem}
-.fact,.pin{border:1px solid var(--ink-12);border-radius:10px;padding:.75rem;background:rgba(255,255,255,.35)}
-.fact.rumor{border-color:#e0b58a;background:rgba(247,234,216,.5)}
-.fact .label,.pin .role{font-size:.7rem;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-60)}
-.fact .val{font-size:1.05rem;margin:.25rem 0}
-.form{display:grid;gap:.5rem}
-.form label{display:grid;gap:.2rem;font-size:.78rem;color:var(--ink-60)}
-.form input,.form select,textarea{font:inherit;padding:.45rem .5rem;border:1px solid var(--ink-12);border-radius:8px;background:transparent;color:var(--ink)}
-.health{display:flex;gap:1rem;align-items:center}
-.grade{font-size:1.8rem;font-weight:600}
-.toast{position:fixed;bottom:1.2rem;right:1.2rem;background:var(--ink);color:var(--page-bg);padding:.55rem .8rem;border-radius:999px;font-size:.85rem;opacity:0;pointer-events:none;transition:opacity .2s}
-.toast.show{opacity:1}
-.ask-out{white-space:pre-wrap;font-size:.85rem;background:rgba(26,20,16,.92);color:#f3efe6;padding:.9rem;border-radius:10px;max-height:360px;overflow:auto;margin-top:.75rem}
-.hidden{display:none}
-.empty{color:var(--ink-60);font-size:.92rem}
+:root{--bg:#fbfbfa;--panel:#fff;--side:#f7f7f5;--ink:#2f2f2f;--muted:#787774;--line:#e8e7e4;--strong:#d4d3cf;--hover:#efefed;--accent:#b95c3f;--accent-soft:#f7e9e3;--green:#28784b;--green-soft:#e6f2ea;--amber:#9a5b13;--amber-soft:#fbf0dc;--red:#a13d34;--sans:Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;--serif:ui-serif,Georgia,Cambria,serif}
+@media(prefers-color-scheme:dark){:root{--bg:#191919;--panel:#202020;--side:#202020;--ink:#e9e9e7;--muted:#9b9a97;--line:#373737;--strong:#4b4b4b;--hover:#2c2c2c;--accent:#df8466;--accent-soft:#412b24;--green:#69b98a;--green-soft:#24382c;--amber:#e0a555;--amber-soft:#3b3021}}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.55 var(--sans)}button,input,select{font:inherit;color:inherit}button{cursor:pointer}.hidden{display:none!important}
+.sidebar{position:fixed;inset:0 auto 0 0;width:250px;background:var(--side);border-right:1px solid var(--line);padding:12px 10px;display:flex;flex-direction:column;z-index:20}.workspace{height:38px;display:flex;align-items:center;gap:9px;padding:0 8px;font-weight:650}.mark{width:22px;height:22px;display:grid;place-items:center;background:var(--ink);color:var(--bg);border-radius:5px;font:12px var(--serif)}.nav-group{margin-top:14px}.nav-label{padding:5px 9px;color:var(--muted);font-size:11px;font-weight:650;text-transform:uppercase;letter-spacing:.06em}.nav-item{width:100%;min-height:32px;border:0;background:transparent;border-radius:6px;text-align:left;padding:6px 9px;display:flex;align-items:center;gap:9px;color:var(--muted);text-decoration:none}.nav-item:hover,.nav-item.active{background:var(--hover);color:var(--ink)}.nav-icon{width:18px;text-align:center}.side-projects{overflow:auto;min-height:0}.side-project span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.sidebar-foot{margin-top:auto;padding:12px 9px 4px;color:var(--muted);font-size:12px;border-top:1px solid var(--line)}
+.main{margin-left:250px;min-height:100vh}.topbar{height:48px;position:sticky;top:0;z-index:15;display:flex;align-items:center;justify-content:space-between;padding:0 20px;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(12px)}.topbar.scrolled{border-bottom:1px solid var(--line)}.crumb{font-size:13px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.top-actions{display:flex;gap:6px}.icon-btn{border:0;background:transparent;border-radius:6px;padding:6px 9px;color:var(--muted);text-decoration:none}.icon-btn:hover{background:var(--hover);color:var(--ink)}
+.content{width:min(1040px,calc(100% - 64px));margin:auto;padding:54px 0 96px}.page-icon{font-size:54px;line-height:1;margin-bottom:20px}.eyebrow{color:var(--muted);font-size:12px;font-weight:650;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px}.title{font:650 clamp(34px,5vw,52px)/1.08 var(--serif);letter-spacing:-.025em;margin:0 0 14px}.lede{font:18px/1.65 var(--serif);color:var(--muted);max-width:820px;margin:0}.divider{height:1px;background:var(--line);margin:34px 0}.status-row{display:flex;flex-wrap:wrap;gap:8px;margin:22px 0 4px}.pill{display:inline-flex;align-items:center;gap:6px;padding:4px 9px;border-radius:999px;background:var(--hover);font-size:12px}.pill.dot:before{content:"";width:7px;height:7px;border-radius:50%;background:var(--amber)}.pill.published{background:var(--green-soft);color:var(--green)}.pill.published:before{background:var(--green)}
+.section{margin:38px 0}.section-head{display:flex;align-items:end;justify-content:space-between;gap:18px;margin-bottom:14px}.section-title{font-size:21px;font-weight:700;letter-spacing:-.015em;margin:0}.section-sub{color:var(--muted);font-size:13px;margin:3px 0 0}.section-count{font-size:12px;color:var(--muted);white-space:nowrap}.search{width:100%;height:38px;border:1px solid var(--line);border-radius:7px;background:var(--panel);padding:0 12px;outline:none}.search:focus{border-color:var(--strong);box-shadow:0 0 0 2px var(--hover)}
+.project-list{border-top:1px solid var(--line);margin-top:24px}.project-row{width:100%;border:0;border-bottom:1px solid var(--line);background:transparent;padding:17px 4px;display:grid;grid-template-columns:42px 1fr auto;gap:14px;align-items:center;text-align:left}.project-row:hover{background:var(--hover);padding-left:10px;padding-right:10px}.project-emoji{width:38px;height:38px;border-radius:8px;background:var(--accent-soft);display:grid;place-items:center;font-size:20px}.project-name{display:block;font-size:15px;font-weight:650}.project-meta{display:block;font-size:12px;color:var(--muted);margin-top:2px}.chev{color:var(--muted);font-size:18px}.loading{display:flex;align-items:center;gap:10px;color:var(--muted);padding:30px 0}.spinner{width:16px;height:16px;border:2px solid var(--line);border-top-color:var(--muted);border-radius:50%;animation:spin .8s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
+.properties{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));border:1px solid var(--line);border-radius:9px;overflow:hidden;background:var(--panel)}.prop{display:grid;grid-template-columns:120px 1fr;gap:12px;padding:10px 13px;border-bottom:1px solid var(--line)}.prop:nth-child(odd){border-right:1px solid var(--line)}.prop:nth-last-child(-n+2){border-bottom:0}.prop-label{color:var(--muted)}.prop-value{font-weight:550;min-width:0;overflow:hidden;text-overflow:ellipsis}.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:10px}.metric{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:15px}.metric-value{font:650 26px var(--serif)}.metric-label{font-size:12px;color:var(--muted);margin-top:2px}
+.health-card{border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:18px;display:grid;grid-template-columns:auto 1fr;gap:18px}.grade{width:54px;height:54px;border-radius:10px;display:grid;place-items:center;background:var(--amber-soft);color:var(--amber);font:700 26px var(--serif)}.health-title{font-weight:700}.health-checks{display:flex;flex-wrap:wrap;gap:7px;margin-top:9px}.check{font-size:12px;color:var(--muted);padding:3px 7px;background:var(--hover);border-radius:5px}.check.ok{color:var(--green);background:var(--green-soft)}.empty{padding:18px;border:1px dashed var(--strong);border-radius:8px;color:var(--muted);background:var(--panel)}
+.trusted-grid,.fact-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.trusted,.fact{border:1px solid var(--line);background:var(--panel);border-radius:9px;padding:14px}.trusted-role,.fact-label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:700}.trusted-title,.fact-value{font-weight:650;margin-top:5px}.path{font:11px/1.45 ui-monospace,SFMono-Regular,Consolas,monospace;color:var(--muted);word-break:break-word;margin-top:7px}.fact.uncited{border-left:3px solid var(--amber)}
+.evidence-tools{display:flex;gap:8px;margin-bottom:12px}.evidence-tools .search{max-width:420px}.evidence-group{border-top:1px solid var(--line)}.evidence-group:last-child{border-bottom:1px solid var(--line)}.group-toggle{list-style:none;padding:14px 2px;display:flex;align-items:center;justify-content:space-between;font-weight:650;cursor:pointer}.group-toggle::-webkit-details-marker{display:none}.group-toggle:after{content:"⌄";color:var(--muted);margin-left:12px}.group-copy{font-weight:400;color:var(--muted);font-size:12px;margin-left:9px}.evidence-item{display:grid;grid-template-columns:28px 1fr auto;gap:10px;padding:13px 2px;border-top:1px solid var(--line)}.doc-icon{color:var(--muted)}.doc-title{font-weight:650}.doc-snippet{color:var(--muted);font-size:13px;margin-top:5px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.doc-actions{display:flex;gap:5px;align-items:start}.btn{border:1px solid var(--strong);background:var(--panel);border-radius:6px;padding:5px 9px;font-size:12px}.btn:hover{background:var(--hover)}.btn.primary{background:var(--ink);color:var(--bg);border-color:var(--ink)}.btn.danger{color:var(--red);border-color:transparent;background:transparent}.quality{font-size:10px;color:var(--muted);margin-left:6px;font-weight:500}
+.callout{border-left:3px solid var(--accent);background:var(--accent-soft);padding:14px 16px;border-radius:4px 8px 8px 4px;color:var(--muted)}.callout strong{color:var(--ink)}.editor{border:1px solid var(--line);border-radius:9px;background:var(--panel);margin-top:12px}.editor summary{padding:11px 13px;cursor:pointer;color:var(--muted)}.form{padding:0 13px 13px;display:grid;grid-template-columns:repeat(2,1fr);gap:10px}.form label{display:grid;gap:4px;color:var(--muted);font-size:12px}.form label.wide{grid-column:1/-1}.form input,.form select{height:36px;padding:0 9px;border:1px solid var(--strong);border-radius:6px;background:var(--bg)}.ask-card{border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:18px}.ask-row{display:flex;gap:8px;margin-top:12px}.ask-row input{flex:1;height:40px;border:1px solid var(--strong);border-radius:7px;background:var(--bg);padding:0 11px}.ask-out{white-space:pre-wrap;background:var(--side);border:1px solid var(--line);padding:14px;border-radius:8px;margin:12px 0 0;max-height:360px;overflow:auto;font:13px/1.55 var(--sans)}.toast{position:fixed;right:22px;bottom:22px;background:var(--ink);color:var(--bg);padding:9px 13px;border-radius:7px;opacity:0;transform:translateY(8px);transition:.2s;z-index:50}.toast.show{opacity:1;transform:none}
+@media(max-width:800px){.sidebar{display:none}.main{margin-left:0}.content{width:min(100% - 32px,720px);padding-top:36px}.properties,.trusted-grid,.fact-grid{grid-template-columns:1fr}.prop{border-right:0!important}.metrics{grid-template-columns:repeat(2,1fr)}.evidence-item{grid-template-columns:24px 1fr}.doc-actions{grid-column:2}.topbar{padding:0 16px}}
 </style>
 </head>
-<body>
-<div class="wrap">
-  <nav class="nav">
-    <a class="brand" href="/">TIGA</a>
-    <a href="/">Search</a>
-    <a class="active" href="/projects">Projects</a>
-    <a href="/projects#ask">Ask</a>
-  </nav>
-
-  <div id="listView">
-    <h1>Project wiki</h1>
-    <p class="lede">Auto-drafted from Hunt (Grokopedia-style). Anyone can pin, hide, and cite facts — Wikipedia-style. No coding.</p>
-    <div class="grid" id="projectGrid"><p class="empty">Loading projects…</p></div>
-  </div>
-
-  <div id="pageView" class="hidden">
-    <a class="back" href="#" id="backBtn">← All projects</a>
-    <div class="hero-row" id="chips"></div>
-    <h1 id="pageTitle">Project</h1>
-    <p class="lede" id="pageSummary"></p>
-    <div class="section">
-      <div class="health">
-        <div class="grade" id="grade">—</div>
-        <div>
-          <div id="healthState"></div>
-          <div class="meta" id="healthDetail"></div>
-        </div>
-      </div>
-    </div>
-
-    <div class="section" id="pinsSec">
-      <h3>Authoritative pins</h3>
-      <p class="hint">Human-confirmed sources of truth. Auto candidates below are not trusted until pinned.</p>
-      <div class="pin-grid" id="pins"></div>
-    </div>
-
-    <div class="section" id="factsSec">
-      <h3>Cited facts</h3>
-      <p class="hint">Auto facts start uncited (rumors). Add a path cite to keep them — wiki style.</p>
-      <div class="fact-grid" id="facts"></div>
-      <form class="form" id="factForm" style="margin-top:1rem">
-        <h3 style="margin:0;font-size:.95rem">Add / update fact</h3>
-        <label>Key <input name="key" required placeholder="client"></label>
-        <label>Label <input name="label" required placeholder="Client"></label>
-        <label>Value <input name="value" required placeholder="NUS"></label>
-        <label>Citation path <input name="cite" required placeholder="/Projects/.../file.pdf"></label>
-        <label>Status
-          <select name="status"><option>draft</option><option>verified</option><option>disputed</option></select>
-        </label>
-        <button class="primary" type="submit">Save fact</button>
-      </form>
-    </div>
-
-    <div class="section" id="docsSec"></div>
-
-    <div class="section" id="ask">
-      <h3>Ask (Einstein)</h3>
-      <p class="hint">Answers only from pins + cited facts. Locked until the page has a pin.</p>
-      <form class="form" id="askForm">
-        <label>Question <input name="question" required placeholder="What is the latest GA set?"></label>
-        <button class="primary" type="submit">Ask</button>
-      </form>
-      <pre class="ask-out hidden" id="askOut"></pre>
-    </div>
-  </div>
-</div>
-<div class="toast" id="toast"></div>
+<body><div class="app">
+<aside class="sidebar"><div class="workspace"><span class="mark">T</span>TIGA Atlas</div><div class="nav-group"><a class="nav-item" href="/"><span class="nav-icon">⌕</span>Hunt search</a><button class="nav-item active" id="homeBtn"><span class="nav-icon">▤</span>Project wiki</button></div><div class="nav-group side-projects"><div class="nav-label">Projects</div><div id="sideProjects"><div class="nav-item">Loading…</div></div></div><div class="sidebar-foot">Local archive knowledge<br><span id="sideStatus">Connecting to Hunt…</span></div></aside>
+<main class="main"><header class="topbar" id="topbar"><div class="crumb" id="crumb">Atlas / Project wiki</div><div class="top-actions"><a class="icon-btn" href="/">Search Hunt</a><button class="icon-btn" id="refreshBtn">Refresh</button></div></header><div class="content">
+<section id="listView"><div class="page-icon">🗂️</div><div class="eyebrow">TIGA Atlas</div><h1 class="title">Project wiki</h1><p class="lede">A browsable memory of the practice, drafted from Hunt evidence and made trustworthy through human pins and cited facts.</p><div class="divider"></div><input class="search" id="projectSearch" placeholder="Search projects…"><div class="project-list" id="projectList"><div class="loading"><span class="spinner"></span>Building the project index…</div></div></section>
+<section id="pageView" class="hidden"><div class="page-icon">🌿</div><div class="eyebrow">Project knowledge page</div><h1 class="title" id="pageTitle">Project</h1><p class="lede" id="pageSummary"></p><div class="status-row" id="statusRow"></div>
+<div class="section"><div class="section-head"><div><h2 class="section-title">At a glance</h2><p class="section-sub">Index-derived context, not yet human-verified project facts.</p></div></div><div class="properties" id="properties"></div><div class="metrics" id="metrics"></div></div>
+<div class="section"><div class="section-head"><div><h2 class="section-title">Publication readiness</h2><p class="section-sub">Atlas separates useful discovery from trusted knowledge.</p></div></div><div class="health-card"><div class="grade" id="grade">—</div><div><div class="health-title" id="healthState"></div><div class="health-checks" id="healthChecks"></div></div></div></div>
+<div class="section"><div class="section-head"><div><h2 class="section-title">Trusted sources</h2><p class="section-sub">Documents a person has explicitly confirmed as authoritative.</p></div><span class="section-count" id="pinCount"></span></div><div class="trusted-grid" id="pins"></div></div>
+<div class="section"><div class="section-head"><div><h2 class="section-title">Project facts</h2><p class="section-sub">Durable claims need a source path. Uncited values remain draft.</p></div><span class="section-count" id="factCount"></span></div><div class="fact-grid" id="facts"></div><details class="editor"><summary>＋ Add or update a cited fact</summary><form class="form" id="factForm"><label>Key<input name="key" required placeholder="client"></label><label>Label<input name="label" required placeholder="Client"></label><label class="wide">Value<input name="value" required placeholder="National Parks Board"></label><label class="wide">Citation path<input name="cite" required placeholder="//Projects/.../Invitation Letter.pdf#p1"></label><label>Status<select name="status"><option>draft</option><option>verified</option><option>disputed</option></select></label><label style="align-self:end"><button class="btn primary">Save cited fact</button></label></form></details></div>
+<div class="section"><div class="section-head"><div><h2 class="section-title">Evidence library</h2><p class="section-sub">The strongest Hunt candidates, ranked and deduplicated. Review before pinning.</p></div><span class="section-count" id="candidateCount"></span></div><div class="evidence-tools"><input class="search" id="evidenceSearch" placeholder="Filter evidence on this page…"></div><div id="evidenceGroups"></div></div>
+<div class="section" id="ask"><div class="section-head"><div><h2 class="section-title">Ask this project</h2><p class="section-sub">Answers use trusted pins and cited facts only.</p></div></div><div class="ask-card"><div class="callout" id="askGate"><strong>Locked for now.</strong> Pin one authoritative source before asking Atlas to synthesize.</div><form class="ask-row" id="askForm"><input name="question" required placeholder="What is the project scope?"><button class="btn primary">Ask</button></form><pre class="ask-out hidden" id="askOut"></pre></div></div>
+</section></div></main></div><div class="toast" id="toast"></div>
 <script>
-const $ = (id) => document.getElementById(id);
-let currentCode = null;
-let currentPage = null;
-
-function toast(msg) {
-  const t = $('toast');
-  t.textContent = msg;
-  t.classList.add('show');
-  setTimeout(() => t.classList.remove('show'), 1600);
-}
-
-async function api(path, opts) {
-  const res = await fetch(path, opts);
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.detail || data.error || res.statusText);
-  return data;
-}
-
-async function loadList() {
-  const projects = await api('/api/atlas/projects');
-  const grid = $('projectGrid');
-  if (!projects.length) {
-    grid.innerHTML = '<p class="empty">No indexed projects yet. Index in Hunt first, then refresh.</p>';
-    return;
-  }
-  grid.innerHTML = projects.map(p => `
-    <button class="card" data-code="${escapeAttr(p.project_id)}">
-      <div class="code">${escapeHtml(p.project_id)}</div>
-      <h2>${escapeHtml(p.project_id)}</h2>
-      <div class="meta">${p.file_count} files · ${p.wiki_pins} pin(s)
-        <span class="badge ${p.status === 'curated' ? 'pub' : 'draft'}">${p.status}</span>
-      </div>
-    </button>`).join('');
-  grid.querySelectorAll('.card').forEach(btn => {
-    btn.addEventListener('click', () => openPage(btn.dataset.code));
-  });
-}
-
-async function openPage(code) {
-  currentCode = code;
-  $('listView').classList.add('hidden');
-  $('pageView').classList.remove('hidden');
-  location.hash = 'p/' + encodeURIComponent(code);
-  await refreshPage();
-}
-
-async function refreshPage() {
-  currentPage = await api('/api/atlas/page/' + encodeURIComponent(currentCode));
-  renderPage(currentPage);
-}
-
-function renderPage(p) {
-  const proj = p.project || {};
-  $('pageTitle').textContent = proj.name || proj.code;
-  $('pageSummary').textContent = p.summary || '';
-  const h = p.health || {};
-  $('grade').textContent = h.grade || '—';
-  $('healthState').textContent = `${h.state || ''} · ${h.score || 0}/100`;
-  $('healthDetail').textContent = (h.checks || []).map(c => (c.ok ? '✓ ' : '! ') + c.detail).join(' · ');
-  $('chips').innerHTML = ['typology','stage','location','client','status']
-    .filter(k => proj[k])
-    .map(k => `<span class="chip"><strong>${k}</strong> ${escapeHtml(String(proj[k]))}</span>`)
-    .join('');
-
-  const pins = p.pins || [];
-  $('pins').innerHTML = pins.length ? pins.map(pin => `
-    <div class="pin">
-      <div class="role">${escapeHtml(pin.role || 'other')}</div>
-      <div>${escapeHtml(pin.title || pin.path || '')}</div>
-      <div class="path">${escapeHtml(pin.path || '')}</div>
-    </div>`).join('') : '<p class="empty">No pins yet — pin a candidate below.</p>';
-
-  const facts = p.facts || [];
-  $('facts').innerHTML = facts.length ? facts.map(f => {
-    const cited = (f.cite_paths || []).length > 0;
-    return `<div class="fact ${cited ? '' : 'rumor'}">
-      <div class="label">${escapeHtml(f.label || f.key)} · ${escapeHtml(f.status || 'draft')}</div>
-      <div class="val">${escapeHtml(f.value || '—')}</div>
-      <div class="path">${cited ? escapeHtml((f.cite_paths || []).join(', ')) : 'No citation — rumor'}</div>
-      ${!cited ? `<div class="actions"><button data-cite-fact="${escapeAttr(f.key)}" data-label="${escapeAttr(f.label || f.key)}" data-value="${escapeAttr(f.value || '')}">Add cite…</button></div>` : ''}
-    </div>`;
-  }).join('') : '<p class="empty">No facts yet.</p>';
-
-  const sections = p.sections || {};
-  const order = [['key_documents','Key documents'],['drawings_models','Drawings & models'],['correspondence','Correspondence & authority']];
-  $('docsSec').innerHTML = order.map(([key, title]) => {
-    const items = (sections[key] && sections[key].items) || [];
-    const body = items.length ? items.map(it => `
-      <div class="item">
-        <div class="item-head">${escapeHtml(it.title || '')}
-          <span class="badge ${it.pinned ? 'pub' : 'draft'}">${it.pinned ? 'pinned' : 'candidate'}</span>
-        </div>
-        <div class="path">${escapeHtml(it.path || '')}</div>
-        ${it.snippet ? `<div class="snip">${escapeHtml(it.snippet)}</div>` : ''}
-        <div class="actions">
-          ${!it.pinned ? `<button data-pin-path="${escapeAttr(it.path)}" data-pin-title="${escapeAttr(it.title || '')}" data-pin-role="${escapeAttr(it.suggested_role || 'other')}">Pin as truth</button>` : ''}
-          <button class="danger" data-hide-path="${escapeAttr(it.path)}">Hide</button>
-        </div>
-      </div>`).join('') : '<p class="empty">No candidates from Hunt yet.</p>';
-    return `<h3>${title}</h3><p class="hint">Auto from Hunt search — pin what is authoritative.</p>${body}`;
-  }).join('<hr style="border:none;border-top:1px solid var(--ink-12);margin:1rem 0">');
-
-  $('docsSec').querySelectorAll('[data-pin-path]').forEach(btn => {
-    btn.onclick = () => pin(btn.dataset.pinPath, btn.dataset.pinTitle, btn.dataset.pinRole);
-  });
-  $('docsSec').querySelectorAll('[data-hide-path]').forEach(btn => {
-    btn.onclick = () => hide(btn.dataset.hidePath);
-  });
-  $('facts').querySelectorAll('[data-cite-fact]').forEach(btn => {
-    btn.onclick = () => {
-      const cite = prompt('Citation NAS path for this fact:');
-      if (!cite) return;
-      saveFact(btn.dataset.citeFact, btn.dataset.label, btn.dataset.value, cite, 'verified');
-    };
-  });
-}
-
-async function pin(path, title, role) {
-  await api('/api/atlas/page/' + encodeURIComponent(currentCode) + '/pin', {
-    method: 'POST', headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ path, title, role, note: 'Pinned in Projects wiki' })
-  });
-  toast('Pinned');
-  await refreshPage();
-}
-
-async function hide(path) {
-  if (!confirm('Hide this candidate from the page?')) return;
-  await api('/api/atlas/page/' + encodeURIComponent(currentCode) + '/hide', {
-    method: 'POST', headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ path })
-  });
-  toast('Hidden');
-  await refreshPage();
-}
-
-async function saveFact(key, label, value, cite, status) {
-  await api('/api/atlas/page/' + encodeURIComponent(currentCode) + '/fact', {
-    method: 'POST', headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ key, label, value, cite_paths: [cite], status })
-  });
-  toast('Fact saved');
-  await refreshPage();
-}
-
-$('backBtn').onclick = (e) => {
-  e.preventDefault();
-  currentCode = null;
-  $('pageView').classList.add('hidden');
-  $('listView').classList.remove('hidden');
-  location.hash = '';
-  loadList();
-};
-
-$('factForm').onsubmit = async (e) => {
-  e.preventDefault();
-  const fd = new FormData(e.target);
-  await saveFact(fd.get('key'), fd.get('label'), fd.get('value'), fd.get('cite'), fd.get('status'));
-  e.target.reset();
-};
-
-$('askForm').onsubmit = async (e) => {
-  e.preventDefault();
-  if (!currentCode) { toast('Open a project first'); return; }
-  const q = new FormData(e.target).get('question');
-  const out = $('askOut');
-  out.classList.remove('hidden');
-  out.textContent = 'Thinking…';
-  try {
-    const data = await api('/api/atlas/page/' + encodeURIComponent(currentCode) + '/ask', {
-      method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ question: q })
-    });
-    out.textContent = data.answer || JSON.stringify(data, null, 2);
-  } catch (err) {
-    out.textContent = err.message;
-  }
-};
-
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-}
-function escapeAttr(s) { return escapeHtml(s).replace(/\n/g, ' '); }
-
-(async function init() {
-  await loadList();
-  const m = location.hash.match(/^#p\/(.+)$/);
-  if (m) openPage(decodeURIComponent(m[1]));
-  else if (location.hash === '#ask') toast('Open a project, then use Ask at the bottom');
-})();
-</script>
-</body>
-</html>
+const $=id=>document.getElementById(id),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])),attr=s=>esc(s).replace(/\n/g,' '),num=n=>new Intl.NumberFormat().format(Number(n||0));
+let projects=[],currentCode=null,currentPage=null;
+function shortName(n){return String(n).replace(/^PP\s*\d{4}\s*\d+\s*/i,'').trim()||n}function toast(m){const t=$('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),1800)}async function api(path,opts){const r=await fetch(path,opts),d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.detail||d.error||r.statusText);return d}
+function renderSide(){ $('sideProjects').innerHTML=projects.map(p=>`<button class="nav-item side-project ${p.project_id===currentCode?'active':''}" data-side="${attr(p.project_id)}"><span class="nav-icon">◇</span><span>${esc(shortName(p.project_id))}</span></button>`).join('')||'<div class="nav-item">No ready projects</div>';document.querySelectorAll('[data-side]').forEach(b=>b.onclick=()=>openPage(b.dataset.side))}
+function renderList(q=''){q=q.toLowerCase();const list=projects.filter(p=>p.project_id.toLowerCase().includes(q));$('projectList').innerHTML=list.map(p=>`<button class="project-row" data-code="${attr(p.project_id)}"><span class="project-emoji">🌿</span><span><span class="project-name">${esc(shortName(p.project_id))}</span><span class="project-meta">${esc(p.project_id)} · ${num(p.indexed_count)} indexed files · ${p.wiki_pins} trusted pins</span></span><span class="chev">›</span></button>`).join('')||'<div class="empty">No projects match this search.</div>';document.querySelectorAll('[data-code]').forEach(b=>b.onclick=()=>openPage(b.dataset.code))}
+async function loadProjects(){projects=await api('/api/atlas/projects');$('sideStatus').textContent=`${projects.length} project${projects.length===1?'':'s'} ready`;renderSide();renderList($('projectSearch').value)}
+async function openPage(code){currentCode=code;$('listView').classList.add('hidden');$('pageView').classList.remove('hidden');$('crumb').textContent=`Atlas / ${shortName(code)}`;location.hash='p/'+encodeURIComponent(code);renderSide();$('pageTitle').textContent=shortName(code);$('pageSummary').textContent='Loading the strongest project evidence…';await refreshPage();window.scrollTo({top:0,behavior:'smooth'})}async function refreshPage(){currentPage=await api('/api/atlas/page/'+encodeURIComponent(currentCode));renderPage(currentPage)}function showHome(){currentCode=null;$('pageView').classList.add('hidden');$('listView').classList.remove('hidden');$('crumb').textContent='Atlas / Project wiki';location.hash='';renderSide();scrollTo({top:0,behavior:'smooth'})}
+function renderPage(p){const pr=p.project||{},pf=p.profile||{},h=p.health||{},known=v=>v&&String(v).toLowerCase()!=='unknown'?v:'Needs curation';$('pageTitle').textContent=shortName(pr.name||pr.code);$('pageSummary').textContent=p.summary||'';$('statusRow').innerHTML=`<span class="pill dot ${h.published?'published':''}">${esc(h.state||'Auto-draft')}</span><span class="pill">${num(pf.indexed_files)} indexed files</span><span class="pill">Updated ${new Date(p.sources?.built_at||Date.now()).toLocaleString()}</span>`;const props=[['Project code',pr.code],['Stage',known(pr.stage||pf.stages?.join(', '))],['Typology',known(pr.typology)],['Client',known(pr.client)],['Location',known(pr.location)],['Knowledge state',h.state||'Auto-draft']];$('properties').innerHTML=props.map(([k,v])=>`<div class="prop"><span class="prop-label">${esc(k)}</span><span class="prop-value">${esc(v)}</span></div>`).join('');$('metrics').innerHTML=[['Files',pf.total_files],['PDFs',pf.pdf_count],['CAD + models',pf.model_count],['Images',pf.image_count]].map(([k,v])=>`<div class="metric"><div class="metric-value">${num(v)}</div><div class="metric-label">${esc(k)}</div></div>`).join('');$('grade').textContent=h.grade||'—';$('healthState').textContent=`${h.state||'Auto-draft'} · ${h.score||0}/100`;$('healthChecks').innerHTML=(h.checks||[]).map(c=>`<span class="check ${c.ok?'ok':''}">${c.ok?'✓':'•'} ${esc(c.detail)}</span>`).join('');
+const pins=p.pins||[];$('pinCount').textContent=`${pins.length} pinned`;$('pins').innerHTML=pins.length?pins.map(x=>`<article class="trusted"><div class="trusted-role">${esc((x.role||'other').replaceAll('_',' '))}</div><div class="trusted-title">${esc(x.title||x.path)}</div><div class="path">${esc(x.path)}</div></article>`).join(''):'<div class="empty">No trusted sources yet. Review the evidence library and pin the project brief, authoritative drawings, or approval pack.</div>';
+const facts=p.facts||[];$('factCount').textContent=`${facts.length} facts`;$('facts').innerHTML=facts.length?facts.map(f=>{const cited=(f.cite_paths||[]).length;return `<article class="fact ${cited?'':'uncited'}"><div class="fact-label">${esc(f.label||f.key)} · ${esc(f.status||'draft')}</div><div class="fact-value">${esc(f.value||'—')}</div><div class="path">${cited?esc(f.cite_paths.join(', ')):'No citation yet — not trusted'}</div>${!cited?`<button class="btn" data-cite="${attr(f.key)}" data-label="${attr(f.label||f.key)}" data-value="${attr(f.value||'')}">Add citation</button>`:''}</article>`}).join(''):'<div class="empty">No durable facts yet. Add only facts you can cite to a project source.</div>';document.querySelectorAll('[data-cite]').forEach(b=>b.onclick=()=>{const c=prompt('Source path for this fact:');if(c)saveFact(b.dataset.cite,b.dataset.label,b.dataset.value,c,'verified')});renderEvidence(p.sections||{});$('candidateCount').textContent=`${p.sources?.candidate_count||0} candidates`;const open=pins.length>0;$('askGate').innerHTML=open?'<strong>Evidence gate open.</strong> Answers are constrained to trusted pins and cited facts.':'<strong>Locked for now.</strong> Pin one authoritative source before asking Atlas to synthesize.';$('askForm').querySelector('button').disabled=!open}
+function renderEvidence(sections,q=''){q=q.toLowerCase();const groups=[['key_documents','Key documents','Briefs, reports, and project narratives'],['drawings_models','Drawings & models','Plans, sections, CAD, BIM, and design models'],['correspondence','Authority & correspondence','Invitations, submissions, approvals, letters, and minutes']];$('evidenceGroups').innerHTML=groups.map(([key,title,copy],i)=>{const items=(sections[key]?.items||[]).filter(x=>!q||`${x.title} ${x.path} ${x.snippet}`.toLowerCase().includes(q));return `<details class="evidence-group" ${i===0?'open':''}><summary class="group-toggle"><span>${title}<span class="group-copy">${copy}</span></span><span>${items.length}</span></summary>${items.length?items.map(renderItem).join(''):'<div class="empty">No strong candidates in this section.</div>'}</details>`}).join('');document.querySelectorAll('[data-pin]').forEach(b=>b.onclick=()=>pin(b.dataset.pin,b.dataset.title,b.dataset.role));document.querySelectorAll('[data-hide]').forEach(b=>b.onclick=()=>hideCandidate(b.dataset.hide))}
+function renderItem(x){return `<article class="evidence-item"><div class="doc-icon">▧</div><div><div class="doc-title">${esc(x.title)}<span class="quality">relevance ${Math.round((x.score||0)*100)}</span></div><div class="doc-snippet">${esc(x.snippet||'Metadata-only source')}</div><div class="path">${esc(x.path)}</div></div><div class="doc-actions">${x.pinned?'<span class="pill published">Pinned</span>':`<button class="btn primary" data-pin="${attr(x.path)}" data-title="${attr(x.title)}" data-role="${attr(x.suggested_role||'other')}">Pin</button>`}<button class="btn danger" data-hide="${attr(x.path)}">Hide</button></div></article>`}
+async function pin(path,title,role){await api('/api/atlas/page/'+encodeURIComponent(currentCode)+'/pin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path,title,role,note:'Pinned in Atlas wiki'})});toast('Added to trusted sources');await refreshPage()}async function hideCandidate(path){if(!confirm('Hide this candidate?'))return;await api('/api/atlas/page/'+encodeURIComponent(currentCode)+'/hide',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path})});toast('Candidate hidden');await refreshPage()}async function saveFact(key,label,value,cite,status){await api('/api/atlas/page/'+encodeURIComponent(currentCode)+'/fact',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key,label,value,cite_paths:[cite],status})});toast('Cited fact saved');await refreshPage()}
+$('homeBtn').onclick=showHome;$('projectSearch').oninput=e=>renderList(e.target.value);$('evidenceSearch').oninput=e=>currentPage&&renderEvidence(currentPage.sections||{},e.target.value);$('refreshBtn').onclick=async()=>{currentCode?await refreshPage():await loadProjects();toast('Atlas refreshed')};$('factForm').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target);await saveFact(f.get('key'),f.get('label'),f.get('value'),f.get('cite'),f.get('status'));e.target.reset()};$('askForm').onsubmit=async e=>{e.preventDefault();const out=$('askOut');out.classList.remove('hidden');out.textContent='Reading trusted evidence…';try{const f=new FormData(e.target),d=await api('/api/atlas/page/'+encodeURIComponent(currentCode)+'/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:f.get('question')})});out.textContent=d.answer||JSON.stringify(d,null,2)}catch(err){out.textContent=err.message}};addEventListener('scroll',()=>$('topbar').classList.toggle('scrolled',scrollY>6));
+(async()=>{try{await loadProjects();const m=location.hash.match(/^#p\/(.+)$/);if(m)await openPage(decodeURIComponent(m[1]))}catch(e){$('projectList').innerHTML=`<div class="empty">Atlas could not load: ${esc(e.message)}</div>`;$('sideStatus').textContent='Hunt unavailable'}})();
+</script></body></html>

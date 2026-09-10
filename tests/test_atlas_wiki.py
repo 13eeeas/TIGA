@@ -10,6 +10,7 @@ from core.atlas_wiki import (
     compute_health,
     evidence_pack,
     get_wiki_page,
+    list_wiki_projects,
     load_overlay,
     wiki_compose,
     wiki_fact,
@@ -134,3 +135,24 @@ def test_health_rejects_uncited_durable_facts() -> None:
     health = compute_health(page)
     assert health["published"] is False
     assert health["uncited_facts"] == 1
+
+
+def test_project_list_only_surfaces_named_indexed_corpora(tmp_path: Path) -> None:
+    conn = get_connection(tmp_path / "db" / "tiga.db")
+    try:
+        conn.executemany(
+            "INSERT INTO files (file_id, file_path, file_name, extension, status, project_id) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            [
+                ("ready", "/archive/brief.pdf", "brief.pdf", ".pdf", "INDEXED", "NParks"),
+                ("pending", "/archive/model.rvt", "model.rvt", ".rvt", "DISCOVERED", "NParks"),
+                ("unknown", "/archive/misc.pdf", "misc.pdf", ".pdf", "INDEXED", "Unknown"),
+                ("blank", "/archive/loose.pdf", "loose.pdf", ".pdf", "INDEXED", None),
+            ],
+        )
+        projects = list_wiki_projects(conn)
+        assert [project["project_id"] for project in projects] == ["NParks"]
+        assert projects[0]["file_count"] == 2
+        assert projects[0]["indexed_count"] == 1
+    finally:
+        conn.close()
