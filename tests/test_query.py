@@ -129,6 +129,24 @@ def test_document_inventory_routes_to_file_locator() -> None:
     assert route.filters["group_by"] == "content_type"
 
 
+def test_bare_cad_project_query_is_a_scoped_file_lookup(conn) -> None:
+    """A project nickname plus CAD must not fall through to semantic RAG."""
+    conn.execute("INSERT INTO project_cards (project_code, name) VALUES ('283', 'HICA')")
+    conn.execute(
+        "INSERT INTO project_aliases (project_code, alias, alias_type, source) "
+        "VALUES ('283', 'Istana', 'common_name', 'manual')"
+    )
+    conn.commit()
+
+    router = QueryRouter()
+    router.load_project_codes(conn)
+    route = router.classify("Istana CAD")
+
+    assert route.mode == "file_locator"
+    assert route.project_code == "283"
+    assert route.filters["content_type"] == "CAD"
+
+
 def test_file_locator_accepts_unknown_explicit_extension_and_path_terms() -> None:
     """No application-specific alias is needed for an exact file extension."""
     router = QueryRouter()

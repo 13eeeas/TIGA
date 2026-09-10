@@ -396,6 +396,7 @@ class QueryRouter:
 
     def __init__(self, known_project_codes: list[str] | None = None):
         self._known_codes = set(known_project_codes or [])
+        self._project_aliases: dict[str, str] = {}
 
     def load_project_codes(self, conn) -> None:
         """Reload known project codes from DB for better project detection."""
@@ -405,6 +406,14 @@ class QueryRouter:
                 "WHERE project_code IS NOT NULL"
             ).fetchall()
             self._known_codes = {r["project_code"] for r in rows}
+            alias_rows = conn.execute(
+                "SELECT project_code, alias FROM project_aliases"
+            ).fetchall()
+            self._project_aliases = {
+                str(row["alias"]).casefold(): row["project_code"]
+                for row in alias_rows
+                if row["alias"] and row["project_code"]
+            }
             # Also pull from files table project_id column
             rows2 = conn.execute(
                 "SELECT DISTINCT project_id FROM files "
@@ -564,6 +573,7 @@ class QueryRouter:
         explicit_file_request = (
             has_locator_verb
             or bool(tags & _FILE_LOCATOR_CONCEPTS)
+            or any(_matches_term(q, term) for term in _FILE_TYPE_KEYWORDS)
             or any(_matches_term(q, term) for term in _EXTENSION_TYPE_MAP)
             or any(_matches_term(q, term) for term in _PRESENTATION_FAMILY_TERMS)
             or any(phrase in q for phrase in (
@@ -916,6 +926,11 @@ class QueryRouter:
         # a named project can be scoped before retrieval.
         if re.search(r"\bnus\s+biz\s*3\b", q):
             return "NUS BIZ3"
+        # User-managed project aliases let natural project names scope files
+        # even when the archive itself is organised under a numeric job code.
+        for alias, code in sorted(self._project_aliases.items(), key=lambda item: -len(item[0])):
+            if re.search(rf'\b{re.escape(alias)}\b', q):
+                return code
         # Check known codes first
         for code in sorted(self._known_codes, key=lambda c: -len(c)):
             if re.search(rf'\b{re.escape(code)}\b', q):
