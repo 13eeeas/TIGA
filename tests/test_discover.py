@@ -73,6 +73,12 @@ def test_discovers_files_in_single_root(tmp_path: Path, conn) -> None:
     assert stats["skipped"]   == 0
     assert stats["failed"]    == 0
 
+    project_ids = {
+        r["project_id"]
+        for r in conn.execute("SELECT project_id FROM files").fetchall()
+    }
+    assert project_ids == {"archive"}
+
 
 def test_discovers_files_in_multiple_roots(tmp_path: Path, conn) -> None:
     """Files in two separate roots are both discovered and written to DB."""
@@ -259,6 +265,31 @@ def test_incremental_unchanged_indexed_file_skipped(tmp_path: Path, conn) -> Non
     stats2 = run_discover(conn, [root], cfg_obj=cfg_obj)
     assert stats2["unchanged"] == 1
     assert stats2["discovered"] == 0
+
+
+def test_incremental_scan_backfills_unknown_project_id(tmp_path: Path, conn) -> None:
+    root = tmp_path / "small-project"
+    root.mkdir()
+    candidate = root / "brief.pdf"
+    candidate.write_bytes(b"stable content")
+    cfg_file = _write_config(tmp_path, [root])
+    cfg_obj = load_config(config_file=cfg_file, work_dir=tmp_path)
+
+    run_discover(conn, [root], cfg_obj=cfg_obj)
+    fid = file_id_from_path(candidate.resolve().as_posix())
+    conn.execute(
+        "UPDATE files SET status='INDEXED', project_id='Unknown' WHERE file_id=?",
+        (fid,),
+    )
+    conn.commit()
+
+    stats = run_discover(conn, [root], cfg_obj=cfg_obj)
+
+    row = conn.execute(
+        "SELECT project_id FROM files WHERE file_id=?", (fid,)
+    ).fetchone()
+    assert stats["unchanged"] == 1
+    assert row["project_id"] == "small-project"
 
 
 def test_modified_file_rediscovered(tmp_path: Path, conn) -> None:

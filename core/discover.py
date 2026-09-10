@@ -254,6 +254,7 @@ def _scan_root(
     fp_canonical: dict[str, str],
 ) -> None:
     existing_by_path = _load_existing_by_path(conn, root)
+    project_id = root.name
     exclude_dir_names = _exclude_dir_names(cfg_obj.exclude_globs)
     fp_strategy: str = getattr(cfg_obj, "fingerprint_strategy", "full")
 
@@ -284,6 +285,7 @@ def _scan_root(
                 "file_id":    fid,
                 "file_path":  posix,
                 "file_name":  safe.name,
+                "project_id": project_id,
                 "extension":  ext,
                 "status":     "FAILED",
                 "error_code": "STAT_ERROR",
@@ -299,6 +301,7 @@ def _scan_root(
                 "file_id":    fid,
                 "file_path":  posix,
                 "file_name":  safe.name,
+                "project_id": project_id,
                 "extension":  ext,
                 "size_bytes": size_bytes,
                 "mtime_epoch": mtime_epoch,
@@ -319,6 +322,12 @@ def _scan_root(
         # f. Fast incremental skip by metadata before expensive hashing
         existing_row = existing_by_path.get(posix)
         if existing_row and _is_fast_unchanged(existing_row, size_bytes, mtime_epoch):
+            if existing_row.get("project_id") in (None, "", "Unknown"):
+                conn.execute(
+                    "UPDATE files SET project_id = ?, updated_at = datetime('now') WHERE file_id = ?",
+                    (project_id, fid),
+                )
+                conn.commit()
             stats["unchanged"] += 1
             continue
 
@@ -354,6 +363,7 @@ def _scan_root(
                 "file_id":            fid,
                 "file_path":          posix,
                 "file_name":          safe.name,
+                "project_id":         project_id,
                 "extension":          ext,
                 "size_bytes":         size_bytes,
                 "mtime_epoch":        mtime_epoch,
@@ -387,6 +397,7 @@ def _scan_root(
             "file_id":            fid,
             "file_path":          posix,
             "file_name":          safe.name,
+            "project_id":         project_id,
             "extension":          ext,
             "size_bytes":         size_bytes,
             "mtime_epoch":        mtime_epoch,
@@ -449,7 +460,8 @@ def _load_existing_by_path(conn: sqlite3.Connection, root: Path) -> dict[str, di
     prefix = (resolved.rstrip("/") or "/") + "/%"
     rows = conn.execute(
         """
-        SELECT file_path, fingerprint_sha256, status, size_bytes, mtime_epoch
+        SELECT file_id, file_path, fingerprint_sha256, status, size_bytes,
+               mtime_epoch, project_id
         FROM files
         WHERE file_path LIKE ?
         """,
