@@ -943,7 +943,17 @@ async def api_query(
         mode == "structured"
         and (not data_result or answer_summary.lower().startswith("no project"))
     )
-    if no_structured_evidence or (mode == "file_locator" and not files_result):
+    # A scoped native-file request (for example, "Istana CAD") is precise:
+    # keep its no-match result visible instead of replacing it with unrelated
+    # semantic evidence while that project's index is still catching up.
+    explicit_scoped_file_lookup = (
+        mode == "file_locator"
+        and bool(route.project_code)
+        and bool(route.filters.get("content_type") or route.filters.get("extensions"))
+    )
+    if no_structured_evidence or (
+        mode == "file_locator" and not files_result and not explicit_scoped_file_lookup
+    ):
         mode = "semantic"
         run_semantic_fallback()
 
