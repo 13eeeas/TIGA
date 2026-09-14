@@ -31,6 +31,7 @@ Download the branch zip from GitHub, extract, open the folder, double-click `STA
 | File | When |
 |------|------|
 | `launcher.bat` | Daily Hunt search portal |
+| `update.bat` / `update.sh` | Later GitHub deploys (fast-forward only — see below) |
 | `poc-test.bat` | Re-run stress test (after config tweaks) |
 | `run.bat` | Start server + admin + incremental index |
 | `tiga_work/poc_test/exports/` | Send zip to dev for Hunt refinement |
@@ -40,6 +41,28 @@ Download the branch zip from GitHub, extract, open the folder, double-click `STA
 ```bash
 bash START-HERE.sh
 ```
+
+## Update an existing git clone (do not brick tiga_work)
+
+`START-HERE` is first-run only — it does not pull GitHub. On a git clone:
+
+```bat
+update.bat
+```
+
+```bash
+bash update.sh
+```
+
+The updater fetches, then **fast-forwards only**. It will **stop** (and leave the install alone) if the branch has diverged, tracked files are dirty, or untracked source would be overwritten. It never `git reset`, stash, merge, or `git clean`.
+
+`tiga_work/config.yaml`, the Hunt DB, vectors, and Atlas overlays (`tiga_work/atlas/`) stay put.
+
+Pin a SHA: `bash update.sh --sha <commit>` or `set TIGA_UPDATE_SHA=<commit>` then `update.bat`.
+
+Health checks use `server.port` from `tiga_work/config.yaml`. They do **not** assume `7860`.
+
+Rollback and failure states: [`docs/WOHA_UPDATE.md`](WOHA_UPDATE.md).
 
 ## Optional env vars
 

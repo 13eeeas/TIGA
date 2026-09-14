@@ -28,6 +28,7 @@ if not exist ".venv\Scripts\activate.bat" (
     )
 ) else (
     echo [Step 1/3] Install — already done
+    echo             Git updates: update.bat  ^(does not touch tiga_work^)
 )
 
 call .venv\Scripts\activate.bat

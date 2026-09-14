@@ -15,6 +15,7 @@ if [ ! -d ".venv" ]; then
     bash setup.sh
 else
     echo "[Step 1/3] Install — already done"
+    echo "            Git updates: bash update.sh  (does not touch tiga_work)"
 fi
 
 # shellcheck disable=SC1091
