@@ -5,6 +5,8 @@ Endpoints
 ---------
   POST /api/query                — hybrid search + compose answer
   GET  /api/status               — index stats + Ollama availability
+  GET  /api/storage              — per-project operating storage + cost stubs
+  GET  /storage                  — storage / cost dashboard (cached snapshot)
   GET  /api/projects             — distinct project_ids + file counts
   GET  /api/project/{code}       — project data card
   GET  /api/atlas/projects       — wiki project list (auto + curation status)
@@ -1035,6 +1037,44 @@ async def api_query(
         fallback_suggestion = fallback_suggestion,
         index_stats        = index_stats,
         latency_ms         = round(duration_ms, 1),
+    )
+
+
+@app.get("/storage", response_class=HTMLResponse, include_in_schema=False)
+async def serve_storage_dashboard() -> HTMLResponse:
+    """Per-project TIGA operating storage and estimated cost stubs."""
+    html_file = Path(__file__).parent / "static" / "storage.html"
+    return HTMLResponse(html_file.read_text(encoding="utf-8"))
+
+
+@app.get("/api/storage")
+async def api_storage(
+    refresh: bool = Query(False, description="Remeasure now instead of using the cache"),
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict[str, Any]:
+    """Cached per-project operating storage. Does not walk the NAS archive."""
+    from core.storage import get_storage_report
+
+    return get_storage_report(
+        conn,
+        cfg.work_dir,
+        refresh=refresh,
+        configured_projects=[root.name for root in cfg.index_roots],
+    )
+
+
+@app.post("/api/storage/refresh")
+async def api_storage_refresh(
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict[str, Any]:
+    """Force a new work_dir measurement and persist the snapshot."""
+    from core.storage import get_storage_report
+
+    return get_storage_report(
+        conn,
+        cfg.work_dir,
+        refresh=True,
+        configured_projects=[root.name for root in cfg.index_roots],
     )
 
 
