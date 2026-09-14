@@ -6,13 +6,13 @@ North star: Notion browse + Wikipedia contribution + Grokopedia auto-draft, alwa
 
 ## Before staff arrive (you)
 
-1. On office PC, update Hunt:
+1. On office PC, update Hunt from the git clone (do **not** `git pull` / reset):
    ```bat
    update.bat
    ```
-   or `git pull` in the TIGA folder, then restart Hunt (`START-HERE.bat` / `launcher.bat`).
-2. Confirm Search still works.
-3. Open **Projects** in the header (or `http://<LAN>:7860/projects`).
+   Linux/macOS: `bash update.sh`. Confirm the report’s old/new SHA. Then restart Hunt (`launcher.bat` — not START-HERE). If the updater refuses (dirty source, divergence), follow [`docs/WOHA_UPDATE.md`](WOHA_UPDATE.md); do not reset.
+2. Confirm Search still works. Health URL is the **configured** `server.port` in `tiga_work/config.yaml`, not a hardcoded `7860`.
+3. Open **Projects** in the header (or `http://<LAN>:<configured-port>/projects`).
 
 ## 30–45 min ride (one project)
 

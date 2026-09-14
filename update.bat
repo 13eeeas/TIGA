@@ -1,148 +1,68 @@
 @echo off
 setlocal enabledelayedexpansion
-title TIGA Hunt — Update
+title TIGA Hunt — Safe Update
+
+cd /d "%~dp0"
 
 echo.
-echo ============================================================
-echo   TIGA Hunt — Update from GitHub
-echo ============================================================
-echo.
 
-:: ---------------------------------------------------------------------------
-:: Check we are in a git repo
-:: ---------------------------------------------------------------------------
+:: Prefer a system / Codex Python for the updater itself (stdlib only).
+:: The office .venv is used later only for pip, so a broken venv cannot
+:: prevent the next update.
 
-git rev-parse --git-dir >nul 2>&1
-if errorlevel 1 (
-    echo [ERROR] Not a git repository. Run this from the TIGA folder.
-    pause & exit /b 1
+set "PYTHON_CMD="
+set "CODEX_PYTHON=%USERPROFILE%\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe"
+
+if exist "%CODEX_PYTHON%" (
+    "%CODEX_PYTHON%" --version >nul 2>&1
+    if not errorlevel 1 set "PYTHON_CMD=%CODEX_PYTHON%"
 )
 
-:: ---------------------------------------------------------------------------
-:: Show current state
-:: ---------------------------------------------------------------------------
+if not defined PYTHON_CMD (
+    where python >nul 2>&1
+    if not errorlevel 1 set "PYTHON_CMD=python"
+)
 
-for /f "tokens=*" %%b in ('git branch --show-current 2^>^&1') do set CUR_BRANCH=%%b
-for /f "tokens=*" %%h in ('git rev-parse --short HEAD 2^>^&1') do set CUR_HASH=%%h
-echo [INFO] Current branch: %CUR_BRANCH% @ %CUR_HASH%
+if not defined PYTHON_CMD (
+    where py >nul 2>&1
+    if not errorlevel 1 set "PYTHON_CMD=py -3"
+)
 
-:: ---------------------------------------------------------------------------
-:: Check for local uncommitted changes
-:: ---------------------------------------------------------------------------
+if not defined PYTHON_CMD (
+    if exist ".venv\Scripts\python.exe" set "PYTHON_CMD=.venv\Scripts\python.exe"
+)
 
-git diff --quiet 2>nul && git diff --cached --quiet 2>nul
-if errorlevel 1 (
-    echo.
-    echo [WARN] You have uncommitted local changes:
-    git status --short
-    echo.
-    choice /C YN /M "Stash local changes before updating?"
-    if !errorlevel! equ 1 (
-        git stash push -m "auto-stash before TIGA update %date% %time%"
-        echo [OK] Changes stashed. Run 'git stash pop' to restore them.
-        set STASHED=1
-    ) else (
-        echo [INFO] Proceeding without stashing. Merge conflicts may occur.
-        set STASHED=0
-    )
+if not defined PYTHON_CMD (
+    echo [ERROR] Python not found. Install from https://www.python.org
+    echo         Tick "Add Python to PATH". tiga_work data was not changed.
+    if /I not "%TIGA_UPDATE_NOPAUSE%"=="1" pause
+    exit /b 1
+)
+
+:: Strip wrapper-only --nopause so argparse in safe_update.py stays clean.
+set "FORWARD="
+set "DO_PAUSE=1"
+if /I "%TIGA_UPDATE_NOPAUSE%"=="1" set "DO_PAUSE=0"
+
+:argloop
+if "%~1"=="" goto run
+if /I "%~1"=="--nopause" (
+    set "DO_PAUSE=0"
 ) else (
-    set STASHED=0
+    set "FORWARD=!FORWARD! %1"
 )
+shift
+goto argloop
 
-:: ---------------------------------------------------------------------------
-:: Fetch latest changes
-:: ---------------------------------------------------------------------------
+:run
+%PYTHON_CMD% "%~dp0tools\safe_update.py" !FORWARD!
+set "UPDATE_EXIT=!ERRORLEVEL!"
 
-echo.
-echo Fetching latest changes from origin...
-git fetch origin
-if errorlevel 1 (
-    echo [ERROR] Could not reach remote. Check network/VPN.
-    if !STASHED! equ 1 (
-        echo [INFO] Restoring stashed changes...
-        git stash pop
-    )
-    pause & exit /b 1
-)
-
-:: ---------------------------------------------------------------------------
-:: Check if already up to date
-:: ---------------------------------------------------------------------------
-
-for /f "tokens=*" %%h in ('git rev-parse HEAD 2^>^&1') do set LOCAL_H=%%h
-for /f "tokens=*" %%h in ('git rev-parse origin/%CUR_BRANCH% 2^>^&1') do set REMOTE_H=%%h
-
-if "%LOCAL_H%"=="%REMOTE_H%" (
-    echo [OK] Already up to date — no changes to pull.
-    goto :post_update
-)
-
-:: Show what changed
-echo.
-echo Changes coming in:
-git log --oneline HEAD..origin/%CUR_BRANCH%
-echo.
-
-:: ---------------------------------------------------------------------------
-:: Pull
-:: ---------------------------------------------------------------------------
-
-git pull origin %CUR_BRANCH%
-if errorlevel 1 (
-    echo [ERROR] git pull failed — possible merge conflict.
-    echo         Resolve conflicts manually, then run: git pull origin %CUR_BRANCH%
-    if !STASHED! equ 1 (
-        echo [INFO] Your stashed changes are still in the stash.
-        echo        Run: git stash pop  (after resolving conflicts)
-    )
-    pause & exit /b 1
-)
-
-for /f "tokens=*" %%h in ('git rev-parse --short HEAD 2^>^&1') do set NEW_HASH=%%h
-echo.
-echo [OK] Updated to %NEW_HASH%
-
-:: ---------------------------------------------------------------------------
-:: Restore stash
-:: ---------------------------------------------------------------------------
-
-if !STASHED! equ 1 (
+if not !UPDATE_EXIT! equ 0 (
     echo.
-    echo Restoring your stashed local changes...
-    git stash pop
-    if errorlevel 1 (
-        echo [WARN] Stash pop had conflicts. Resolve manually: git stash pop
-    ) else (
-        echo [OK] Local changes restored.
-    )
+    echo [ERROR] Update did not succeed. See rollback notes above.
+    echo         Office source edits and tiga_work data were not discarded.
 )
 
-:post_update
-
-:: ---------------------------------------------------------------------------
-:: Reinstall dependencies (in case requirements.txt changed)
-:: ---------------------------------------------------------------------------
-
-echo.
-echo Updating dependencies...
-if exist ".venv\Scripts\activate.bat" (
-    call .venv\Scripts\activate.bat
-    pip install -r requirements.txt --quiet
-    if not errorlevel 1 ( echo [OK] Dependencies up to date ) else ( echo [WARN] pip install had issues )
-) else (
-    echo [WARN] No .venv found — run setup.bat first.
-)
-
-:: ---------------------------------------------------------------------------
-:: Done
-:: ---------------------------------------------------------------------------
-
-echo.
-echo ============================================================
-echo   Update Complete!
-echo ============================================================
-echo.
-echo  Restart TIGA Hunt to apply changes:
-echo    run.bat
-echo.
-pause
+if "!DO_PAUSE!"=="1" pause
+exit /b !UPDATE_EXIT!

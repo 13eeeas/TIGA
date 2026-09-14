@@ -33,6 +33,7 @@ bash START-HERE.sh
 | File | Purpose |
 |------|---------|
 | **`START-HERE.bat`** | First run: install + configure + POC test |
+| `update.bat` / `update.sh` | Later GitHub deploys (fast-forward only; see [`docs/WOHA_UPDATE.md`](docs/WOHA_UPDATE.md)) |
 | `launcher.bat` | Daily use after POC (portal + search) |
 | `poc-test.bat` | Re-run retrieval stress test only |
 | `setup.bat` | Install only (called automatically) |
@@ -93,11 +94,12 @@ Edit `tiga_work/config.yaml` (created on first run from [`docs/config.poc.exampl
 
 ```
 START-HERE.bat     ← start here (Windows)
+update.bat/.sh     later git deploys (fast-forward only)
 setup.bat          install deps + Ollama
 poc-test.bat       re-run POC test
 launcher.bat       daily portal
 tiga.py            CLI
 core/              ingest + search pipeline
-docs/              constitution, milestones, quickstart
+docs/              constitution, milestones, quickstart, WOHA update
 tiga_work/         local index data (gitignored)
 ```
