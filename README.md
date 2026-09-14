@@ -59,6 +59,7 @@ Build a **company-knowledge search layer** on firm hardware that keeps NAS files
 python tiga.py configure    # set index_roots
 python tiga.py poc-test run   # POC stress test
 python tiga.py validate       # fixture benchmark (dev)
+python tiga.py integrity      # synthetic processing-state audit (ticket #3)
 python tiga.py index          # incremental index
 python tiga.py serve          # API server :7860
 python tiga.py ui             # Admin :7861

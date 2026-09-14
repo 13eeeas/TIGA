@@ -1,0 +1,55 @@
+# Ticket #3 — expected processing states for the synthetic integrity archive.
+# Versioned fixture. Not office / WOHA source content. Not an acceptance gate.
+
+office_corpus_acceptance: false
+corpus: integrity_archive
+
+# pair: brief_dup — walk order can make either copy the canonical INDEXED file.
+files:
+  - path: 101_nus_synth/01_Reports/design_brief.txt
+    processing_state: indexed
+    doc_kind: report
+    pair: brief_dup
+
+  - path: 101_nus_synth/copies/design_brief.txt
+    processing_state: duplicate
+    doc_kind: report
+    pair: brief_dup
+
+  - path: 101_nus_synth/02_Presentations/board_update.pptx
+    processing_state: indexed
+    doc_kind: presentation
+
+  - path: 101_nus_synth/03_Scanned/site_scan.pdf
+    processing_state: metadata_only
+    doc_kind: scanned_pdf
+    missing_text: true
+
+  - path: 101_nus_synth/04_Spreadsheets/area_schedule.csv
+    processing_state: indexed
+    doc_kind: spreadsheet
+
+  - path: 101_nus_synth/05_Correspondence/client_reply.eml
+    processing_state: indexed
+    doc_kind: correspondence
+
+  - path: 101_nus_synth/06_Drawings/level_01.dwg
+    processing_state: metadata_only
+    doc_kind: drawing
+
+  - path: 101_nus_synth/07_Models/massing.rvt
+    processing_state: metadata_only
+    doc_kind: model
+
+  - path: 101_nus_synth/junk/~$lock.docx
+    processing_state: excluded
+    doc_kind: junk
+
+  - path: 101_nus_synth/junk/scratch.tmp
+    processing_state: excluded
+    doc_kind: junk
+
+  - path: 101_nus_synth/failed/unreadable.bin
+    processing_state: failed
+    failure_class: extraction
+    doc_kind: failed
