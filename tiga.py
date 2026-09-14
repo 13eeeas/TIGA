@@ -19,6 +19,7 @@ Subcommands:
   scan         Windirstat-style file type / size scan of a project folder
   scrape-woha  Crawl woha.net and seed project_cards with project metadata
   schedule     Manage the time-of-day resource scheduler (day/night mode)
+  storage      Per-project TIGA operating storage + cost stubs (issue #8)
 """
 
 from __future__ import annotations
@@ -478,6 +479,29 @@ def cmd_status(_args: argparse.Namespace) -> None:
     conn.close()
     print(json.dumps(stats, indent=2))
     print(f"index_roots: {[str(d) for d in cfg.index_roots]}")
+
+
+def cmd_storage(args: argparse.Namespace) -> None:
+    """Print the per-project operating storage report (cached unless --refresh)."""
+    from config import cfg
+    from core.db import get_connection
+    from core.storage import format_storage_report, get_storage_report
+
+    cfg.ensure_dirs()
+    conn = get_connection(cfg.get_db_path())
+    try:
+        snapshot = get_storage_report(
+            conn,
+            cfg.work_dir,
+            refresh=bool(getattr(args, "refresh", False)),
+            configured_projects=[p.name for p in cfg.index_roots],
+        )
+    finally:
+        conn.close()
+    if getattr(args, "as_json", False):
+        print(json.dumps(snapshot, indent=2))
+        return
+    print(format_storage_report(snapshot))
 
 
 def cmd_eval(args: argparse.Namespace) -> None:
@@ -1702,6 +1726,22 @@ def build_parser() -> argparse.ArgumentParser:
     # status
     sub.add_parser("status", help="Show index statistics")
 
+    p_store = sub.add_parser(
+        "storage",
+        help="Per-project TIGA operating storage + estimated cost stubs",
+    )
+    p_store.add_argument(
+        "--refresh",
+        action="store_true",
+        help="Remeasure work_dir now (otherwise use the cached snapshot)",
+    )
+    p_store.add_argument(
+        "--json",
+        dest="as_json",
+        action="store_true",
+        help="Print the snapshot as JSON",
+    )
+
     # eval
     p_ev = sub.add_parser("eval", help="Run search quality evaluation")
     p_ev.add_argument("--queries", nargs="*", help="Custom test queries")
@@ -1994,6 +2034,7 @@ def main() -> None:
         "rebuild":   cmd_rebuild,
         "query":     cmd_query,
         "status":    cmd_status,
+        "storage":   cmd_storage,
         "eval":      cmd_eval,
         "validate":  cmd_validate,
         "serve":     cmd_serve,

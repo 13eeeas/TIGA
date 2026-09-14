@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="auto">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TIGA · Storage</title>
+<link href="https://fonts.googleapis.com/css2?family=Lora:wght@400;500&family=Source+Serif+4:opsz,wght@8..60,300;8..60,400&display=swap" rel="stylesheet">
+<style>
+:root {
+  --coral:#C96442; --page-bg:#fff; --ink:#1A1410; --ink-60:rgba(26,20,16,.52);
+  --ink-12:rgba(26,20,16,.09); --glass-bg:rgba(255,255,255,.7); --glass-border:rgba(255,255,255,.8);
+  --chip:#f3ebe4; --ok:#2f6f4e; --warn:#8a4b16; --est:#6b5a4a;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --page-bg:#0F0E0C; --ink:#EDE8E0; --ink-60:rgba(237,232,224,.5); --ink-12:rgba(237,232,224,.08);
+    --glass-bg:rgba(30,26,22,.72); --glass-border:rgba(255,255,255,.1); --chip:#2a221c;
+  }
+}
+*{box-sizing:border-box} body{margin:0;font-family:'Source Serif 4',Georgia,serif;background:var(--page-bg);color:var(--ink);min-height:100vh}
+a{color:var(--coral);text-decoration:none}
+.wrap{max-width:1080px;margin:0 auto;padding:1.25rem 1.25rem 4rem}
+.nav{display:flex;gap:.35rem;align-items:center;margin-bottom:1.5rem;flex-wrap:wrap}
+.nav a,.nav .brand{font-size:.78rem;letter-spacing:.12em;text-transform:uppercase;padding:.4rem .7rem;border-radius:999px;color:var(--ink-60)}
+.nav .brand{color:var(--coral);font-weight:500;padding-left:0}
+.nav a.active,.nav a:hover{background:var(--chip);color:var(--ink)}
+h1{font-family:Lora,Georgia,serif;font-weight:500;font-size:clamp(1.8rem,4vw,2.4rem);margin:.2rem 0 .5rem}
+.lede{color:var(--ink-60);margin:0 0 1.25rem;max-width:44rem;line-height:1.55}
+.metrics{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:.75rem;margin-bottom:1rem}
+.metric{background:var(--glass-bg);border:1px solid var(--ink-12);border-radius:14px;padding:.85rem 1rem}
+.metric .k{font-size:.7rem;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-60)}
+.metric .v{font-size:1.25rem;margin:.25rem 0 0;font-weight:500}
+.metric .s{font-size:.78rem;color:var(--ink-60);margin-top:.2rem}
+.section{background:var(--glass-bg);border:1px solid var(--ink-12);border-radius:14px;padding:1rem 1.1rem;margin:0 0 .85rem}
+.section h2{margin:0 0 .45rem;font-size:1.05rem;font-weight:500;font-family:Lora,Georgia,serif}
+.hint{color:var(--ink-60);font-size:.88rem;margin:0 0 .75rem;line-height:1.5}
+table{width:100%;border-collapse:collapse;font-size:.88rem}
+th,td{text-align:left;padding:.45rem .4rem;border-top:1px solid var(--ink-12);vertical-align:top}
+th{font-size:.72rem;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-60);border-top:0}
+.num{font-variant-numeric:tabular-nums;white-space:nowrap}
+.badge{display:inline-block;font-size:.68rem;letter-spacing:.04em;text-transform:uppercase;padding:.12rem .4rem;border-radius:6px;border:1px solid var(--ink-12);color:var(--est)}
+.badge.ok{color:var(--ok);border-color:rgba(47,111,78,.3)}
+.badge.warn{color:var(--warn)}
+.row-unknown{background:rgba(138,75,22,.06)}
+.actions{display:flex;gap:.4rem;flex-wrap:wrap;margin:.4rem 0 1rem}
+button{font:inherit;font-size:.75rem;letter-spacing:.04em;text-transform:uppercase;border:1px solid var(--ink-12);background:var(--chip);color:var(--ink);padding:.4rem .7rem;border-radius:8px;cursor:pointer}
+button.primary{background:var(--ink);color:var(--page-bg)}
+button:disabled{opacity:.5}
+.toast{position:fixed;bottom:1.2rem;right:1.2rem;background:var(--ink);color:var(--page-bg);padding:.55rem .8rem;border-radius:999px;font-size:.85rem;opacity:0;transition:opacity .2s}
+.toast.show{opacity:1}
+.empty{color:var(--ink-60)}
+details{margin-top:.6rem}
+summary{cursor:pointer;color:var(--ink-60);font-size:.85rem}
+code{font-size:.8rem}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <nav class="nav">
+    <a class="brand" href="/">TIGA</a>
+    <a href="/">Search</a>
+    <a href="/projects">Projects</a>
+    <a class="active" href="/storage">Storage</a>
+  </nav>
+
+  <h1>Operating storage</h1>
+  <p class="lede">
+    Disk TIGA itself uses for the index and work directory — not the original archive.
+    Shared SQLite and vector totals are measured; per-project shares of those stores are estimated.
+    Cost figures are labelled stubs and are <em>not</em> API billing from storage GB.
+  </p>
+
+  <div class="actions">
+    <button class="primary" id="refreshBtn" type="button">Refresh measurement</button>
+    <span class="hint" id="metaLine">Loading snapshot…</span>
+  </div>
+
+  <div class="metrics" id="metrics"></div>
+
+  <div class="section">
+    <h2>Projects</h2>
+    <p class="hint">
+      Source size is from the file catalog (<code>size_bytes</code>), not a live NAS scan.
+      Logical text length is UTF-8 of extracted chunks — not on-disk DB size.
+      Duplicate catalog rows are excluded from source totals.
+    </p>
+    <div id="projectTable"><p class="empty">Loading…</p></div>
+  </div>
+
+  <div class="section">
+    <h2>Shared stores &amp; overhead</h2>
+    <p class="hint" id="sharedHint"></p>
+    <div id="sharedTable"></div>
+  </div>
+
+  <div class="section">
+    <h2>Cost stubs</h2>
+    <p class="hint" id="costHint"></p>
+    <div id="costTable"></div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+<script>
+const $ = (id) => document.getElementById(id);
+
+function toast(msg) {
+  const el = $("toast");
+  el.textContent = msg;
+  el.classList.add("show");
+  setTimeout(() => el.classList.remove("show"), 2400);
+}
+
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) => ({
+    "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+  }[c]));
+}
+
+function ratio(n) {
+  if (n === null || n === undefined) return "—";
+  return Number(n).toFixed(4);
+}
+
+function render(data) {
+  const t = data.totals || {};
+  const m = data.measurement || {};
+  const recon = data.reconciliation || {};
+  $("metaLine").textContent =
+    `Snapshot ${data.snapshot_at || "—"} · ${m.mode || "fresh"}` +
+    (m.age_seconds != null ? ` · cache age ${m.age_seconds}s` : "") +
+    (t.work_dir_bytes != null ? ` · ${t.work_dir_bytes} B` : "");
+
+  $("metrics").innerHTML = [
+    ["Work dir (TIGA)", t.work_dir_human, `${t.work_dir_bytes ?? 0} B`],
+    ["Persistent", t.persistent_human, "index, vectors, Atlas, other"],
+    ["Temp / backup", t.temporary_and_backup_human, "logs, caches, tmp, backups"],
+    ["Source archive", t.source_archive_human, "catalog, not live NAS"],
+    ["Index / source", ratio(t.index_to_source_ratio), "operating ÷ catalog source"],
+    ["Coverage", `${t.indexed_file_count ?? 0} / ${t.file_count ?? 0} files`, `${t.chunk_count ?? 0} chunks`],
+  ].map(([k,v,s]) =>
+    `<div class="metric"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div><div class="s">${esc(s)}</div></div>`
+  ).join("");
+
+  const projects = data.projects || [];
+  if (!projects.length) {
+    $("projectTable").innerHTML = `<p class="empty">No projects in the catalog yet.</p>`;
+  } else {
+    $("projectTable").innerHTML = `<table>
+      <thead><tr>
+        <th>Project</th><th>Operating</th><th>Attribution</th>
+        <th>Files / chunks</th><th>Coverage</th><th>Source (catalog)</th>
+        <th>Idx/src</th><th>Growth</th><th>Projected complete</th>
+      </tr></thead>
+      <tbody>${projects.map(p => {
+        const op = p.operating || {};
+        const unk = p.identity === "unknown";
+        return `<tr class="${unk ? "row-unknown" : ""}">
+          <td><strong>${esc(p.project_id)}</strong>${unk ? `<div class="hint">Missing identity</div>` : ""}</td>
+          <td class="num">${esc(op.human)}<div class="hint">${op.bytes ?? 0} B</div></td>
+          <td><span class="badge">${esc(op.attribution)}</span></td>
+          <td class="num">${p.file_count ?? 0} files<br>${p.chunk_count ?? 0} chunks / ${p.page_reference_count ?? 0} refs</td>
+          <td class="num">${esc(p.coverage_label || "—")}<div class="hint">${p.indexed_file_count ?? 0} indexed</div></td>
+          <td class="num">${esc(p.source_archive_human)}<div class="hint">${p.source_archive_bytes ?? 0} B</div></td>
+          <td class="num">${ratio(p.index_to_source_ratio)}</td>
+          <td class="num">${esc(p.growth_human || "—")}</td>
+          <td class="num">${esc(p.projected_completed_human || "—")}<div class="hint">${esc(p.projection_assumption || "")}</div></td>
+        </tr>`;
+      }).join("")}</tbody>
+    </table>`;
+  }
+
+  const shared = data.shared || {};
+  const unattr = data.unattributed || {};
+  $("sharedHint").textContent = shared.allocation_method || "";
+  $("sharedTable").innerHTML = `<table>
+    <tbody>
+      <tr><th>SQLite index</th><td class="num">${esc(shared.sqlite_human)} (${shared.sqlite_bytes ?? 0} B)</td><td><span class="badge ok">measured</span></td></tr>
+      <tr><th>Vector store</th><td class="num">${esc(shared.vector_human)} (${shared.vector_bytes ?? 0} B)</td><td><span class="badge ok">measured</span></td></tr>
+      <tr><th>Unattributed overhead</th><td class="num">${esc(unattr.human)} (${unattr.bytes ?? 0} B)</td><td><span class="badge">${esc(unattr.attribution)}</span></td></tr>
+      <tr><th>Reconciliation</th><td colspan="2">allocated ${recon.allocated_bytes ?? 0} B + unattributed ${recon.unattributed_bytes ?? 0} B = work dir ${recon.work_dir_bytes ?? 0} B · delta ${recon.delta_bytes ?? 0} B · ${recon.ok ? "OK" : "MISMATCH"}</td></tr>
+    </tbody>
+  </table>
+  <details><summary>Why overhead exists</summary><p class="hint">${esc(unattr.explanation || "")}</p></details>`;
+
+  $("costHint").textContent = data.cost_disclaimer || "";
+  $("costTable").innerHTML = `<table>
+    <thead><tr><th>Project</th><th>Generate</th><th>Refresh</th><th>Per query</th></tr></thead>
+    <tbody>${projects.map(p => {
+      const c = p.cost || {};
+      const g = c.initial_generation || {};
+      const r = c.refresh || {};
+      const q = c.per_query || {};
+      return `<tr>
+        <td>${esc(p.project_id)}</td>
+        <td class="num">S$${g.amount_sgd ?? "—"} <span class="badge warn">${esc(g.label || "estimated stub")}</span><div class="hint">${esc(g.basis || "")}</div></td>
+        <td class="num">S$${r.amount_sgd ?? "—"} <span class="badge warn">${esc(r.label || "estimated stub")}</span><div class="hint">${esc(r.basis || "")}</div></td>
+        <td class="num">S$${q.amount_sgd ?? "—"} <span class="badge warn">${esc(q.label || "estimated stub")}</span><div class="hint">${esc(q.basis || "")}</div></td>
+      </tr>`;
+    }).join("")}</tbody>
+  </table>`;
+}
+
+async function load(refresh) {
+  $("refreshBtn").disabled = true;
+  try {
+    const url = refresh ? "/api/storage?refresh=true" : "/api/storage";
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error(resp.status + " " + resp.statusText);
+    render(await resp.json());
+    if (refresh) toast("Measurement refreshed");
+  } catch (err) {
+    $("metaLine").textContent = "Could not load storage snapshot.";
+    $("projectTable").innerHTML = `<p class="empty">${esc(err.message)}</p>`;
+    toast("Storage load failed");
+  } finally {
+    $("refreshBtn").disabled = false;
+  }
+}
+
+$("refreshBtn").addEventListener("click", () => load(true));
+load(false);
+</script>
+</body>
+</html>

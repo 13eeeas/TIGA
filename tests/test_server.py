@@ -285,6 +285,31 @@ def test_projects_empty_on_empty_db(client) -> None:
     assert isinstance(resp.json(), list)
 
 
+def test_storage_endpoint_returns_snapshot(client, db, tmp_path: Path) -> None:
+    """GET /api/storage returns a reconciled snapshot without walking NAS."""
+    work = tmp_path / "work"
+    work.mkdir()
+    (work / "vectors").mkdir()
+    (work / "vectors" / "stub.lance").write_bytes(b"v" * 128)
+
+    with patch("server.cfg.work_dir", work):
+        resp = client.get("/api/storage")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["reconciliation"]["ok"] is True
+    assert data["measurement"]["scanned_source_archive"] is False
+    assert "cost_disclaimer" in data
+    assert isinstance(data.get("projects"), list)
+    assert "estimated stub" in data["cost_disclaimer"].lower() or "not API billing" in data["cost_disclaimer"]
+
+
+def test_storage_dashboard_page(client) -> None:
+    resp = client.get("/storage")
+    assert resp.status_code == 200
+    assert "Operating storage" in resp.text
+    assert "/api/storage" in resp.text
+
+
 # ---------------------------------------------------------------------------
 # POST /api/session + GET /api/session/{id}
 # ---------------------------------------------------------------------------
