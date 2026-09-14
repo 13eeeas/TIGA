@@ -12,6 +12,7 @@ Subcommands:
   status       Show index stats
   eval         Run search quality evaluation (Hunt only — no API by default)
   validate     Dry-run full index on fixtures + search benchmark
+  integrity    Synthetic processing-state audit (ticket #3; not office acceptance)
   collect      Office field test data — export/import for Hunt refinement
   serve        Start the FastAPI LAN server
   conventions  Detect/show/override project folder naming conventions
@@ -521,6 +522,23 @@ def cmd_validate(args: argparse.Namespace) -> None:
         work,
         fixture_archive=fixture,
         benchmark_fixture=benchmark,
+        mock_embed=mock,
+        verbose=True,
+    )
+    sys.exit(code)
+
+
+def cmd_integrity(args: argparse.Namespace) -> None:
+    """Synthetic index-integrity audit — processing states + SHA-stamped report."""
+    from pathlib import Path as _Path
+    from core.index_integrity import run_integrity
+
+    work = _Path(args.work_dir) if args.work_dir else None
+    expected = _Path(args.expected) if args.expected else None
+    mock = not args.real_embed
+    code = run_integrity(
+        work,
+        expected_path=expected,
         mock_embed=mock,
         verbose=True,
     )
@@ -1912,6 +1930,24 @@ def build_parser() -> argparse.ArgumentParser:
         help="Use real Ollama embeddings instead of mock",
     )
 
+    p_int = sub.add_parser(
+        "integrity",
+        help="Synthetic processing-state audit (ticket #3; not office-corpus acceptance)",
+    )
+    p_int.add_argument(
+        "--work-dir",
+        help="Sandbox work dir (default: ./tiga_work_integrity)",
+    )
+    p_int.add_argument(
+        "--expected",
+        help="Expected-state YAML (default: tests/fixtures/integrity_expected.yaml)",
+    )
+    p_int.add_argument(
+        "--real-embed",
+        action="store_true",
+        help="Use real Ollama embeddings instead of mock",
+    )
+
     # collect — office field test data
     p_col = sub.add_parser(
         "collect",
@@ -1996,6 +2032,7 @@ def main() -> None:
         "status":    cmd_status,
         "eval":      cmd_eval,
         "validate":  cmd_validate,
+        "integrity": cmd_integrity,
         "serve":     cmd_serve,
         "ui":        cmd_ui,
         "open":      cmd_open,
