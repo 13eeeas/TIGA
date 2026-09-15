@@ -189,12 +189,12 @@ hr.sep{border:none;border-top:1px solid var(--ink-12);margin:14px 0}
         <h3>Overview</h3>
         <p class="hint">What this job is, for whom (or typology), stage, and location if known. Saved to the wiki overlay — survives re-index.</p>
         <form class="form" id="overviewForm">
-          <label>Blurb <textarea name="summary" rows="3" placeholder="NUS BIZ3 is a tertiary education project for NUS in Singapore, currently at construction."></textarea></label>
-          <label>Name <input name="name" placeholder="NUS Business School"></label>
-          <label>Typology <input name="typology" placeholder="education"></label>
-          <label>Client <input name="client" placeholder="NUS"></label>
-          <label>Stage <input name="stage" placeholder="construction"></label>
-          <label>Location <input name="location" placeholder="Singapore"></label>
+          <label>Blurb <textarea name="summary" rows="3" placeholder="e.g. NUS BIZ3 is a tertiary education project for NUS in Singapore, currently at construction."></textarea></label>
+          <label>Name <input name="name" placeholder="e.g. NUS Business School"></label>
+          <label>Typology <input name="typology" placeholder="e.g. education"></label>
+          <label>Client <input name="client" placeholder="e.g. NUS"></label>
+          <label>Stage <input name="stage" placeholder="e.g. construction"></label>
+          <label>Location <input name="location" placeholder="e.g. Singapore"></label>
           <button class="primary" type="submit">Save overview</button>
         </form>
       </div>
@@ -350,12 +350,17 @@ function renderPage(p) {
 
   if (h.published && h.show_health_score) {
     $('healthState').innerHTML = `${statusBadge(true)} ${h.score}/100`;
-    $('healthDetail').textContent = (h.checks || []).map(c => (c.ok ? '✓ ' : '! ') + c.detail).join(' · ');
+    $('healthDetail').textContent = 'Identity, pin, and cited facts are in place.';
   } else {
     $('healthState').innerHTML = statusBadge(false);
-    const missing = (h.missing_fields || []).join(', ');
-    const checks = (h.checks || []).filter(c => !c.ok).map(c => c.detail);
-    $('healthDetail').textContent = (missing ? 'Still open: ' + missing + '. ' : '') + (checks.join(' · ') || 'Fill the overview, pin a source, and cite at least one fact.');
+    const missing = h.missing_fields || [];
+    const bits = [];
+    if (missing.length) bits.push('Still open: ' + missing.join(', '));
+    if (!(h.pin_count > 0)) bits.push('pin a source');
+    if (!(h.cited_facts > 0)) bits.push('cite at least one fact');
+    $('healthDetail').textContent = bits.length
+      ? bits.join(' · ') + '.'
+      : 'Fill the overview, pin a source, and cite at least one fact.';
   }
 
   const idx = p.index || {};
