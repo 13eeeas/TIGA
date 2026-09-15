@@ -554,11 +554,26 @@ def get_wiki_page(
             facts_by_key[f["key"]] = f
     facts = list(facts_by_key.values())
 
+    # Keep archive counts separate from the project introduction. Only cited,
+    # non-disputed facts can contribute claims; excerpts remain labelled drafts.
+    overview = []
+    for fact in facts:
+        if fact.get("value") and fact.get("cite_paths") and fact.get("status") != "disputed":
+            overview.append({"text": f"{fact.get('label') or fact.get('key')}: {fact['value']}",
+                             "cite_paths": fact["cite_paths"], "kind": "cited fact"})
+    if not overview:
+        for item in sections["key_documents"]["items"]:
+            if item.get("snippet") and item.get("path"):
+                overview.append({"text": item["snippet"], "cite_paths": [item["path"]],
+                                 "kind": "Source excerpt · needs review"})
+                break
+
     page = {
         "schema_version": 1,
         "product": "tiga-atlas-wiki",
         "project": project,
         "summary": summary,
+        "overview": overview[:6],
         "pins": pins,
         "facts": facts,
         "sections": sections,

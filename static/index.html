@@ -84,7 +84,7 @@ body{font-family:'Source Serif 4',Georgia,serif;background:var(--page-bg);color:
 .container{position:relative;z-index:1;min-height:100vh;display:flex;flex-direction:column;align-items:center}
 
 /* ── HEADER ── */
-.header{width:100%;padding:22px 32px;display:flex;align-items:center;justify-content:space-between}
+.header{position:sticky;top:0;z-index:80;width:100%;padding:16px 32px;display:flex;align-items:center;justify-content:space-between;background:color-mix(in srgb,var(--page-bg) 78%,transparent);backdrop-filter:blur(22px) saturate(1.5);-webkit-backdrop-filter:blur(22px) saturate(1.5);border-bottom:1px solid var(--ink-12)}
 .logo-mark{display:flex;align-items:center;gap:11px;text-decoration:none;color:var(--ink)}
 .logo-name{font-family:'Lora',Georgia,serif;font-size:22px;font-weight:500;letter-spacing:.01em;color:var(--ink);transition:color .35s}
 .header-right{display:flex;align-items:center;gap:8px}
@@ -117,6 +117,9 @@ body{font-family:'Source Serif 4',Georgia,serif;background:var(--page-bg);color:
 
 /* ── HERO ── */
 .hero{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0 24px 100px;max-width:700px;width:100%;gap:16px;transition:padding-bottom .4s}
+body.has-results .hero{flex:0;justify-content:flex-start;padding:24px 24px 20px;max-width:900px}
+body.has-results .hero-title{display:none}
+body.has-results .results-section{max-width:900px}
 .hero-title{font-family:'Lora',Georgia,serif;font-size:clamp(28px,4.5vw,42px);font-weight:400;text-align:center;letter-spacing:-.01em;line-height:1.3;color:var(--ink);animation:fadeUp .5s ease both;transition:color .35s}
 .title-accent{font-style:italic;color:var(--coral);font-weight:400}
 @keyframes fadeUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
@@ -298,9 +301,8 @@ body{font-family:'Source Serif 4',Georgia,serif;background:var(--page-bg);color:
 
     <div class="header-right">
       <nav class="top-nav" aria-label="Primary">
-        <a class="top-nav-link active" href="/">Search</a>
-        <a class="top-nav-link" href="/projects">Projects</a>
-        <a class="top-nav-link" href="/projects#ask">Ask</a>
+        <a class="top-nav-link active" href="/">Hunt</a>
+        <a class="top-nav-link" href="/projects">Atlas</a>
       </nav>
       <!-- Theme toggle -->
       <button class="icon-btn" id="themeToggle" title="Toggle theme" aria-label="Toggle colour theme">
@@ -519,6 +521,7 @@ async function doSearch(offset) {
   offset = offset || 0;
   const q = document.getElementById('searchInput').value.trim();
   if (!q) return;
+  document.body.classList.add('has-results');
 
   _query  = q;
   _offset = offset;
@@ -550,7 +553,7 @@ async function doSearch(offset) {
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify({
         query:      q,
-        top_k:      5,
+        top_k:      20,
         offset:     offset,
         session_id: sessionId,
         compose:    compose,
@@ -657,7 +660,7 @@ function showResults(data, append) {
   }
 
   const showMore = document.getElementById('showMoreBtn');
-  showMore.style.display = hasPagedResults && newResults.length >= 5 ? 'block' : 'none';
+  showMore.style.display = hasPagedResults && newResults.length >= 20 ? 'block' : 'none';
 
   document.getElementById('resultsSection').classList.add('visible');
   document.getElementById('feedbackBar').classList.add('visible');
@@ -665,7 +668,7 @@ function showResults(data, append) {
 }
 
 function showMore() {
-  _offset += 5;
+  _offset += 20;
   doSearch(_offset);
 }
 
@@ -817,7 +820,17 @@ async function loadStatus() {
       </div>
       <div style="margin-top:10px;font-size:12px;color:var(--ink-60);font-weight:300">
         Last indexed: ${d.last_indexed_at ? d.last_indexed_at.slice(0,16).replace('T',' ') : 'Never'}
-      </div>`;
+      </div>
+      ${d.index_progress ? `
+        <div style="margin-top:14px;font-size:12px">
+          <div style="font-weight:600;margin-bottom:6px">Estimated time remaining</div>
+          ${[d.index_progress.overall, ...(d.index_progress.projects || [])].map(p => `
+            <div style="display:flex;justify-content:space-between;gap:10px;padding:4px 0;border-top:1px solid var(--ink-12)">
+              <span>${p.project}</span>
+              <span style="color:var(--ink-60);text-align:right">${p.files_remaining.toLocaleString()} left · ${p.eta || (p.state === 'complete' ? 'complete' : 'estimating / stalled')}</span>
+            </div>`).join('')}
+          <div style="margin-top:6px;color:var(--ink-60);font-weight:300">Based on the last ${d.index_progress.window_minutes} minutes of extraction and indexing throughput.</div>
+        </div>` : ''}`;
 
     // Models
     const oll   = d.ollama || {};
