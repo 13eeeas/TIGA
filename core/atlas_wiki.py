@@ -8,13 +8,13 @@ Layers
 ------
   auto   : drafted from project_card + Hunt search candidates (machine)
   wiki   : human pins / facts / hidden paths in tiga_work/atlas/*.overlay.json
-  gate   : health grade — draft until pins + cited facts pass
+  gate   : Published only when curated identity fields + ≥1 pin + cited facts exist
 
 Public API
 ----------
   list_wiki_projects(conn) -> list
   get_wiki_page(code, conn, cfg) -> dict   # auto + wiki merge
-  wiki_pin / wiki_hide / wiki_fact / wiki_unhide
+  wiki_pin / wiki_hide / wiki_fact / wiki_unhide / wiki_overview
   wiki_compose(code, question, conn, cfg) -> dict  # Einstein-lite stub/API
 """
 
@@ -52,6 +52,27 @@ PIN_ROLES = (
     "other",
 )
 
+# Identity fields for the <5s wiki blurb. All four must be filled (not
+# "Needs curation") before a page can show Published / a health score.
+CURATED_FIELDS = ("typology", "client", "stage", "location")
+OVERVIEW_FIELDS = ("name", "typology", "client", "stage", "location")
+_EMPTY_TOKENS = {
+    "",
+    "needs curation",
+    "unknown",
+    "n/a",
+    "na",
+    "none",
+    "—",
+    "-",
+    "tbd",
+}
+_AUTO_SUMMARY_MARKERS = (
+    "auto-draft grokopedia",
+    "hunt proposed candidates",
+    "confirm pins and cite facts",
+)
+
 
 def _utc() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -59,6 +80,88 @@ def _utc() -> str:
 
 def _slug(code: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", code.lower()).strip("-") or "project"
+
+
+def field_is_filled(value: Any) -> bool:
+    """True when a curated identity field is a real value, not a placeholder."""
+    if value is None:
+        return False
+    text = str(value).strip()
+    if not text:
+        return False
+    return text.lower() not in _EMPTY_TOKENS
+
+
+def is_human_summary(summary: str | None) -> bool:
+    """True when summary is staff-written, not the Grokopedia auto placeholder."""
+    text = (summary or "").strip()
+    if not text:
+        return False
+    lowered = text.lower()
+    return not any(marker in lowered for marker in _AUTO_SUMMARY_MARKERS)
+
+
+def missing_curated_fields(project: dict[str, Any] | None) -> list[str]:
+    proj = project or {}
+    return [key for key in CURATED_FIELDS if not field_is_filled(proj.get(key))]
+
+
+def compose_blurb(project: dict[str, Any] | None, summary: str | None = None) -> str:
+    """One short wiki sentence: what / client or typology / stage / location."""
+    if is_human_summary(summary):
+        return str(summary).strip()
+
+    proj = project or {}
+    name = str(proj.get("name") or proj.get("code") or "This project").strip()
+    typology = str(proj.get("typology") or "").strip() if field_is_filled(proj.get("typology")) else ""
+    client = str(proj.get("client") or "").strip() if field_is_filled(proj.get("client")) else ""
+    stage = str(proj.get("stage") or "").strip() if field_is_filled(proj.get("stage")) else ""
+    location = str(proj.get("location") or "").strip() if field_is_filled(proj.get("location")) else ""
+
+    if not any((typology, client, stage, location)):
+        return (
+            f"{name} — Needs curation. Add what this job is, client or typology, "
+            "stage, and location if known."
+        )
+
+    if typology and client:
+        lead = f"{name} is a {typology} project for {client}"
+    elif typology:
+        lead = f"{name} is a {typology} project"
+    elif client:
+        lead = f"{name} is a project for {client}"
+    else:
+        lead = name
+
+    extras: list[str] = []
+    if stage:
+        extras.append(f"currently at {stage}")
+    if location:
+        extras.append(f"in {location}")
+    if extras:
+        return f"{lead}, {', '.join(extras)}."
+    return f"{lead}."
+
+
+def _project_from_card_and_overlay(
+    code: str,
+    card: dict[str, Any] | None,
+    overlay: dict[str, Any],
+) -> dict[str, Any]:
+    project = {
+        "code": code,
+        "name": (card or {}).get("name") or code,
+        "aliases": (card or {}).get("alt_names") or [],
+        "typology": (card or {}).get("typology_primary") or "",
+        "stage": (card or {}).get("stage") or "",
+        "location": (card or {}).get("location") or "",
+        "client": (card or {}).get("client") or "",
+        "status": "needs-curation",
+    }
+    for key, value in (overlay.get("project") or {}).items():
+        if value not in (None, "", []):
+            project[key] = value
+    return project
 
 
 def _atlas_dir(cfg_obj: Config | None = None) -> Path:
@@ -97,7 +200,12 @@ def save_overlay(code: str, overlay: dict[str, Any], cfg_obj: Config | None = No
     return path
 
 
-def list_wiki_projects(conn: sqlite3.Connection) -> list[dict[str, Any]]:
+def list_wiki_projects(
+    conn: sqlite3.Connection,
+    cfg_obj: Config | None = None,
+) -> list[dict[str, Any]]:
+    from core.project_card import get_project_card
+
     rows = conn.execute(
         "SELECT COALESCE(project_id, 'Unknown') AS project_id, COUNT(*) AS file_count "
         "FROM files GROUP BY project_id ORDER BY file_count DESC"
@@ -105,16 +213,34 @@ def list_wiki_projects(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     out = []
     for r in rows:
         code = r["project_id"]
-        ov = load_overlay(code)
+        ov = load_overlay(code, cfg_obj)
+        card = get_project_card(code, conn=conn)
+        project = _project_from_card_and_overlay(code, card, ov)
+        facts_by_key = {f["key"]: f for f in _auto_facts_from_card(card) if f.get("key")}
+        for fact in ov.get("facts") or []:
+            if fact.get("key"):
+                facts_by_key[fact["key"]] = fact
+        page = {
+            "project": project,
+            "summary": ov.get("summary"),
+            "pins": ov.get("pins") or [],
+            "facts": list(facts_by_key.values()),
+        }
+        health = compute_health(page)
+        blurb = compose_blurb(project, ov.get("summary"))
         pin_n = len(ov.get("pins") or [])
         fact_n = len(ov.get("facts") or [])
         out.append(
             {
                 "project_id": code,
+                "name": project.get("name") or code,
+                "blurb": blurb,
                 "file_count": r["file_count"],
                 "wiki_pins": pin_n,
                 "wiki_facts": fact_n,
-                "status": "curated" if pin_n >= 1 else "auto-draft",
+                "missing_fields": health.get("missing_fields") or [],
+                "published": health["published"],
+                "status": "published" if health["published"] else "needs-curation",
             }
         )
     return out
@@ -216,35 +342,74 @@ def _auto_facts_from_card(card: dict[str, Any] | None) -> list[dict[str, Any]]:
 
 
 def compute_health(page: dict[str, Any]) -> dict[str, Any]:
+    """Published only with curated identity + ≥1 pin + cited facts.
+
+    Empty / Needs-curation cards must never report Published or 100/100.
+    File counts are not part of this gate.
+    """
     facts = page.get("facts") or []
     pins = page.get("pins") or []
+    project = page.get("project") or {}
+    missing = missing_curated_fields(project)
     uncited = [f.get("key") for f in facts if not (f.get("cite_paths") or [])]
+    cited_n = sum(1 for f in facts if f.get("cite_paths"))
     fact_n = len(facts)
-    cited_n = fact_n - len(uncited)
-    ratio = (cited_n / fact_n) if fact_n else 1.0
+    ratio = (cited_n / fact_n) if fact_n else 0.0
+    fields_ok = not missing
+    pin_ok = len(pins) >= 1
+    facts_ok = cited_n >= 1 and len(uncited) == 0
+    blurb_ok = is_human_summary(page.get("summary")) or fields_ok
     checks = [
-        {"id": "has_identity", "ok": bool(page.get("project", {}).get("code")), "detail": "Project identity"},
-        {"id": "has_pin", "ok": len(pins) >= 1, "detail": f"{len(pins)} pin(s) — need ≥1 for Published"},
         {
-            "id": "facts_cited",
-            "ok": fact_n == 0 or ratio >= 0.8,
-            "detail": f"{cited_n}/{fact_n} facts cited (target ≥80%)",
+            "id": "curated_fields",
+            "ok": fields_ok,
+            "detail": (
+                "Identity fields filled"
+                if fields_ok
+                else "Needs curation: " + ", ".join(missing)
+            ),
         },
-        {"id": "has_summary", "ok": bool((page.get("summary") or "").strip()), "detail": "Summary present"},
+        {
+            "id": "has_pin",
+            "ok": pin_ok,
+            "detail": f"{len(pins)} pin(s) — need ≥1 for Published",
+        },
+        {
+            "id": "cited_facts",
+            "ok": facts_ok,
+            "detail": (
+                f"{cited_n}/{fact_n} facts cited — need ≥1 cited fact and none uncited"
+            ),
+        },
+        {
+            "id": "readable_blurb",
+            "ok": blurb_ok,
+            "detail": "Wiki blurb readable in a glance",
+        },
     ]
     ok_n = sum(1 for c in checks if c["ok"])
-    score = int(round(100 * ok_n / len(checks)))
-    grade = "A" if score >= 90 else "B" if score >= 75 else "C" if score >= 60 else "D" if score >= 40 else "F"
-    published = len(pins) >= 1 and len(uncited) == 0
+    published = fields_ok and pin_ok and facts_ok
+    score = int(round(100 * ok_n / len(checks))) if checks else 0
+    if published:
+        score = 100
+    elif score >= 100:
+        # Guard: never emit a perfect score on a non-published page.
+        score = 75
+    grade = None
+    if published:
+        grade = "A" if score >= 90 else "B" if score >= 75 else "C"
     return {
         "score": score,
         "grade": grade,
         "checks": checks,
         "pin_count": len(pins),
         "uncited_facts": len(uncited),
+        "cited_facts": cited_n,
         "fact_cited_ratio": round(ratio, 2),
         "published": published,
-        "state": "Published" if published else "Auto-draft / needs wiki",
+        "show_health_score": published,
+        "missing_fields": missing,
+        "state": "Published" if published else "Needs curation",
     }
 
 
@@ -259,26 +424,12 @@ def get_wiki_page(
     card = get_project_card(code, conn=conn)
     overlay = load_overlay(code, cfg)
     candidates = _auto_candidates(code, cfg, conn)
+    project = _project_from_card_and_overlay(code, card, overlay)
 
-    project = {
-        "code": code,
-        "name": (card or {}).get("name") or code,
-        "aliases": (card or {}).get("alt_names") or [],
-        "typology": (card or {}).get("typology_primary") or "",
-        "stage": (card or {}).get("stage") or "",
-        "location": (card or {}).get("location") or "",
-        "client": (card or {}).get("client") or "",
-        "status": "auto-draft",
-    }
-    # wiki project patch
-    for k, v in (overlay.get("project") or {}).items():
-        if v not in (None, "", []):
-            project[k] = v
-
-    summary = overlay.get("summary") or (
-        f"Auto-draft Grokopedia page for {project['name']}. "
-        "Hunt proposed candidates — confirm pins and cite facts like a wiki."
-    )
+    human_summary = overlay.get("summary")
+    if not is_human_summary(human_summary):
+        human_summary = None
+    blurb = compose_blurb(project, human_summary)
 
     pins = list(overlay.get("pins") or [])
     pin_paths = {p.get("path") for p in pins if p.get("path")}
@@ -306,20 +457,35 @@ def get_wiki_page(
             facts_by_key[f["key"]] = f
     facts = list(facts_by_key.values())
 
+    file_row = conn.execute(
+        "SELECT COUNT(*) AS n FROM files WHERE COALESCE(project_id, 'Unknown') = ?",
+        (code,),
+    ).fetchone()
+    file_count = int(file_row["n"] if file_row is not None else 0)
+
     page = {
         "schema_version": 1,
         "product": "tiga-atlas-wiki",
         "project": project,
-        "summary": summary,
+        "summary": human_summary or "",
+        "blurb": blurb,
         "pins": pins,
         "facts": facts,
         "sections": sections,
         "open_questions": overlay.get("open_questions")
         or [
+            "Fill the overview blurb (what / client or typology / stage / location)",
             "Pin the overview deck / GA / authority pack",
             "Add cite_paths to every auto fact you keep",
             "Hide junk candidates (Copy of…, caches)",
         ],
+        "index": {
+            "file_count": file_count,
+            "candidate_count": len(candidates),
+            "pin_count": len(pins),
+            "hidden_count": len(hidden),
+            "overlay": str(_overlay_path(code, cfg)),
+        },
         "sources": {
             "mode": "hunt+wiki",
             "built_at": _utc(),
@@ -331,6 +497,8 @@ def get_wiki_page(
     page["health"] = compute_health(page)
     if page["health"]["published"]:
         page["project"]["status"] = "published"
+    else:
+        page["project"]["status"] = "needs-curation"
     return page
 
 
@@ -409,6 +577,36 @@ def wiki_fact(
         facts.append(fact)
     save_overlay(code, ov, cfg_obj)
     return fact
+
+
+def wiki_overview(
+    code: str,
+    *,
+    summary: str | None = None,
+    project_fields: dict[str, Any] | None = None,
+    cfg_obj: Config | None = None,
+) -> dict[str, Any]:
+    """Save the human wiki blurb + identity fields into the overlay."""
+    ov = load_overlay(code, cfg_obj)
+    if summary is not None:
+        text = summary.strip()
+        ov["summary"] = text or None
+    proj = ov.setdefault("project", {})
+    for key, value in (project_fields or {}).items():
+        if key not in OVERVIEW_FIELDS:
+            continue
+        if isinstance(value, str):
+            value = value.strip()
+        if value in (None, ""):
+            proj.pop(key, None)
+        else:
+            proj[key] = value
+    save_overlay(code, ov, cfg_obj)
+    return {
+        "summary": ov.get("summary"),
+        "project": dict(proj),
+        "overlay": str(_overlay_path(code, cfg_obj)),
+    }
 
 
 def evidence_pack(page: dict[str, Any], max_n: int = 12) -> list[dict[str, Any]]:

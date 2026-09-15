@@ -19,17 +19,19 @@ North star: Notion browse + Wikipedia contribution + Grokopedia auto-draft, alwa
 Pick one indexed project (prefer **NUS BIZ3** if present).
 
 ### A. Auto draft (Grokopedia)
-- [ ] Project appears in the list with file count
-- [ ] Open it — page auto-fills candidates (docs / drawings / authority)
-- [ ] Badge shows **auto-draft** until you pin
+- [ ] Project appears in the list with a wiki **blurb** (file count lives under **Index**)
+- [ ] Open it — page leads with what / client or typology / stage / location
+- [ ] Badge shows **Needs curation** until identity fields + pin + cited facts pass
 - [ ] Auto facts without cites look like **rumours** (not trusted)
+- [ ] Empty cards never show **Published 100/100**
 
 ### B. Wiki contribute (Wikipedia — no code)
+- [ ] **Save overview** (blurb + typology / client / stage / location)
 - [ ] **Pin as truth** on overview / GA / authority (2–3 pins)
 - [ ] **Hide** one junk candidate (e.g. Copy of…)
 - [ ] **Save fact** with a real NAS citation path (2 facts)
 - [ ] Or use **Add cite…** on an auto fact
-- [ ] Health moves toward **Published**
+- [ ] **Published** appears only after identity fields + pin + cited facts — never a fake 100/100
 
 ### C. Ask (Einstein-lite)
 - [ ] Before pins: Ask should refuse / lock
