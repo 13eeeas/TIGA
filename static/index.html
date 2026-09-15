@@ -227,7 +227,7 @@ body{font-family:'Source Serif 4',Georgia,serif;background:var(--page-bg);color:
 .settings-overlay{position:fixed;inset:0;z-index:149;opacity:0;pointer-events:none;transition:opacity .25s}
 .settings-overlay.open{opacity:1;pointer-events:all}
 
-.settings-drawer{position:fixed;top:0;right:0;bottom:0;width:300px;z-index:150;background:var(--drawer-bg);backdrop-filter:blur(40px) saturate(1.8);-webkit-backdrop-filter:blur(40px) saturate(1.8);border-left:1px solid var(--glass-border);box-shadow:-12px 0 48px rgba(0,0,0,.12);transform:translateX(100%);transition:transform .32s cubic-bezier(.25,.46,.45,.94);overflow-y:auto;display:flex;flex-direction:column}
+.settings-drawer{position:fixed;top:0;right:0;bottom:0;width:340px;z-index:150;background:var(--drawer-bg);backdrop-filter:blur(40px) saturate(1.8);-webkit-backdrop-filter:blur(40px) saturate(1.8);border-left:1px solid var(--glass-border);box-shadow:-12px 0 48px rgba(0,0,0,.12);transform:translateX(100%);transition:transform .32s cubic-bezier(.25,.46,.45,.94);overflow-y:auto;display:flex;flex-direction:column}
 .settings-drawer.open{transform:translateX(0)}
 
 .drawer-header{padding:20px 20px 16px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--ink-12)}
@@ -251,6 +251,13 @@ body{font-family:'Source Serif 4',Georgia,serif;background:var(--page-bg);color:
 .drawer-admin-btn:hover{background:var(--coral);transform:translateY(-1px)}
 
 .status-loading{color:var(--ink-60);font-size:13px;font-weight:300;padding:8px 0}
+.prog-job{font-size:12.5px;font-weight:300;line-height:1.45;margin:0 0 10px;color:var(--ink)}
+.prog-job.stalled,.prog-warn{color:#8b2e2e}
+.prog-row{font-size:12px;font-weight:300;padding:7px 0;border-top:1px solid var(--ink-12);display:flex;justify-content:space-between;gap:8px;line-height:1.4}
+.prog-row .pid{color:var(--ink)}
+.prog-row .meta{color:var(--ink-60);text-align:right}
+.prog-bar{height:4px;border-radius:99px;background:var(--ink-12);overflow:hidden;margin:6px 0 10px}
+.prog-bar > span{display:block;height:100%;background:var(--coral);border-radius:99px}
 
 .top-nav{display:flex;gap:4px;margin-right:8px;align-items:center}
 .top-nav-link{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-60);padding:6px 10px;border-radius:999px;text-decoration:none}
@@ -450,7 +457,12 @@ body{font-family:'Source Serif 4',Georgia,serif;background:var(--page-bg);color:
   </div>
 
   <div class="drawer-section">
-    <div class="drawer-section-label">Pipeline</div>
+    <div class="drawer-section-label">Index progress</div>
+    <div id="progressContent"><div class="status-loading">Loading…</div></div>
+  </div>
+
+  <div class="drawer-section">
+    <div class="drawer-section-label">Catalog</div>
     <div id="statusContent"><div class="status-loading">Loading…</div></div>
   </div>
 
@@ -485,6 +497,8 @@ let _offset    = 0;
     const d = await r.json();
     sessionId = d.session_id;
   } catch(e) { console.warn('Session init failed:', e); }
+
+  if (location.hash === '#settings') toggleSettings(true);
 })();
 
 /* ── Theme ──────────────────────────────────────────────── */
@@ -786,57 +800,130 @@ async function submitFeedback() {
 
 /* ── Settings drawer ────────────────────────────────────── */
 let settingsOpen = false;
+let settingsPoll = null;
 
-function toggleSettings() {
-  settingsOpen = !settingsOpen;
+function fmtCount(v) {
+  if (v === null || v === undefined) return 'unknown';
+  const n = Number(v);
+  return Number.isFinite(n) ? n.toLocaleString() : 'unknown';
+}
+
+function fmtEta(seconds) {
+  if (seconds === null || seconds === undefined) return '—';
+  const sec = Number(seconds);
+  if (!Number.isFinite(sec)) return '—';
+  if (sec < 60) return Math.round(sec) + 's';
+  const mins = Math.floor(sec / 60);
+  const rem = Math.round(sec % 60);
+  if (mins < 60) return mins + 'm ' + rem + 's';
+  return Math.floor(mins / 60) + 'h ' + (mins % 60) + 'm';
+}
+
+function toggleSettings(forceOpen) {
+  settingsOpen = forceOpen === true ? true : (forceOpen === false ? false : !settingsOpen);
   document.getElementById('settingsDrawer').classList.toggle('open', settingsOpen);
   document.getElementById('settingsOverlay').classList.toggle('open', settingsOpen);
-  if (settingsOpen) loadStatus();
+  if (settingsOpen) {
+    loadStatus();
+    if (!settingsPoll) {
+      settingsPoll = setInterval(loadStatus, 3000);
+    }
+  } else if (settingsPoll) {
+    clearInterval(settingsPoll);
+    settingsPoll = null;
+  }
 }
 
 async function loadStatus() {
-  document.getElementById('statusContent').innerHTML = '<div class="status-loading">Loading…</div>';
-  document.getElementById('modelsContent').innerHTML = '<div class="status-loading">Loading…</div>';
+  const progressEl = document.getElementById('progressContent');
+  const statusEl = document.getElementById('statusContent');
+  const modelsEl = document.getElementById('modelsContent');
   try {
-    const resp = await fetch('/api/status');
-    const d = await resp.json();
+    const [progressResp, statusResp] = await Promise.all([
+      fetch('/api/index/progress'),
+      fetch('/api/status'),
+    ]);
+    const prog = await progressResp.json();
+    const d = await statusResp.json();
+    const job = prog.job || {};
+    const totals = prog.totals || {};
+    const known = prog.counts_known !== false;
 
-    // Pipeline counts
+    let phase = job.phase || job.stage || (
+      job.running ? 'running' : (job.last_stage || 'Idle')
+    );
+    if (job.stalled) phase = 'stalled (' + phase + ')';
+    else if (job.paused) phase = 'paused (' + phase + ')';
+    const processed = Number(job.processed || 0);
+    const total = Number(job.total || 0);
+    const rate = job.throughput || 0;
+    let jobHtml = `<div class="prog-job${job.stalled ? ' stalled' : ''}">${esc(phase)}`;
+    if (job.running || job.paused) {
+      jobHtml += ` · ${processed}/${total || '?'} · ${rate}/s · ETA ${fmtEta(job.eta)}`;
+    }
+    jobHtml += '</div>';
+    if (total > 0 && (job.running || job.paused)) {
+      const pct = Math.min(100, Math.round(100 * processed / total));
+      jobHtml += `<div class="prog-bar" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><span style="width:${pct}%"></span></div>`;
+    }
+    if (!known) {
+      jobHtml += `<div class="prog-warn">Counts unknown (not zero). ${esc(prog.counts_error || '')}</div>`;
+    }
+    if (job.stalled) {
+      jobHtml += `<div class="prog-warn">No progress for ${esc(job.idle_seconds || '—')}s. Last error: ${esc(job.last_error || 'none recorded')}.</div>`;
+    } else if (job.last_error && !job.running) {
+      jobHtml += `<div class="prog-warn">Last error: ${esc(job.last_error)}</div>`;
+    }
+    const projects = prog.projects || [];
+    if (projects.length) {
+      jobHtml += projects.map(p => {
+        const err = p.last_error ? `<div class="prog-warn">${esc(String(p.last_error).slice(0, 80))}</div>` : '';
+        return `<div class="prog-row"><span class="pid">${esc(p.project_id)} · ${esc(p.state || '')}</span><span class="meta">${fmtCount(p.files_indexed)} indexed · ${fmtCount(p.files_in_progress)} in progress</span></div>${err}`;
+      }).join('');
+    } else {
+      jobHtml += '<div class="status-loading">No catalog projects yet.</div>';
+    }
+    progressEl.innerHTML = jobHtml;
+
+    const indexedFiles = known ? totals.files_indexed : null;
+    const inProg = known ? totals.files_in_progress : null;
+    const failed = known ? totals.files_failed : null;
+    const catalog = known ? prog.catalog_projects : null;
+    const indexedProj = known ? prog.indexed_projects : null;
     const counts = [
-      ['Indexed',    d.files_indexed    || 0],
-      ['Discovered', d.files_discovered || 0],
-      ['Extracted',  d.files_extracted  || 0],
-      ['Failed',     d.files_failed     || 0],
+      ['Indexed files', indexedFiles],
+      ['In progress', inProg],
+      ['Failed', failed],
+      ['Projects indexed', known ? `${fmtCount(indexedProj)} / ${fmtCount(catalog)}` : null],
     ];
-    document.getElementById('statusContent').innerHTML = `
+    statusEl.innerHTML = `
       <div class="stat-grid">
         ${counts.map(([l, v]) => `
           <div class="stat-cell">
-            <div class="stat-value">${v.toLocaleString()}</div>
+            <div class="stat-value">${v === null || v === undefined ? 'unknown' : (typeof v === 'number' ? fmtCount(v) : esc(String(v)))}</div>
             <div class="stat-label">${l}</div>
           </div>`).join('')}
       </div>
       <div style="margin-top:10px;font-size:12px;color:var(--ink-60);font-weight:300">
-        Last indexed: ${d.last_indexed_at ? d.last_indexed_at.slice(0,16).replace('T',' ') : 'Never'}
+        Catalog = project_id in the files table (same as Projects). Polls every 3s.
       </div>`;
 
-    // Models
     const oll   = d.ollama || {};
     const embed = oll.embed || {};
     const chat  = oll.chat  || {};
-    document.getElementById('modelsContent').innerHTML = `
+    modelsEl.innerHTML = `
       <div class="model-row">
         <div class="model-dot ${embed.ok ? 'ok' : 'err'}"></div>
-        <span>${embed.model || 'embed model'}</span>
+        <span>${esc(embed.model || 'embed model')}</span>
       </div>
       <div class="model-row">
         <div class="model-dot ${chat.ok ? 'ok' : 'err'}"></div>
-        <span>${chat.model || 'chat model'}</span>
+        <span>${esc(chat.model || 'chat model')}</span>
       </div>`;
   } catch(e) {
-    document.getElementById('statusContent').innerHTML =
-      '<div class="status-loading">Server offline</div>';
-    document.getElementById('modelsContent').innerHTML = '';
+    progressEl.innerHTML = '<div class="status-loading">Server offline</div>';
+    statusEl.innerHTML = '';
+    modelsEl.innerHTML = '';
   }
 }
 

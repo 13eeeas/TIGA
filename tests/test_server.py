@@ -285,6 +285,17 @@ def test_projects_empty_on_empty_db(client) -> None:
     assert isinstance(resp.json(), list)
 
 
+def test_hunt_settings_polls_live_index_progress() -> None:
+    """Hunt Settings gear polls /api/index/progress instead of a one-shot /api/status histogram."""
+    html = (Path(__file__).resolve().parents[1] / "static" / "index.html").read_text(
+        encoding="utf-8"
+    )
+    assert "/api/index/progress" in html
+    assert "setInterval(loadStatus, 3000)" in html
+    assert "counts_known" in html
+    assert "|| 0]" not in html  # do not coerce missing catalog counts to fake zeros
+
+
 def test_atlas_projects_page_uses_hunt_chrome(client) -> None:
     """Projects UI shares Hunt header language, not a separate Atlas dialect."""
     resp = client.get("/projects")
@@ -294,6 +305,7 @@ def test_atlas_projects_page_uses_hunt_chrome(client) -> None:
     assert "blob-layer" in html
     assert "the job in a glance" in html
     assert "Needs curation" in html
+    assert 'href="/#settings"' in html
     assert "Project wiki" not in html
     # Atlas-dialect all-caps buttons are gone; Hunt-weight buttons remain.
     assert "letter-spacing:.04em;text-transform:uppercase" not in html
