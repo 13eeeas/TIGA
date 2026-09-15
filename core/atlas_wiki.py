@@ -207,7 +207,12 @@ def list_wiki_projects(
     from core.project_card import get_project_card
 
     rows = conn.execute(
-        "SELECT COALESCE(project_id, 'Unknown') AS project_id, COUNT(*) AS file_count "
+        "SELECT COALESCE(project_id, 'Unknown') AS project_id, "
+        "COUNT(*) AS file_count, "
+        "SUM(CASE WHEN status = 'INDEXED' THEN 1 ELSE 0 END) AS files_indexed, "
+        "SUM(CASE WHEN status IN ('DISCOVERED','EXTRACTED','EMBEDDED') "
+        "         THEN 1 ELSE 0 END) AS files_in_progress, "
+        "SUM(CASE WHEN status = 'FAILED' THEN 1 ELSE 0 END) AS files_failed "
         "FROM files GROUP BY project_id ORDER BY file_count DESC"
     ).fetchall()
     out = []
@@ -230,12 +235,27 @@ def list_wiki_projects(
         blurb = compose_blurb(project, ov.get("summary"))
         pin_n = len(ov.get("pins") or [])
         fact_n = len(ov.get("facts") or [])
+        files_indexed = int(r["files_indexed"] or 0)
+        files_in_progress = int(r["files_in_progress"] or 0)
+        files_failed = int(r["files_failed"] or 0)
+        if files_in_progress:
+            index_state = "in_progress"
+        elif files_indexed:
+            index_state = "indexed"
+        elif files_failed:
+            index_state = "failed"
+        else:
+            index_state = "configured"
         out.append(
             {
                 "project_id": code,
                 "name": project.get("name") or code,
                 "blurb": blurb,
                 "file_count": r["file_count"],
+                "files_indexed": files_indexed,
+                "files_in_progress": files_in_progress,
+                "files_failed": files_failed,
+                "index_state": index_state,
                 "wiki_pins": pin_n,
                 "wiki_facts": fact_n,
                 "missing_fields": health.get("missing_fields") or [],

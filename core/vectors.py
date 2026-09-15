@@ -24,7 +24,7 @@ import json
 import logging
 import time
 import urllib.request
-from typing import Any
+from typing import Any, Callable
 
 import lancedb
 import pyarrow as pa
@@ -107,6 +107,7 @@ def embed_texts_batched(
     cfg: Config | None = None,
     *,
     batch_size: int | None = None,
+    progress: Callable[[int, int], None] | None = None,
 ) -> list[list[float] | None]:
     """
     Embed a list of texts in batches using the fast batch API.
@@ -142,6 +143,8 @@ def embed_texts_batched(
                     results.append(None)
         if i + _batch_size < len(texts):
             time.sleep(sleep_s)
+        if progress:
+            progress(min(i + len(batch), len(texts)), len(texts))
 
     return results
 

@@ -87,30 +87,143 @@ if not st.session_state.admin_authed:
     st.stop()
 
 
-@st.fragment(run_every=5)
+def _fmt_count(value: Any) -> str:
+    if value is None:
+        return "unknown"
+    try:
+        return f"{int(value):,}"
+    except (TypeError, ValueError):
+        return str(value)
+
+
+def _fmt_eta(seconds: Any) -> str:
+    if seconds is None:
+        return "—"
+    try:
+        sec = int(seconds)
+    except (TypeError, ValueError):
+        return "—"
+    if sec < 60:
+        return f"{sec}s"
+    mins, sec = divmod(sec, 60)
+    if mins < 60:
+        return f"{mins}m {sec}s"
+    hours, mins = divmod(mins, 60)
+    return f"{hours}h {mins}m"
+
+
+@st.fragment(run_every=3)
 def _live_ops_panel() -> None:
-    """Auto-refresh pipeline + validate status."""
-    ps = api("get", "/api/pipeline/status", timeout=10) or {}
-    vs = ps.get("validate") or api("get", "/api/validate/status", timeout=10) or {}
-    status = api("get", "/api/status", timeout=10) or {}
+    """Live index progress — polls /api/index/progress, no full page reload."""
+    prog = api("get", "/api/index/progress", timeout=10) or {}
+    vs = api("get", "/api/validate/status", timeout=10) or {}
+    job = prog.get("job") or {}
+    totals = prog.get("totals") or {}
+    known = prog.get("counts_known", True)
 
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Indexed files", status.get("files_indexed", 0))
-    c2.metric("Chunks", status.get("chunks_total", 0))
-    c3.metric("Pipeline", ps.get("stage") or ("running" if ps.get("running") else "idle"))
+    c1.metric(
+        "Indexed files",
+        _fmt_count(totals.get("files_indexed") if known else None),
+    )
+    c2.metric(
+        "Projects indexed",
+        (
+            f"{_fmt_count(prog.get('indexed_projects'))} / "
+            f"{_fmt_count(prog.get('catalog_projects'))} catalog"
+            if known else "unknown"
+        ),
+    )
+    phase = job.get("phase") or job.get("stage") or (
+        "running" if job.get("running") else (job.get("last_stage") or "idle")
+    )
+    if job.get("stalled"):
+        phase = f"stalled ({phase})"
+    elif job.get("paused"):
+        phase = f"paused ({phase})"
+    c3.metric("Pipeline", phase)
     c4.metric("Validate", "running" if vs.get("running") else (
         "PASS" if vs.get("gateway_pass") else ("fail" if vs.get("exit_code") else "idle")
     ))
 
-    if ps.get("running"):
-        st.info(f"Pipeline **{ps.get('stage', '—')}** running…")
-        if ps.get("total", 0) > 0:
-            st.progress(ps["processed"] / ps["total"], text=f"{ps['processed']}/{ps['total']}")
+    if not known:
+        st.warning(
+            "Index counts are **unknown** (catalog query failed) — not zero. "
+            f"{prog.get('counts_error') or ''}"
+        )
+    unmatched = prog.get("unmatched_indexed_files") or 0
+    if known and unmatched:
+        st.caption(
+            f"{unmatched:,} INDEXED files are not under any configured root "
+            "(path mismatch). Catalog project_id counts above are the source of truth."
+        )
+    st.caption(
+        "Catalog = distinct `project_id` in the files table (same as Projects). "
+        f"Configured NAS roots: {_fmt_count(prog.get('configured_roots'))}. "
+        "A project is indexed when it has INDEXED files; in-progress if any "
+        "are still discovered/extracted/embedded."
+    )
+
+    if job.get("stalled"):
+        idle = job.get("idle_seconds")
+        last_at = job.get("last_progress_at")
+        st.error(
+            f"Index job looks **stalled** — no progress for {idle}s. "
+            f"Last tick: {last_at or '—'}. "
+            f"Last error: {job.get('last_error') or 'none recorded'}."
+        )
+    elif job.get("last_error") and not job.get("running"):
+        st.error(
+            f"Last pipeline error ({job.get('last_error_at') or '—'}): "
+            f"{job.get('last_error')}"
+        )
+
+    if job.get("running") or job.get("paused"):
+        processed = int(job.get("processed") or 0)
+        total = int(job.get("total") or 0)
+        rate = job.get("throughput") or 0
+        eta = _fmt_eta(job.get("eta"))
+        label = (
+            f"{job.get('phase') or 'running'}  {processed}/{total or '?'}  "
+            f"{rate}/s  ETA {eta}"
+        )
+        if total > 0:
+            st.progress(min(processed / total, 1.0), text=label)
+        else:
+            st.info(label)
+        ac1, ac2 = st.columns(2)
+        with ac1:
+            if st.button("Pause / Resume", key="live_pause"):
+                api("post", "/api/pipeline/pause")
+                st.rerun()
+        with ac2:
+            if st.button("Cancel", key="live_cancel"):
+                api("post", "/api/pipeline/cancel")
+                st.rerun()
+
     if vs.get("running"):
         st.info("Validate run in progress (fixture index + search benchmark, no API)…")
 
-    with st.expander("Live log", expanded=bool(ps.get("running") or vs.get("running"))):
-        lines = (ps.get("output") or []) + (vs.get("output") or [])
+    projects = prog.get("projects") or []
+    if projects:
+        import pandas as pd
+        rows = []
+        for p in projects:
+            rows.append({
+                "Project": p.get("project_id"),
+                "State": p.get("state"),
+                "Indexed": p.get("files_indexed"),
+                "In progress": p.get("files_in_progress"),
+                "Failed": p.get("files_failed"),
+                "All files": p.get("file_count"),
+                "Last error": (p.get("last_error") or "")[:80],
+                "Error at": p.get("last_error_at") or "",
+            })
+        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+    log_tail = prog.get("log_tail") or []
+    with st.expander("Live log", expanded=bool(job.get("running") or vs.get("running") or job.get("stalled"))):
+        lines = log_tail + (vs.get("output") or [])
         st.text("\n".join(lines[-40:]) if lines else "No activity.")
 
 
@@ -157,16 +270,11 @@ tabs = st.tabs([
 
 with tabs[0]:
     st.subheader("Pipeline Controls")
-    pipeline_status = api("get", "/api/pipeline/status", timeout=10) or {}
-    project_count = pipeline_status.get("indexed_projects", 0)
-    configured_count = pipeline_status.get("configured_projects", 0)
-    p1, p2 = st.columns(2)
-    p1.metric("Projects indexed", f"{project_count} / {configured_count}")
-    p2.metric("Pipeline indexed files", sum(
-        project.get("files_indexed", 0)
-        for project in pipeline_status.get("projects", [])
-    ))
-    st.caption("A project counts as indexed once at least one file under its configured root is in the INDEXED state.")
+    st.caption(
+        "Counts below come from the files catalog (`project_id` + status) — "
+        "the same source as Projects. They refresh with the live panel above; "
+        "no full page reload needed."
+    )
     btn_cols = st.columns(4)
     actions = [
         ("Run Discover",      "/api/pipeline/discover",   "Triggered: Run Discover"),

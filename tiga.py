@@ -474,12 +474,25 @@ def cmd_query(args: argparse.Namespace) -> None:
 def cmd_status(_args: argparse.Namespace) -> None:
     from config import cfg
     from core.db import get_connection, get_stats
+    from core.index_state import catalog_index_state
 
     conn = get_connection(cfg.get_db_path())
     stats = get_stats(conn)
+    catalog = catalog_index_state(conn, configured_roots=cfg.index_roots)
     conn.close()
-    print(json.dumps(stats, indent=2))
-    print(f"index_roots: {[str(d) for d in cfg.index_roots]}")
+    print(json.dumps({
+        "files_by_status": stats,
+        "index_roots": [str(d) for d in cfg.index_roots],
+        "honesty": catalog.get("honesty"),
+        "indexed_projects": catalog.get("indexed_projects"),
+        "catalog_projects": catalog.get("catalog_projects"),
+        "configured_roots": catalog.get("configured_roots"),
+        "in_progress_projects": catalog.get("in_progress_projects"),
+        "failed_projects": catalog.get("failed_projects"),
+        "unmatched_indexed_files": catalog.get("unmatched_indexed_files"),
+        "totals": catalog.get("totals"),
+        "projects": catalog.get("projects"),
+    }, indent=2))
 
 
 def cmd_storage(args: argparse.Namespace) -> None:

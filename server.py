@@ -22,6 +22,7 @@ Endpoints
   POST /api/pipeline/discover|extract|ocr|index|full|rebuild|pause|cancel|re-embed
   POST /api/pipeline/reindex-dir
   GET  /api/pipeline/status
+  GET  /api/index/progress       — cheap poll: catalog counts + live job (no logs)
 
   Directories
   GET  /api/directories
@@ -98,7 +99,12 @@ from pydantic import BaseModel
 from config import cfg, ollama_available
 from core.compose import ComposeResult, ResultView, compose_answer
 from core.db import create_session, get_connection, get_stats
-from core.index import run_index
+from core.index_state import (
+    annotate_job,
+    catalog_index_state,
+    status_counts_under_root,
+    unknown_catalog,
+)
 from core.query import (
     search, execute_structured_query,
     execute_file_locator_query, execute_cross_project_query,
@@ -122,43 +128,13 @@ def get_db() -> Generator[sqlite3.Connection, None, None]:
         conn.close()
 
 
-def _normalise_index_path(path: str | Path) -> str:
-    """Normalise local/UNC paths before comparing configured index roots."""
-    value = str(path).replace("\\", "/").casefold().rstrip("/")
-    # pathlib may represent a long UNC path as //?/UNC/server/share.
-    if value.startswith("//?/unc/"):
-        value = "//" + value[len("//?/unc/"):]
-    elif value.startswith("//?/"):
-        value = value[len("//?/"):]
-    return value
-
-
-def _project_index_summary(conn: sqlite3.Connection) -> dict[str, Any]:
-    """Return configured roots and which ones have at least one indexed file."""
-    rows = conn.execute(
-        "SELECT file_path FROM files WHERE status = 'INDEXED'"
-    ).fetchall()
-    indexed_paths = [_normalise_index_path(row["file_path"]) for row in rows]
-    projects: list[dict[str, Any]] = []
-
-    for root in cfg.index_roots:
-        normalised_root = _normalise_index_path(root)
-        file_count = sum(
-            path == normalised_root or path.startswith(normalised_root + "/")
-            for path in indexed_paths
-        )
-        projects.append({
-            "name": root.name,
-            "root": str(root),
-            "files_indexed": file_count,
-            "indexed": file_count > 0,
-        })
-
-    return {
-        "configured_projects": len(projects),
-        "indexed_projects": sum(project["indexed"] for project in projects),
-        "projects": projects,
-    }
+def _catalog_fields(conn: sqlite3.Connection) -> dict[str, Any]:
+    """Catalog counts shared by pipeline status, progress poll, and /api/projects."""
+    try:
+        return catalog_index_state(conn, configured_roots=cfg.index_roots)
+    except Exception as exc:
+        logger.warning("Could not calculate catalog index state: %s", exc)
+        return unknown_catalog(cfg.index_roots, error=str(exc))
 
 
 # ---------------------------------------------------------------------------
@@ -169,16 +145,25 @@ _pipeline_lock = threading.Lock()
 _pipeline_state: dict[str, Any] = {
     "running":    False,
     "stage":      "",
+    "phase":      "",
     "processed":  0,
     "total":      0,
     "eta":        None,
     "throughput": 0.0,
     "errors":     [],
-    "output":     [],   # live log lines
+    "output":     [],   # live log lines (capped)
     "paused":     False,
     "cancelled":  False,
     "started_at": None,
+    "finished_at": None,
+    "last_progress_at": None,
+    "last_error": None,
+    "last_error_at": None,
+    "last_stage": "",
+    "stalled":    False,
+    "idle_seconds": None,
 }
+_OUTPUT_CAP = 200
 
 _LEGACY_INDEXING = False   # kept for /api/index backward compat
 
@@ -295,15 +280,50 @@ def _list_config_history() -> list[dict]:
 # Pipeline runner helper
 # ---------------------------------------------------------------------------
 
+def _pipeline_progress(event: dict[str, Any]) -> None:
+    """Cheap callback from discover/extract/embed — updates live Settings poll."""
+    with _pipeline_lock:
+        if event.get("phase"):
+            _pipeline_state["phase"] = event["phase"]
+        if "processed" in event:
+            _pipeline_state["processed"] = int(event["processed"] or 0)
+        if "total" in event:
+            _pipeline_state["total"] = int(event["total"] or 0)
+        _pipeline_state["last_progress_at"] = time.time()
+        err = event.get("error")
+        if err:
+            _pipeline_state["last_error"] = str(err)
+            _pipeline_state["last_error_at"] = time.time()
+            errs = _pipeline_state.setdefault("errors", [])
+            errs.append(str(err))
+            if len(errs) > 50:
+                del errs[:-50]
+        detail = event.get("detail")
+        if detail:
+            _ps_append_unlocked(str(detail))
+
+
+def _should_cancel() -> bool:
+    with _pipeline_lock:
+        return bool(_pipeline_state.get("cancelled"))
+
+
+def _is_paused() -> bool:
+    with _pipeline_lock:
+        return bool(_pipeline_state.get("paused"))
+
+
 def _pipeline_run(fn_name: str, kwargs: dict | None = None) -> None:
     """Run a pipeline function in background, updating _pipeline_state."""
     global _pipeline_state
     kwargs = kwargs or {}
+    now = time.time()
 
     with _pipeline_lock:
         _pipeline_state.update({
             "running":    True,
             "stage":      fn_name,
+            "phase":      fn_name,
             "processed":  0,
             "total":      0,
             "eta":        None,
@@ -312,7 +332,13 @@ def _pipeline_run(fn_name: str, kwargs: dict | None = None) -> None:
             "output":     [f"[{datetime.now().isoformat()}] Starting {fn_name}…"],
             "paused":     False,
             "cancelled":  False,
-            "started_at": time.time(),
+            "started_at": now,
+            "finished_at": None,
+            "last_progress_at": now,
+            "last_error": None,
+            "last_error_at": None,
+            "stalled": False,
+            "idle_seconds": 0,
         })
 
     try:
@@ -320,49 +346,62 @@ def _pipeline_run(fn_name: str, kwargs: dict | None = None) -> None:
         try:
             if fn_name == "discover":
                 from core.discover import run_discover
-                stats = run_discover(conn, cfg.index_roots, cfg)
+                stats = run_discover(
+                    conn, cfg.index_roots, cfg, progress=_pipeline_progress
+                )
                 _ps_append(f"Discover complete: {stats}")
             elif fn_name == "extract":
                 from core.extract import run_extract
                 from pathlib import Path as _P
+                from core.index_state import honour_control
                 discovered = conn.execute(
                     "SELECT file_id, file_path, lane FROM files WHERE status='DISCOVERED'"
                 ).fetchall()
-                for row in discovered:
-                    if _pipeline_state.get("cancelled"):
+                total = len(discovered)
+                _pipeline_progress({
+                    "phase": "extract", "processed": 0, "total": total,
+                    "detail": f"{total} files to extract",
+                })
+                for idx, row in enumerate(discovered, start=1):
+                    if honour_control(_should_cancel, _is_paused) == "cancelled":
+                        _ps_append("Cancelled")
                         break
                     run_extract(conn, row["file_id"], _P(row["file_path"]),
                                 row["lane"] or "METADATA_ONLY", cfg)
-                    with _pipeline_lock:
-                        _pipeline_state["processed"] += 1
+                    _pipeline_progress({
+                        "phase": "extract", "processed": idx, "total": total,
+                    })
                 _ps_append("Extract complete")
             elif fn_name == "ocr":
                 _ps_append("OCR not implemented — skipped")
             elif fn_name == "index":
                 from core.index import run_index as _run_index
-                stats = _run_index(conn, cfg)
+                stats = _run_index(conn, cfg, progress=_pipeline_progress)
                 _ps_append(f"Index complete: {stats}")
             elif fn_name == "full":
                 from core.index import run_full_pipeline
-                stats = run_full_pipeline(conn, cfg)
+                stats = run_full_pipeline(
+                    conn, cfg,
+                    progress=_pipeline_progress,
+                    should_cancel=_should_cancel,
+                    is_paused=_is_paused,
+                )
                 _ps_append(f"Full pipeline complete: {stats}")
             elif fn_name == "rebuild":
                 from core.index import run_rebuild
-                stats = run_rebuild(conn, cfg)
+                stats = run_rebuild(conn, cfg, progress=_pipeline_progress)
                 _ps_append(f"Rebuild complete: {stats}")
             elif fn_name == "re-embed":
-                # Reset embedded=0 for all chunks, then re-run embed+fts
                 conn.execute("UPDATE chunks SET embedded=0")
                 conn.execute(
                     "UPDATE files SET status='EXTRACTED' WHERE status IN ('INDEXED','EMBEDDED')"
                 )
                 conn.commit()
                 from core.index import run_index as _run_index
-                stats = _run_index(conn, cfg)
+                stats = _run_index(conn, cfg, progress=_pipeline_progress)
                 _ps_append(f"Re-embed complete: {stats}")
             elif fn_name == "reindex-dir":
                 path = kwargs.get("path", "")
-                # Mark files under this path as EXTRACTED so they get re-embedded
                 conn.execute(
                     "UPDATE files SET status='EXTRACTED' "
                     "WHERE status='INDEXED' AND file_path LIKE ?",
@@ -370,24 +409,37 @@ def _pipeline_run(fn_name: str, kwargs: dict | None = None) -> None:
                 )
                 conn.commit()
                 from core.index import run_index as _run_index
-                stats = _run_index(conn, cfg)
+                stats = _run_index(conn, cfg, progress=_pipeline_progress)
                 _ps_append(f"Reindex-dir complete: {stats}")
         finally:
             conn.close()
     except Exception as e:
         with _pipeline_lock:
             _pipeline_state["errors"].append(str(e))
+            _pipeline_state["last_error"] = str(e)
+            _pipeline_state["last_error_at"] = time.time()
         _ps_append(f"ERROR: {e}")
         logger.error("Pipeline %s failed: %s", fn_name, e)
     finally:
         with _pipeline_lock:
             _pipeline_state["running"] = False
+            _pipeline_state["last_stage"] = (
+                _pipeline_state.get("phase") or _pipeline_state.get("stage") or ""
+            )
             _pipeline_state["stage"] = ""
+            _pipeline_state["finished_at"] = time.time()
+
+
+def _ps_append_unlocked(line: str) -> None:
+    lines = _pipeline_state.setdefault("output", [])
+    lines.append(f"[{datetime.now().isoformat()}] {line}")
+    if len(lines) > _OUTPUT_CAP:
+        del lines[:-_OUTPUT_CAP]
 
 
 def _ps_append(line: str) -> None:
     with _pipeline_lock:
-        _pipeline_state["output"].append(f"[{datetime.now().isoformat()}] {line}")
+        _ps_append_unlocked(line)
 
 
 # ---------------------------------------------------------------------------
@@ -1082,12 +1134,8 @@ async def api_storage_refresh(
 async def api_projects(
     conn: sqlite3.Connection = Depends(get_db),
 ) -> list[dict[str, Any]]:
-    rows = conn.execute(
-        "SELECT COALESCE(project_id, 'Unknown') AS project_id, "
-        "COUNT(*) AS file_count "
-        "FROM files GROUP BY project_id ORDER BY file_count DESC"
-    ).fetchall()
-    return [{"project_id": r["project_id"], "file_count": r["file_count"]} for r in rows]
+    catalog = _catalog_fields(conn)
+    return catalog.get("projects") or []
 
 
 @app.get("/api/project/{code}")
@@ -1406,31 +1454,79 @@ async def pipeline_reindex_dir(req: PipelineDirRequest) -> dict:
     return _trigger_pipeline("reindex-dir", {"path": req.path})
 
 
-@app.get("/api/pipeline/status")
-async def pipeline_status() -> dict:
+def _job_snapshot(*, include_output: bool) -> dict[str, Any]:
     with _pipeline_lock:
         state = dict(_pipeline_state)
-    # Compute ETA
-    if state["running"] and state["started_at"] and state["total"] > 0 and state["processed"] > 0:
-        elapsed = time.time() - state["started_at"]
-        rate = state["processed"] / elapsed
-        remaining = state["total"] - state["processed"]
-        state["eta"] = round(remaining / rate) if rate > 0 else None
-        state["throughput"] = round(rate, 2)
+        output = list(state.get("output") or [])
+        errors = list(state.get("errors") or [])
+    if include_output:
+        state["output"] = output[-_OUTPUT_CAP:]
+    else:
+        state.pop("output", None)
+    state["errors"] = errors[-20:]
+    return annotate_job(state)
+
+
+@app.get("/api/pipeline/status")
+async def pipeline_status(
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict:
+    state = _job_snapshot(include_output=True)
     with _validate_lock:
         state["validate"] = dict(_validate_state)
     with _poc_test_lock:
         state["poc_test"] = dict(_poc_test_state)
-    try:
-        conn = get_connection(cfg.get_db_path())
-        try:
-            state.update(_project_index_summary(conn))
-        finally:
-            conn.close()
-    except Exception as exc:
-        logger.warning("Could not calculate indexed project count: %s", exc)
-        state.update({"configured_projects": len(cfg.index_roots), "indexed_projects": 0, "projects": []})
+    state.update(_catalog_fields(conn))
+    state["poll_interval_s"] = 3
     return state
+
+
+@app.get("/api/index/progress")
+async def index_progress(
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict:
+    """Cheap LAN poll for Settings: catalog counts + live job, no log dump."""
+    job = _job_snapshot(include_output=True)
+    catalog = _catalog_fields(conn)
+    log_tail = (job.pop("output", None) or [])[-40:]
+    return {
+        "ok": catalog.get("ok", True),
+        "honesty": catalog.get("honesty"),
+        "counts_known": catalog.get("counts_known"),
+        "counts_error": catalog.get("counts_error"),
+        "poll_interval_s": 3,
+        "job": {
+            "running": job.get("running"),
+            "paused": job.get("paused"),
+            "cancelled": job.get("cancelled"),
+            "stage": job.get("stage"),
+            "phase": job.get("phase"),
+            "last_stage": job.get("last_stage"),
+            "processed": job.get("processed"),
+            "total": job.get("total"),
+            "throughput": job.get("throughput"),
+            "eta": job.get("eta"),
+            "stalled": job.get("stalled"),
+            "idle_seconds": job.get("idle_seconds"),
+            "started_at": job.get("started_at"),
+            "finished_at": job.get("finished_at"),
+            "last_progress_at": job.get("last_progress_at"),
+            "last_error": job.get("last_error"),
+            "last_error_at": job.get("last_error_at"),
+            "errors": job.get("errors") or [],
+        },
+        "configured_projects": catalog.get("configured_projects"),
+        "configured_roots": catalog.get("configured_roots"),
+        "catalog_projects": catalog.get("catalog_projects"),
+        "indexed_projects": catalog.get("indexed_projects"),
+        "in_progress_projects": catalog.get("in_progress_projects"),
+        "failed_projects": catalog.get("failed_projects"),
+        "unmatched_indexed_files": catalog.get("unmatched_indexed_files"),
+        "totals": catalog.get("totals"),
+        "projects": catalog.get("projects") or [],
+        "roots": catalog.get("roots") or [],
+        "log_tail": log_tail,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -1614,22 +1710,20 @@ async def api_eval_search_recall(
 @app.get("/api/directories")
 async def get_directories(conn: sqlite3.Connection = Depends(get_db)) -> list[dict]:
     dirs = _load_directories()
-    # Annotate with file counts from DB
+    # Annotate with file counts from DB (slash/case-insensitive path match)
     for d in dirs:
         path = d["path"]
-        row = conn.execute(
-            "SELECT "
-            "SUM(CASE WHEN status='DISCOVERED' THEN 1 ELSE 0 END) AS discovered, "
-            "SUM(CASE WHEN status='EXTRACTED'  THEN 1 ELSE 0 END) AS extracted, "
-            "SUM(CASE WHEN status='INDEXED'    THEN 1 ELSE 0 END) AS indexed, "
-            "SUM(CASE WHEN status='FAILED'     THEN 1 ELSE 0 END) AS failed "
-            "FROM files WHERE file_path LIKE ?",
-            (f"{path}%",),
-        ).fetchone()
-        d["discovered"] = row["discovered"] or 0
-        d["extracted"]  = row["extracted"]  or 0
-        d["indexed"]    = row["indexed"]    or 0
-        d["failed"]     = row["failed"]     or 0
+        try:
+            counts = status_counts_under_root(conn, path)
+        except sqlite3.Error:
+            counts = {
+                "discovered": 0, "extracted": 0, "embedded": 0,
+                "indexed": 0, "failed": 0,
+            }
+        d["discovered"] = counts["discovered"]
+        d["extracted"]  = counts["extracted"]
+        d["indexed"]    = counts["indexed"]
+        d["failed"]     = counts["failed"]
         d["mounted"]    = Path(path).exists()
     return dirs
 
