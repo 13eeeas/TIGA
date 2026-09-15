@@ -100,7 +100,7 @@ ollama:
 server:
   host: 0.0.0.0
   port: 7860
-  workers: 2
+  workers: 1
 
 ui:
   port: 8501
@@ -654,12 +654,15 @@ def cmd_serve(_args: argparse.Namespace) -> None:
     from config import cfg
     import uvicorn
 
+    # Pipeline job state is in-process. Multiple uvicorn workers would make
+    # Settings /api/index/progress polls miss the worker that is indexing.
     print(f"Starting TIGA Hunt server at http://{cfg.server_host}:{cfg.server_port}")
+    print("Single worker so Settings live progress stays in-process.")
     uvicorn.run(
         "server:app",
         host=cfg.server_host,
         port=cfg.server_port,
-        workers=cfg.server_workers,
+        workers=1,
         reload=False,
     )
 

@@ -307,6 +307,7 @@ def test_projects_html_matches_hunt_chrome_not_atlas_dialect() -> None:
     assert "blob-layer" in html
     assert "the job in a glance" in html
     assert "Needs curation" in html
+    assert 'href="/#settings"' in html
     assert "Project wiki" not in html
     assert "letter-spacing:.04em;text-transform:uppercase" not in html
 
