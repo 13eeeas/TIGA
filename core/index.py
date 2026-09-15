@@ -46,6 +46,7 @@ import sqlite3
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
+from typing import Callable
 
 from config import cfg as _module_cfg, Config
 from core.db import (
@@ -53,6 +54,7 @@ from core.db import (
     set_file_status,
     log_event,
 )
+from core.index_state import ProgressFn, honour_control
 import core.vectors as _vectors
 
 logger = logging.getLogger(__name__)
@@ -147,9 +149,15 @@ def _reset_lancedb(cfg_obj: Config | None = None) -> None:
 # Step 1: Vector embedding
 # ---------------------------------------------------------------------------
 
+def _emit(progress: ProgressFn | None, **event: object) -> None:
+    if progress:
+        progress(event)  # type: ignore[arg-type]
+
+
 def run_embed(
     conn: sqlite3.Connection,
     cfg_obj: Config | None = None,
+    progress: ProgressFn | None = None,
 ) -> dict[str, int]:
     """
     Embed all un-embedded chunks of EXTRACTED files using batch API.
@@ -193,6 +201,7 @@ def run_embed(
                 set_file_status(conn, frow["file_id"], "EMBEDDED")
                 log_event(conn, "EMBEDDED", file_id=frow["file_id"])
                 stats["files_embedded"] += 1
+        _emit(progress, phase="embed", processed=0, total=0, detail="No pending chunks")
         return stats
 
     # Separate empty-text chunks — Ollama rejects them (HTTP 400), mark done without vector
@@ -207,6 +216,8 @@ def run_embed(
         conn.commit()
 
     logger.info("run_embed: embedding %d pending chunks in batches", len(embeddable))
+    _emit(progress, phase="embed", processed=0, total=len(embeddable),
+          detail=f"Embedding {len(embeddable)} chunks")
 
     # Read embed batch size from the scheduler (time-of-day aware) so that
     # night mode uses 256 (saturate 4090) and day mode uses 16 (leave VRAM
@@ -219,10 +230,15 @@ def run_embed(
     except Exception:
         pass  # scheduler not available — use cfg value
 
+    def _on_embed_batch(done: int, total: int) -> None:
+        _emit(progress, phase="embed", processed=done, total=total)
+
     # Batch embed all texts (sanitize control chars that cause Ollama HTTP 400)
     texts = [_sanitize(row["text"]) for row in embeddable]
     embeddings = (
-        _vectors.embed_texts_batched(texts, _cfg, batch_size=_embed_batch_size)
+        _vectors.embed_texts_batched(
+            texts, _cfg, batch_size=_embed_batch_size, progress=_on_embed_batch
+        )
         if texts else []
     )
 
@@ -301,6 +317,13 @@ def run_embed(
         "run_embed complete — files_embedded=%d chunks_embedded=%d chunks_skipped=%d",
         stats["files_embedded"], stats["chunks_embedded"], stats["chunks_skipped"],
     )
+    _emit(
+        progress,
+        phase="embed",
+        processed=len(embeddable),
+        total=len(embeddable),
+        detail=f"Embed complete: {stats}",
+    )
     return stats
 
 
@@ -311,6 +334,7 @@ def run_embed(
 def run_fts(
     conn: sqlite3.Connection,
     cfg_obj: Config | None = None,  # kept for API consistency
+    progress: ProgressFn | None = None,
 ) -> dict[str, int]:
     """
     Advance EMBEDDED files to INDEXED.
@@ -328,13 +352,22 @@ def run_fts(
         "SELECT file_id FROM files WHERE status = 'EMBEDDED'"
     ).fetchall()
 
-    for row in embedded_files:
+    for idx, row in enumerate(embedded_files, start=1):
         file_id = row["file_id"]
         set_file_status(conn, file_id, "INDEXED")
         log_event(conn, "INDEXED", file_id=file_id)
         stats["files_indexed"] += 1
+        if idx == 1 or idx == len(embedded_files) or idx % 50 == 0:
+            _emit(progress, phase="fts", processed=idx, total=len(embedded_files))
 
     logger.info("run_fts complete — files_indexed=%d", stats["files_indexed"])
+    _emit(
+        progress,
+        phase="fts",
+        processed=stats["files_indexed"],
+        total=len(embedded_files),
+        detail=f"FTS complete: files_indexed={stats['files_indexed']}",
+    )
     return stats
 
 
@@ -345,13 +378,14 @@ def run_fts(
 def run_index(
     conn: sqlite3.Connection,
     cfg_obj: Config | None = None,
+    progress: ProgressFn | None = None,
 ) -> dict[str, int]:
     """
     Step 1 (embed) then Step 2 (FTS). Returns merged stats.
     Expects files already in EXTRACTED status (called by run_full_pipeline).
     """
-    s1 = run_embed(conn, cfg_obj)
-    s2 = run_fts(conn, cfg_obj)
+    s1 = run_embed(conn, cfg_obj, progress=progress)
+    s2 = run_fts(conn, cfg_obj, progress=progress)
     return {**s1, **s2}
 
 
@@ -482,6 +516,9 @@ def _run_parallel_extract(
     discovered: list,
     extract_workers: int,
     cfg_obj: Config,
+    progress: ProgressFn | None = None,
+    should_cancel: Callable[[], bool] | None = None,
+    is_paused: Callable[[], bool] | None = None,
 ) -> dict[str, int]:
     """
     Extract text from DISCOVERED files using a ThreadPoolExecutor.
@@ -557,11 +594,17 @@ def _run_parallel_extract(
                 )
                 with stats_lock:
                     stats["files_extract_failed"] += 1
-            if completed % 100 == 0:
-                logger.info(
-                    "parallel_extract: %d/%d files  chunks_new=%d",
-                    completed, total, stats["chunks_new"],
+            if completed == 1 or completed == total or completed % 25 == 0:
+                _emit(
+                    progress,
+                    phase="extract",
+                    processed=completed,
+                    total=total,
+                    detail=f"Extract {completed}/{total}",
                 )
+            if honour_control(should_cancel, is_paused) == "cancelled":
+                logger.warning("parallel_extract cancelled at %d/%d", completed, total)
+                break
 
     # Close all thread-local connections
     for tc in _thread_conns:
@@ -580,6 +623,9 @@ def _run_parallel_extract(
 def run_full_pipeline(
     conn: sqlite3.Connection,
     cfg_obj: Config | None = None,
+    progress: ProgressFn | None = None,
+    should_cancel: Callable[[], bool] | None = None,
+    is_paused: Callable[[], bool] | None = None,
 ) -> dict[str, int]:
     """
     Complete incremental pipeline:
@@ -590,6 +636,9 @@ def run_full_pipeline(
 
     Idempotent: unchanged files (same fingerprint, already INDEXED) are skipped.
     Returns merged stats from all phases.
+
+    Optional progress callback receives {phase, processed, total, detail?}.
+    should_cancel / is_paused honour existing Settings Pause/Cancel flags.
     """
     from pathlib import Path as _Path
     from core.discover import run_discover
@@ -597,14 +646,37 @@ def run_full_pipeline(
     from core.scheduler import get_schedule_cfg
 
     _cfg = cfg_obj or _module_cfg
+    cancelled_stats = {
+        "files_extracted": 0, "files_extract_failed": 0, "chunks_new": 0,
+        "cancelled": 1,
+    }
+
+    def _stop() -> bool:
+        return honour_control(should_cancel, is_paused) == "cancelled"
 
     # ── Phase 0: discover ────────────────────────────────────────────────────
     logger.info("run_full_pipeline: phase 0 — discover")
-    d_stats = run_discover(conn, _cfg.index_roots, _cfg)
+    _emit(progress, phase="discover", processed=0, total=0, detail="Discover starting")
+    if _stop():
+        _emit(progress, phase="discover", detail="Cancelled")
+        return cancelled_stats
+    d_stats = run_discover(conn, _cfg.index_roots, _cfg, progress=progress)
+    _emit(
+        progress,
+        phase="discover",
+        processed=d_stats.get("total", 0),
+        total=d_stats.get("total", 0),
+        detail=f"Discover complete: {d_stats}",
+    )
+    if _stop():
+        return {**d_stats, **cancelled_stats}
 
     # ── Phase 0b: parse file paths for structured metadata ───────────────────
     logger.info("run_full_pipeline: phase 0b — path parsing")
+    _emit(progress, phase="path_parse", processed=0, total=0, detail="Path parsing")
     _run_path_parse(conn, _cfg)
+    if _stop():
+        return {**d_stats, **cancelled_stats}
 
     # ── Phase 1: extract DISCOVERED files ───────────────────────────────────
     # Read extract_workers from scheduler (time-of-day aware) or config.
@@ -616,6 +688,13 @@ def run_full_pipeline(
     ).fetchall()
 
     total_discovered = len(discovered)
+    _emit(
+        progress,
+        phase="extract",
+        processed=0,
+        total=total_discovered,
+        detail=f"{total_discovered} files to extract",
+    )
 
     try:
         schedule_cfg = get_schedule_cfg()
@@ -629,9 +708,15 @@ def run_full_pipeline(
     )
 
     if extract_workers > 1 and total_discovered > 0:
-        e_stats.update(_run_parallel_extract(conn, discovered, extract_workers, _cfg))
+        e_stats.update(_run_parallel_extract(
+            conn, discovered, extract_workers, _cfg,
+            progress=progress, should_cancel=should_cancel, is_paused=is_paused,
+        ))
     else:
         for idx, row in enumerate(discovered, start=1):
+            if _stop():
+                e_stats["cancelled"] = 1
+                break
             path = _Path(row["file_path"])
             lane = row["lane"] or "METADATA_ONLY"
             result = run_extract(conn, row["file_id"], path, lane, _cfg)
@@ -640,23 +725,43 @@ def run_full_pipeline(
                 e_stats["chunks_new"] += result.get("new", 0)
             else:
                 e_stats["files_extract_failed"] += 1
-            if idx % 500 == 0:
+                err = result.get("error_detail") or result.get("error")
+                if err:
+                    _emit(progress, phase="extract", error=str(err))
+            if idx == 1 or idx == total_discovered or idx % 25 == 0:
                 logger.info(
                     "run_full_pipeline: extract progress %d/%d  chunks_new=%d",
                     idx, total_discovered, e_stats["chunks_new"],
                 )
+                _emit(
+                    progress,
+                    phase="extract",
+                    processed=idx,
+                    total=total_discovered,
+                    detail=f"Extract {idx}/{total_discovered}",
+                )
+
+    if _stop():
+        _emit(progress, phase="extract", detail="Cancelled")
+        return {**d_stats, **e_stats}
 
     # ── Phases 2 + 3: embed + FTS ────────────────────────────────────────────
     logger.info("run_full_pipeline: phases 2+3 — embed + FTS")
-    i_stats = run_index(conn, _cfg)
+    _emit(progress, phase="embed", processed=0, total=0, detail="Embed + FTS")
+    i_stats = run_index(conn, _cfg, progress=progress)
+    if _stop():
+        return {**d_stats, **e_stats, **i_stats}
 
     # ── Phase 4: Image context indexing (renders → synthetic descriptions) ────
     logger.info("run_full_pipeline: phase 4 — image context indexing")
+    _emit(progress, phase="image", processed=0, total=0, detail="Image context")
     img_stats = _run_image_indexing(conn, _cfg)
 
     # ── Phase 5: Content-based classification fallback ───────────────────────
     logger.info("run_full_pipeline: phase 5 — content classification")
+    _emit(progress, phase="classify", processed=0, total=0, detail="Classification")
     cls_stats = _run_content_classification(conn, _cfg)
+    _emit(progress, phase="idle", processed=0, total=0, detail="Pipeline complete")
 
     return {**d_stats, **e_stats, **i_stats, **img_stats, **cls_stats}
 
@@ -959,6 +1064,7 @@ def check_index_staleness(
 def run_rebuild(
     conn: sqlite3.Connection,
     cfg_obj: Config | None = None,
+    progress: ProgressFn | None = None,
 ) -> dict[str, int]:
     """
     Full rebuild:
@@ -989,4 +1095,4 @@ def run_rebuild(
     _reset_lancedb(cfg_obj)
 
     logger.info("run_rebuild: re-running index pipeline")
-    return run_index(conn, cfg_obj)
+    return run_index(conn, cfg_obj, progress=progress)

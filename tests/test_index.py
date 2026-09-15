@@ -43,7 +43,9 @@ class _FakeTable:
 @contextmanager
 def _mock_embed_success():
     """Mock embedding + LanceDB merge path so no Ollama service is required."""
-    def _batched(texts, cfg, batch_size=None):
+    def _batched(texts, cfg, batch_size=None, progress=None):
+        if progress:
+            progress(len(texts), len(texts))
         return [[0.1] * 768 for _ in texts]
 
     with patch("core.index._vectors.embed_texts_batched", side_effect=_batched), \

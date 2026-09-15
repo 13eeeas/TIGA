@@ -427,9 +427,56 @@ def test_pipeline_status_includes_validate(client) -> None:
     data = resp.json()
     assert "validate" in data
     assert isinstance(data["configured_projects"], int)
-    assert isinstance(data["indexed_projects"], int)
-    assert data["indexed_projects"] <= data["configured_projects"]
+    assert data["honesty"] in ("catalog", "unknown")
+    if data.get("counts_known"):
+        assert isinstance(data["indexed_projects"], int)
+        assert isinstance(data["catalog_projects"], int)
+    else:
+        assert data["indexed_projects"] is None
     assert isinstance(data["projects"], list)
+    assert "phase" in data
+    assert "stalled" in data
+
+
+def test_pipeline_projects_and_progress_agree(client, db) -> None:
+    """Catalog project_id counts match across pipeline status, progress poll, /api/projects."""
+    db.execute(
+        "INSERT OR IGNORE INTO files "
+        "(file_id, file_path, file_name, extension, status, project_id) "
+        "VALUES "
+        "('fid-unc', '//nas/share/186 Tianmu/brief.pdf', 'brief.pdf', '.pdf', "
+        "'INDEXED', '186_TIANMU'),"
+        "('fid-unc2', '//nas/share/186 Tianmu/ga.dwg', 'ga.dwg', '.dwg', "
+        "'DISCOVERED', '186_TIANMU')"
+    )
+    db.commit()
+
+    projects = client.get("/api/projects").json()
+    status = client.get("/api/pipeline/status").json()
+    progress = client.get("/api/index/progress").json()
+
+    assert status["honesty"] == "catalog"
+    assert status["counts_known"] is True
+    assert status["indexed_projects"] == 1
+    assert status["catalog_projects"] == 1
+    assert status["in_progress_projects"] == 1
+    assert progress["indexed_projects"] == status["indexed_projects"]
+    assert progress["totals"]["files_indexed"] == 1
+    assert progress["job"]["running"] is False
+    hosp = next(p for p in projects if p["project_id"] == "186_TIANMU")
+    assert hosp["files_indexed"] == 1
+    assert hosp["files_in_progress"] == 1
+    assert hosp["state"] == "in_progress"
+    assert any(p["project_id"] == "186_TIANMU" for p in status["projects"])
+
+
+def test_pipeline_status_unknown_when_catalog_fails(client) -> None:
+    with patch("server.catalog_index_state", side_effect=RuntimeError("db locked")):
+        data = client.get("/api/pipeline/status").json()
+    assert data["honesty"] == "unknown"
+    assert data["counts_known"] is False
+    assert data["indexed_projects"] is None
+    assert data["projects"] == []
 
 
 def test_collect_labels_endpoint(client) -> None:

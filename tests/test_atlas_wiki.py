@@ -295,6 +295,8 @@ def test_list_wiki_projects_leads_with_blurb_not_published(tmp_path: Path) -> No
     assert item["published"] is False
     assert "Needs curation" in item["blurb"]
     assert item["file_count"] == 1
+    assert item["files_indexed"] == 0
+    assert item["index_state"] == "in_progress"
 
 
 def test_projects_html_matches_hunt_chrome_not_atlas_dialect() -> None:

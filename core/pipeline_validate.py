@@ -61,7 +61,9 @@ def mock_embed_if_needed(use_mock: bool):
         def merge_insert(self, _key):
             return _FakeMergeBuilder()
 
-    def _batched(texts, cfg, batch_size=None):
+    def _batched(texts, cfg, batch_size=None, progress=None):
+        if progress:
+            progress(len(texts), len(texts))
         return [[0.1] * 768 for _ in texts]
 
     with patch("core.index._vectors.embed_texts_batched", side_effect=_batched), \

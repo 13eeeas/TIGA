@@ -24,7 +24,7 @@ import logging
 import os
 import sqlite3
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from config import cfg as _module_cfg, Config
 from core.db import (
@@ -169,6 +169,7 @@ def run_discover(
     conn: sqlite3.Connection,
     index_roots: list[Path],
     cfg_obj: Config | None = None,
+    progress: Callable[[dict[str, Any]], None] | None = None,
 ) -> dict[str, int]:
     """
     Walk index_roots, classify every file, upsert into the files table.
@@ -205,11 +206,20 @@ def run_discover(
 
         logger.info("Scanning: %s", root)
         try:
-            _scan_root(root, conn, _cfg, stats, fp_canonical)
+            if progress:
+                progress({
+                    "phase": "discover",
+                    "processed": stats["total"],
+                    "total": stats["total"],
+                    "detail": f"Scanning {root}",
+                })
+            _scan_root(root, conn, _cfg, stats, fp_canonical, progress=progress)
         except PermissionError as e:
             logger.warning("Permission denied scanning %s: %s", root, e)
         except Exception as e:
             logger.error("Unexpected error scanning %s: %s", root, e)
+            if progress:
+                progress({"phase": "discover", "error": str(e), "detail": f"ERROR scanning {root}: {e}"})
 
     logger.info(
         "Discover complete — total: %d, discovered: %d, skipped: %d, "
@@ -252,6 +262,7 @@ def _scan_root(
     cfg_obj: Config,
     stats: dict[str, int],
     fp_canonical: dict[str, str],
+    progress: Callable[[dict[str, Any]], None] | None = None,
 ) -> None:
     existing_by_path = _load_existing_by_path(conn, root)
     exclude_dir_names = _exclude_dir_names(cfg_obj.exclude_globs)
@@ -267,6 +278,13 @@ def _scan_root(
             continue
 
         stats["total"] += 1
+        if progress and (stats["total"] == 1 or stats["total"] % 50 == 0):
+            progress({
+                "phase": "discover",
+                "processed": stats["total"],
+                "total": stats["total"],
+                "detail": f"Discover {stats['total']} files seen",
+            })
 
         # c. Resolve POSIX DB key (no \\?\ prefix)
         posix = _posix_for_db(safe)
