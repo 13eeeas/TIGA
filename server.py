@@ -9,9 +9,9 @@ Endpoints
   GET  /storage                  — storage / cost dashboard (cached snapshot)
   GET  /api/projects             — distinct project_ids + file counts
   GET  /api/project/{code}       — project data card
-  GET  /api/atlas/projects       — wiki project list (auto + curation status)
+  GET  /api/atlas/projects       — wiki project list (blurb + curation status)
   GET  /api/atlas/page/{code}    — auto Grokopedia page + wiki overlay
-  POST /api/atlas/page/{code}/pin|hide|fact|ask
+  POST /api/atlas/page/{code}/pin|hide|fact|overview|ask
   GET  /projects                 — Projects wiki UI (Atlas in Hunt)
   POST /api/session              — create new session, returns {session_id}
   GET  /api/session/{session_id} — message history for session
@@ -1130,6 +1130,15 @@ class AtlasAskRequest(BaseModel):
     question: str
 
 
+class AtlasOverviewRequest(BaseModel):
+    summary: str | None = None
+    name: str | None = None
+    typology: str | None = None
+    client: str | None = None
+    stage: str | None = None
+    location: str | None = None
+
+
 @app.get("/api/atlas/projects")
 async def api_atlas_projects(
     conn: sqlite3.Connection = Depends(get_db),
@@ -1190,6 +1199,26 @@ async def api_atlas_fact(code: str, req: AtlasFactRequest) -> dict[str, Any]:
     )
     _audit("Atlas wiki fact", f"{code}.{req.key}={req.value!r}")
     return {"ok": True, "fact": fact}
+
+
+@app.post("/api/atlas/page/{code}/overview")
+async def api_atlas_overview(code: str, req: AtlasOverviewRequest) -> dict[str, Any]:
+    from core.atlas_wiki import wiki_overview
+
+    fields = {
+        "name": req.name,
+        "typology": req.typology,
+        "client": req.client,
+        "stage": req.stage,
+        "location": req.location,
+    }
+    # Only apply keys the client sent (Pydantic always includes defaults as None).
+    sent = req.model_dump(exclude_unset=True)
+    project_fields = {k: v for k, v in fields.items() if k in sent}
+    summary = sent["summary"] if "summary" in sent else None
+    saved = wiki_overview(code, summary=summary, project_fields=project_fields)
+    _audit("Atlas wiki overview", f"{code} blurb/identity updated")
+    return {"ok": True, **saved}
 
 
 @app.post("/api/atlas/page/{code}/ask")

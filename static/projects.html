@@ -3,143 +3,265 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="light dark">
 <title>TIGA · Projects</title>
 <link href="https://fonts.googleapis.com/css2?family=Lora:wght@400;500&family=Source+Serif+4:opsz,wght@8..60,300;8..60,400&display=swap" rel="stylesheet">
 <style>
 :root {
-  --coral:#C96442; --page-bg:#fff; --ink:#1A1410; --ink-60:rgba(26,20,16,.52);
-  --ink-12:rgba(26,20,16,.09); --glass-bg:rgba(255,255,255,.7); --glass-border:rgba(255,255,255,.8);
-  --glass-shadow:0 8px 32px rgba(0,0,0,.07); --chip:#f3ebe4; --ok:#2f6f4e; --warn:#8a4b16; --bad:#8b2e2e;
+  --coral:#C96442; --coral-glow:rgba(201,100,66,0.18);
+  --page-bg:#ffffff; --ink:#1A1410; --ink-60:rgba(26,20,16,0.52); --ink-12:rgba(26,20,16,0.09);
+  --glass-bg:rgba(255,255,255,0.64); --glass-border:rgba(255,255,255,0.80);
+  --glass-border-lo:rgba(255,255,255,0.35); --glass-inner:rgba(255,255,255,0.50);
+  --glass-shadow:0 8px 32px rgba(0,0,0,0.07), 0 1.5px 4px rgba(0,0,0,0.04);
+  --glass-blur:blur(32px) saturate(1.8) brightness(1.04);
+  --blob1:rgba(201,100,66,0.11); --blob2:rgba(180,120,90,0.07); --blob3:rgba(255,200,170,0.13);
+  --toggle-bg:rgba(26,20,16,0.06); --toggle-icon:var(--ink-60);
+  --btn-bg:#1A1410; --btn-hover:#C96442;
+  --ok:#2f6f4e; --warn:#8a4b16; --bad:#8b2e2e;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --page-bg:#0F0E0C; --ink:#EDE8E0; --ink-60:rgba(237,232,224,.5); --ink-12:rgba(237,232,224,.08);
-    --glass-bg:rgba(30,26,22,.72); --glass-border:rgba(255,255,255,.1); --chip:#2a221c;
+    --page-bg:#0F0E0C; --ink:#EDE8E0; --ink-60:rgba(237,232,224,0.50); --ink-12:rgba(237,232,224,0.08);
+    --glass-bg:rgba(30,26,22,0.68); --glass-border:rgba(255,255,255,0.10);
+    --glass-border-lo:rgba(255,255,255,0.05); --glass-inner:rgba(255,255,255,0.06);
+    --glass-shadow:0 8px 32px rgba(0,0,0,0.35),0 1.5px 4px rgba(0,0,0,0.20);
+    --glass-blur:blur(32px) saturate(1.6) brightness(0.96);
+    --blob1:rgba(201,100,66,0.15); --blob2:rgba(140,80,50,0.10); --blob3:rgba(255,180,130,0.06);
+    --toggle-bg:rgba(237,232,224,0.08); --toggle-icon:rgba(237,232,224,0.55);
+    --btn-bg:#EDE8E0; --btn-hover:#C96442;
   }
 }
-*{box-sizing:border-box} body{margin:0;font-family:'Source Serif 4',Georgia,serif;background:var(--page-bg);color:var(--ink);min-height:100vh}
+[data-theme="dark"] {
+  --page-bg:#0F0E0C; --ink:#EDE8E0; --ink-60:rgba(237,232,224,0.50); --ink-12:rgba(237,232,224,0.08);
+  --glass-bg:rgba(30,26,22,0.68); --glass-border:rgba(255,255,255,0.10);
+  --glass-border-lo:rgba(255,255,255,0.05); --glass-inner:rgba(255,255,255,0.06);
+  --glass-shadow:0 8px 32px rgba(0,0,0,0.35),0 1.5px 4px rgba(0,0,0,0.20);
+  --glass-blur:blur(32px) saturate(1.6) brightness(0.96);
+  --blob1:rgba(201,100,66,0.15); --blob2:rgba(140,80,50,0.10); --blob3:rgba(255,180,130,0.06);
+  --toggle-bg:rgba(237,232,224,0.08); --toggle-icon:rgba(237,232,224,0.55);
+  --btn-bg:#EDE8E0; --btn-hover:#C96442;
+}
+*,*::before,*::after{box-sizing:border-box}
+html{color-scheme:light dark}
+body{margin:0;font-family:'Source Serif 4',Georgia,serif;background:var(--page-bg);color:var(--ink);min-height:100vh;position:relative}
 a{color:var(--coral);text-decoration:none}
-.wrap{max-width:980px;margin:0 auto;padding:1.25rem 1.25rem 4rem}
-.nav{display:flex;gap:.35rem;align-items:center;margin-bottom:1.5rem;flex-wrap:wrap}
-.nav a,.nav .brand{font-size:.78rem;letter-spacing:.12em;text-transform:uppercase;padding:.4rem .7rem;border-radius:999px;color:var(--ink-60)}
-.nav .brand{color:var(--coral);font-weight:500;padding-left:0}
-.nav a.active,.nav a:hover{background:var(--chip);color:var(--ink)}
-h1{font-family:Lora,Georgia,serif;font-weight:500;font-size:clamp(1.8rem,4vw,2.4rem);margin:.2rem 0 .5rem}
-.lede{color:var(--ink-60);margin:0 0 1.25rem;max-width:40rem}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:.85rem}
-.card{display:block;background:var(--glass-bg);border:1px solid var(--ink-12);border-radius:14px;padding:1rem;cursor:pointer;transition:transform .15s,border-color .15s;color:inherit}
-.card:hover{transform:translateY(-2px);border-color:var(--coral)}
-.card .code{font-size:.75rem;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-60)}
-.card h2{font-size:1.05rem;margin:.4rem 0 .3rem;font-weight:500}
-.meta{font-size:.85rem;color:var(--ink-60)}
-.badge{display:inline-block;font-size:.68rem;letter-spacing:.05em;text-transform:uppercase;padding:.15rem .4rem;border-radius:6px;border:1px solid var(--ink-12);margin-left:.35rem}
-.badge.pub{background:rgba(47,111,78,.12);color:var(--ok)}
-.badge.draft{color:var(--warn)}
-.back{font-size:.85rem;color:var(--ink-60);margin-bottom:1rem;display:inline-block}
-.hero-row{display:flex;flex-wrap:wrap;gap:.5rem;margin:0 0 1rem}
-.chip{background:var(--chip);border:1px solid var(--ink-12);border-radius:8px;padding:.3rem .55rem;font-size:.82rem}
-.section{background:var(--glass-bg);border:1px solid var(--ink-12);border-radius:14px;padding:1rem 1.1rem;margin:0 0 .85rem}
-.section h3{margin:0 0 .35rem;font-size:1rem;font-weight:500}
-.hint{color:var(--ink-60);font-size:.88rem;margin:0 0 .75rem}
-.item{border-top:1px solid var(--ink-12);padding:.7rem 0}
+.blob-layer{position:fixed;inset:0;pointer-events:none;z-index:0;overflow:hidden}
+.blob{position:absolute;border-radius:50%;filter:blur(90px)}
+.blob-1{width:520px;height:520px;background:var(--blob1);top:-120px;left:-80px}
+.blob-2{width:400px;height:400px;background:var(--blob3);bottom:-80px;right:-60px}
+.blob-3{width:300px;height:300px;background:var(--blob2);top:40%;left:55%}
+.container{position:relative;z-index:1;min-height:100vh;display:flex;flex-direction:column}
+.header{width:100%;padding:22px 32px;display:flex;align-items:center;justify-content:space-between}
+.logo-mark{display:flex;align-items:center;gap:11px;text-decoration:none;color:var(--ink)}
+.logo-name{font-family:'Lora',Georgia,serif;font-size:22px;font-weight:500;letter-spacing:.01em}
+.header-right{display:flex;align-items:center;gap:8px}
+.icon-btn{width:36px;height:36px;border-radius:50%;border:1px solid var(--ink-12);background:var(--toggle-bg);cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--toggle-icon);transition:all .2s}
+.icon-btn:hover{border-color:var(--coral);color:var(--coral);background:var(--coral-glow)}
+.icon-sun{display:none}.icon-moon{display:block}
+[data-theme="dark"] .icon-sun{display:block}[data-theme="dark"] .icon-moon{display:none}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]):not([data-theme="dark"]) .icon-sun{display:block}:root:not([data-theme="light"]):not([data-theme="dark"]) .icon-moon{display:none}}
+.cat-wrap{width:34px;height:34px;position:relative}
+.cat-svg{width:34px;height:34px;overflow:visible}
+.top-nav{display:flex;gap:4px;margin-right:8px;align-items:center}
+.top-nav-link{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-60);padding:6px 10px;border-radius:999px;text-decoration:none}
+.top-nav-link:hover,.top-nav-link.active{background:var(--toggle-bg);color:var(--ink)}
+.page{width:100%;max-width:760px;margin:0 auto;padding:8px 24px 80px}
+.hero-title{font-family:'Lora',Georgia,serif;font-size:clamp(28px,4.5vw,42px);font-weight:400;letter-spacing:-.01em;line-height:1.3;margin:0 0 10px}
+.title-accent{font-style:italic;color:var(--coral);font-weight:400}
+.lede{color:var(--ink-60);font-size:15.5px;font-weight:300;line-height:1.55;margin:0 0 22px;max-width:40rem}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px}
+.card{display:block;width:100%;text-align:left;background:var(--glass-bg);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border:1px solid var(--glass-border);border-bottom-color:var(--glass-border-lo);border-radius:14px;padding:13px 16px;cursor:pointer;box-shadow:var(--glass-shadow),inset 0 1px 0 var(--glass-inner);color:inherit;font:inherit;transition:box-shadow .2s,border-color .2s,transform .15s}
+.card:hover{border-color:rgba(201,100,66,.35);box-shadow:0 10px 36px var(--coral-glow),0 2px 8px rgba(0,0,0,.08),inset 0 1.5px 0 var(--glass-inner);transform:translateY(-1.5px)}
+.card .code{font-size:11.5px;color:var(--ink-60);font-weight:300}
+.card h2{font-size:16px;margin:4px 0 6px;font-weight:400;font-family:'Lora',Georgia,serif}
+.card .blurb{font-size:13.5px;font-weight:300;line-height:1.5;color:var(--ink);margin:0 0 8px}
+.badge{display:inline-block;font-size:10.5px;font-weight:500;letter-spacing:.08em;text-transform:uppercase;padding:3px 8px;border-radius:100px;border:1px solid var(--ink-12);color:var(--warn)}
+.badge.pub{color:var(--ok);border-color:rgba(47,111,78,.3);background:rgba(47,111,78,.1)}
+.section{background:var(--glass-bg);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border:1px solid var(--glass-border);border-bottom-color:var(--glass-border-lo);border-radius:16px;padding:16px 18px;margin:0 0 10px;box-shadow:var(--glass-shadow),inset 0 1.5px 0 var(--glass-inner)}
+.section h3{margin:0 0 6px;font-size:15px;font-weight:400;font-family:'Lora',Georgia,serif}
+.hint{color:var(--ink-60);font-size:13px;font-weight:300;margin:0 0 12px;line-height:1.5}
+.item{border-top:1px solid var(--ink-12);padding:10px 0}
 .item:first-of-type{border-top:0;padding-top:0}
-.item-head{font-weight:500}
-.path{font-size:.78rem;color:var(--ink-60);margin-top:.25rem;word-break:break-all}
-.snip{font-size:.9rem;color:var(--ink-60);margin-top:.3rem}
-.actions{display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.45rem}
-button{font:inherit;font-size:.75rem;letter-spacing:.04em;text-transform:uppercase;border:1px solid var(--ink-12);background:var(--chip);color:var(--ink);padding:.35rem .55rem;border-radius:8px;cursor:pointer}
-button.primary{background:var(--ink);color:var(--page-bg)}
+.item-head{font-size:14px;font-weight:400}
+.path{font-size:12px;color:var(--ink-60);font-weight:300;margin-top:2px;word-break:break-all}
+.snip{font-size:13px;color:var(--ink-60);font-weight:300;margin-top:4px}
+.actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+button, .btn{font-family:'Source Serif 4',Georgia,serif;font-size:13px;font-weight:300;border:1px solid var(--glass-border);background:var(--glass-bg);color:var(--ink);padding:8px 14px;border-radius:11px;cursor:pointer;box-shadow:inset 0 1px 0 var(--glass-inner)}
+button:hover, .btn:hover{border-color:rgba(201,100,66,.4);color:var(--coral)}
+button.primary{background:var(--btn-bg);border-color:var(--btn-bg);color:var(--page-bg);box-shadow:0 2px 8px rgba(0,0,0,.15)}
+button.primary:hover{background:var(--btn-hover);border-color:var(--btn-hover);color:#fff}
 button.danger{color:var(--bad);background:transparent}
 button:disabled{opacity:.5}
-.fact-grid,.pin-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:.65rem}
-.fact,.pin{border:1px solid var(--ink-12);border-radius:10px;padding:.75rem;background:rgba(255,255,255,.35)}
-.fact.rumor{border-color:#e0b58a;background:rgba(247,234,216,.5)}
-.fact .label,.pin .role{font-size:.7rem;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-60)}
-.fact .val{font-size:1.05rem;margin:.25rem 0}
-.form{display:grid;gap:.5rem}
-.form label{display:grid;gap:.2rem;font-size:.78rem;color:var(--ink-60)}
-.form input,.form select,textarea{font:inherit;padding:.45rem .5rem;border:1px solid var(--ink-12);border-radius:8px;background:transparent;color:var(--ink)}
-.health{display:flex;gap:1rem;align-items:center}
-.grade{font-size:1.8rem;font-weight:600}
-.toast{position:fixed;bottom:1.2rem;right:1.2rem;background:var(--ink);color:var(--page-bg);padding:.55rem .8rem;border-radius:999px;font-size:.85rem;opacity:0;pointer-events:none;transition:opacity .2s}
-.toast.show{opacity:1}
-.ask-out{white-space:pre-wrap;font-size:.85rem;background:rgba(26,20,16,.92);color:#f3efe6;padding:.9rem;border-radius:10px;max-height:360px;overflow:auto;margin-top:.75rem}
+.fact-grid,.pin-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px}
+.fact,.pin{border:1px solid var(--glass-border);border-radius:12px;padding:12px;background:var(--glass-inner)}
+.fact.rumor{border-color:rgba(201,100,66,.35)}
+.fact .label,.pin .role{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-60);font-weight:500}
+.fact .val{font-size:15px;margin:4px 0;font-weight:400}
+.form{display:grid;gap:8px}
+.form label{display:grid;gap:4px;font-size:12px;color:var(--ink-60);font-weight:300}
+.form input,.form select,textarea{font-family:'Source Serif 4',Georgia,serif;font-size:14.5px;font-weight:300;padding:10px 12px;border:1px solid var(--glass-border);border-radius:11px;background:transparent;color:var(--ink)}
+.form input:focus,.form select:focus,textarea:focus{outline:none;border-color:rgba(201,100,66,.5);box-shadow:0 0 0 3px rgba(201,100,66,.09)}
+.chips{display:flex;flex-wrap:wrap;gap:7px;margin:0 0 14px}
+.chip{background:transparent;border:1px dashed var(--ink-12);border-radius:100px;padding:5px 12px;font-size:12px;font-weight:300;color:var(--ink-60)}
+.chip strong{color:var(--ink);font-weight:400;margin-right:4px}
+.chip.missing{color:var(--warn);border-color:rgba(138,75,22,.35)}
+.back{display:inline-block;font-size:13px;color:var(--ink-60);margin-bottom:12px}
+.status-line{font-size:14px;font-weight:300;margin:0 0 4px}
+.health-detail{font-size:12.5px;color:var(--ink-60);font-weight:300}
+.index-detail{margin-top:8px;font-size:12.5px;color:var(--ink-60);font-weight:300}
+.index-detail summary{cursor:pointer;color:var(--ink-60)}
+.index-detail summary:hover{color:var(--coral)}
+.ask-out{white-space:pre-wrap;font-size:13px;background:rgba(26,20,16,.92);color:#f3efe6;padding:12px 14px;border-radius:12px;max-height:360px;overflow:auto;margin-top:10px}
 .hidden{display:none}
-.empty{color:var(--ink-60);font-size:.92rem}
+.empty{color:var(--ink-60);font-size:14px;font-weight:300}
+.toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(10px);background:var(--glass-bg);backdrop-filter:blur(20px);border:1px solid var(--glass-border);border-radius:100px;padding:8px 20px;font-size:13px;font-weight:300;color:var(--ink);box-shadow:var(--glass-shadow);z-index:200;opacity:0;pointer-events:none;transition:opacity .25s,transform .25s}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+hr.sep{border:none;border-top:1px solid var(--ink-12);margin:14px 0}
 </style>
 </head>
 <body>
-<div class="wrap">
-  <nav class="nav">
-    <a class="brand" href="/">TIGA</a>
-    <a href="/">Search</a>
-    <a class="active" href="/projects">Projects</a>
-    <a href="/projects#ask">Ask</a>
-    <a href="/storage">Storage</a>
-  </nav>
+<div class="blob-layer">
+  <div class="blob blob-1"></div>
+  <div class="blob blob-2"></div>
+  <div class="blob blob-3"></div>
+</div>
 
-  <div id="listView">
-    <h1>Project wiki</h1>
-    <p class="lede">Auto-drafted from Hunt (Grokopedia-style). Anyone can pin, hide, and cite facts — Wikipedia-style. No coding.</p>
-    <div class="grid" id="projectGrid"><p class="empty">Loading projects…</p></div>
-  </div>
+<div class="container">
+  <header class="header">
+    <a class="logo-mark" href="/">
+      <div class="cat-wrap">
+        <svg class="cat-svg" viewBox="0 0 34 34" fill="none">
+          <g class="cat-body-group">
+            <path class="cat-tail" d="M7.5 29.5 Q2.5 26 4.2 20.5 Q5.8 26 8.8 28Z" fill="#C96442"/>
+            <ellipse cx="17" cy="22.5" rx="9.5" ry="8" fill="#C96442"/>
+            <ellipse cx="17" cy="12.5" rx="8.5" ry="8" fill="#C96442"/>
+            <polygon points="9.5,8.5 6.2,1.5 13.2,7" fill="#C96442"/>
+            <polygon points="24.5,8.5 27.8,1.5 20.8,7" fill="#C96442"/>
+            <ellipse class="cat-eye-l" cx="13.4" cy="12.6" rx="2.1" ry="2.5" fill="white" opacity=".92"/>
+            <ellipse class="cat-eye-r" cx="20.6" cy="12.6" rx="2.1" ry="2.5" fill="white" opacity=".92"/>
+            <ellipse class="cat-eye-l" cx="13.4" cy="12.6" rx=".88" ry="2.1" fill="#1A1410" opacity=".85"/>
+            <ellipse class="cat-eye-r" cx="20.6" cy="12.6" rx=".88" ry="2.1" fill="#1A1410" opacity=".85"/>
+          </g>
+        </svg>
+      </div>
+      <span class="logo-name">TIGA</span>
+    </a>
+    <div class="header-right">
+      <nav class="top-nav" aria-label="Primary">
+        <a class="top-nav-link" href="/">Search</a>
+        <a class="top-nav-link active" href="/projects">Projects</a>
+        <a class="top-nav-link" href="/projects#ask">Ask</a>
+        <a class="top-nav-link" href="/storage">Storage</a>
+      </nav>
+      <button class="icon-btn" id="themeToggle" title="Toggle theme" aria-label="Toggle colour theme">
+        <svg class="icon-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <circle cx="12" cy="12" r="5"/>
+          <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+          <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+          <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+          <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+        </svg>
+        <svg class="icon-moon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+        </svg>
+      </button>
+    </div>
+  </header>
 
-  <div id="pageView" class="hidden">
-    <a class="back" href="#" id="backBtn">← All projects</a>
-    <div class="hero-row" id="chips"></div>
-    <h1 id="pageTitle">Project</h1>
-    <p class="lede" id="pageSummary"></p>
-    <div class="section">
-      <div class="health">
-        <div class="grade" id="grade">—</div>
-        <div>
-          <div id="healthState"></div>
-          <div class="meta" id="healthDetail"></div>
-        </div>
+  <main class="page">
+    <div id="listView">
+      <h1 class="hero-title">Projects,<br><span class="title-accent">the job in a glance</span></h1>
+      <p class="lede">A short wiki blurb of what the job is — not an index dashboard. Pin sources, cite facts, and fill the overview so staff can read it in five seconds.</p>
+      <div class="grid" id="projectGrid"><p class="empty">Loading projects…</p></div>
+    </div>
+
+    <div id="pageView" class="hidden">
+      <a class="back" href="#" id="backBtn">← All projects</a>
+      <h1 class="hero-title" id="pageTitle">Project</h1>
+      <p class="lede" id="pageBlurb"></p>
+      <div class="chips" id="chips"></div>
+      <div class="section" id="statusSec">
+        <div class="status-line" id="healthState"></div>
+        <div class="health-detail" id="healthDetail"></div>
+      </div>
+
+      <div class="section">
+        <h3>Overview</h3>
+        <p class="hint">What this job is, for whom (or typology), stage, and location if known. Saved to the wiki overlay — survives re-index.</p>
+        <form class="form" id="overviewForm">
+          <label>Blurb <textarea name="summary" rows="3" placeholder="NUS BIZ3 is a tertiary education project for NUS in Singapore, currently at construction."></textarea></label>
+          <label>Name <input name="name" placeholder="NUS Business School"></label>
+          <label>Typology <input name="typology" placeholder="education"></label>
+          <label>Client <input name="client" placeholder="NUS"></label>
+          <label>Stage <input name="stage" placeholder="construction"></label>
+          <label>Location <input name="location" placeholder="Singapore"></label>
+          <button class="primary" type="submit">Save overview</button>
+        </form>
+      </div>
+
+      <details class="section index-detail" id="indexSec">
+        <summary>Index</summary>
+        <p class="hint" id="indexDetail" style="margin-top:10px">File counts and overlay path — secondary to the job blurb.</p>
+      </details>
+
+      <div class="section" id="pinsSec">
+        <h3>Authoritative pins</h3>
+        <p class="hint">Human-confirmed sources of truth. Auto candidates below are not trusted until pinned.</p>
+        <div class="pin-grid" id="pins"></div>
+      </div>
+
+      <div class="section" id="factsSec">
+        <h3>Cited facts</h3>
+        <p class="hint">Auto facts start uncited (rumours). Add a path cite to keep them — wiki style.</p>
+        <div class="fact-grid" id="facts"></div>
+        <form class="form" id="factForm" style="margin-top:1rem">
+          <h3>Add / update fact</h3>
+          <label>Key <input name="key" required placeholder="client"></label>
+          <label>Label <input name="label" required placeholder="Client"></label>
+          <label>Value <input name="value" required placeholder="NUS"></label>
+          <label>Citation path <input name="cite" required placeholder="/Projects/.../file.pdf"></label>
+          <label>Status
+            <select name="status"><option>draft</option><option>verified</option><option>disputed</option></select>
+          </label>
+          <button class="primary" type="submit">Save fact</button>
+        </form>
+      </div>
+
+      <div class="section" id="docsSec"></div>
+
+      <div class="section" id="ask">
+        <h3>Ask</h3>
+        <p class="hint">Answers only from pins + cited facts. Locked until the page has a pin. Einstein stays out of this slice.</p>
+        <form class="form" id="askForm">
+          <label>Question <input name="question" required placeholder="What is the latest GA set?"></label>
+          <button class="primary" type="submit">Ask</button>
+        </form>
+        <pre class="ask-out hidden" id="askOut"></pre>
       </div>
     </div>
-
-    <div class="section" id="pinsSec">
-      <h3>Authoritative pins</h3>
-      <p class="hint">Human-confirmed sources of truth. Auto candidates below are not trusted until pinned.</p>
-      <div class="pin-grid" id="pins"></div>
-    </div>
-
-    <div class="section" id="factsSec">
-      <h3>Cited facts</h3>
-      <p class="hint">Auto facts start uncited (rumors). Add a path cite to keep them — wiki style.</p>
-      <div class="fact-grid" id="facts"></div>
-      <form class="form" id="factForm" style="margin-top:1rem">
-        <h3 style="margin:0;font-size:.95rem">Add / update fact</h3>
-        <label>Key <input name="key" required placeholder="client"></label>
-        <label>Label <input name="label" required placeholder="Client"></label>
-        <label>Value <input name="value" required placeholder="NUS"></label>
-        <label>Citation path <input name="cite" required placeholder="/Projects/.../file.pdf"></label>
-        <label>Status
-          <select name="status"><option>draft</option><option>verified</option><option>disputed</option></select>
-        </label>
-        <button class="primary" type="submit">Save fact</button>
-      </form>
-    </div>
-
-    <div class="section" id="docsSec"></div>
-
-    <div class="section" id="ask">
-      <h3>Ask (Einstein)</h3>
-      <p class="hint">Answers only from pins + cited facts. Locked until the page has a pin.</p>
-      <form class="form" id="askForm">
-        <label>Question <input name="question" required placeholder="What is the latest GA set?"></label>
-        <button class="primary" type="submit">Ask</button>
-      </form>
-      <pre class="ask-out hidden" id="askOut"></pre>
-    </div>
-  </div>
+  </main>
 </div>
 <div class="toast" id="toast"></div>
 <script>
 const $ = (id) => document.getElementById(id);
 let currentCode = null;
 let currentPage = null;
+
+const root = document.documentElement;
+const themeBtn = document.getElementById('themeToggle');
+let savedTheme = localStorage.getItem('tiga-theme') || 'auto';
+applyTheme(savedTheme);
+themeBtn.addEventListener('click', () => {
+  const cur = root.getAttribute('data-theme');
+  const osDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  let next = cur === 'auto' ? (osDark ? 'light' : 'dark') : cur === 'dark' ? 'light' : 'auto';
+  applyTheme(next);
+  localStorage.setItem('tiga-theme', next);
+});
+function applyTheme(t) { root.setAttribute('data-theme', t); }
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+  if (root.getAttribute('data-theme') === 'auto') applyTheme('auto');
+});
 
 function toast(msg) {
   const t = $('toast');
@@ -155,6 +277,12 @@ async function api(path, opts) {
   return data;
 }
 
+function statusBadge(published) {
+  return published
+    ? '<span class="badge pub">Published</span>'
+    : '<span class="badge">Needs curation</span>';
+}
+
 async function loadList() {
   const projects = await api('/api/atlas/projects');
   const grid = $('projectGrid');
@@ -163,15 +291,24 @@ async function loadList() {
     return;
   }
   grid.innerHTML = projects.map(p => `
-    <button class="card" data-code="${escapeAttr(p.project_id)}">
-      <div class="code">${escapeHtml(p.project_id)}</div>
-      <h2>${escapeHtml(p.project_id)}</h2>
-      <div class="meta">${p.file_count} files · ${p.wiki_pins} pin(s)
-        <span class="badge ${p.status === 'curated' ? 'pub' : 'draft'}">${p.status}</span>
-      </div>
-    </button>`).join('');
-  grid.querySelectorAll('.card').forEach(btn => {
-    btn.addEventListener('click', () => openPage(btn.dataset.code));
+    <article class="card" data-code="${escapeAttr(p.project_id)}" role="button" tabindex="0">
+      <div class="code">${escapeHtml(p.project_id)} ${statusBadge(p.published)}</div>
+      <h2>${escapeHtml(p.name || p.project_id)}</h2>
+      <p class="blurb">${escapeHtml(p.blurb || 'Needs curation.')}</p>
+      <details class="index-detail">
+        <summary>Index</summary>
+        <div style="margin-top:6px">${p.file_count} files · ${p.wiki_pins} pin(s)</div>
+      </details>
+    </article>`).join('');
+  grid.querySelectorAll('.card').forEach(card => {
+    const open = () => openPage(card.dataset.code);
+    card.addEventListener('click', (e) => {
+      if (e.target.closest('details')) return;
+      open();
+    });
+    card.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); }
+    });
   });
 }
 
@@ -188,18 +325,50 @@ async function refreshPage() {
   renderPage(currentPage);
 }
 
+function filled(v) {
+  const s = String(v || '').trim();
+  if (!s) return false;
+  return !['needs curation','unknown','n/a','na','none','—','-','tbd'].includes(s.toLowerCase());
+}
+
 function renderPage(p) {
   const proj = p.project || {};
-  $('pageTitle').textContent = proj.name || proj.code;
-  $('pageSummary').textContent = p.summary || '';
   const h = p.health || {};
-  $('grade').textContent = h.grade || '—';
-  $('healthState').textContent = `${h.state || ''} · ${h.score || 0}/100`;
-  $('healthDetail').textContent = (h.checks || []).map(c => (c.ok ? '✓ ' : '! ') + c.detail).join(' · ');
-  $('chips').innerHTML = ['typology','stage','location','client','status']
-    .filter(k => proj[k])
-    .map(k => `<span class="chip"><strong>${k}</strong> ${escapeHtml(String(proj[k]))}</span>`)
-    .join('');
+  $('pageTitle').textContent = proj.name || proj.code;
+  $('pageBlurb').textContent = p.blurb || 'Needs curation.';
+  const identity = [
+    ['typology', 'Typology'],
+    ['client', 'Client'],
+    ['stage', 'Stage'],
+    ['location', 'Location'],
+  ];
+  $('chips').innerHTML = identity.map(([k, label]) => {
+    const ok = filled(proj[k]);
+    const val = ok ? String(proj[k]) : 'Needs curation';
+    return `<span class="chip ${ok ? '' : 'missing'}"><strong>${label}</strong> ${escapeHtml(val)}</span>`;
+  }).join('');
+
+  if (h.published && h.show_health_score) {
+    $('healthState').innerHTML = `${statusBadge(true)} ${h.score}/100`;
+    $('healthDetail').textContent = (h.checks || []).map(c => (c.ok ? '✓ ' : '! ') + c.detail).join(' · ');
+  } else {
+    $('healthState').innerHTML = statusBadge(false);
+    const missing = (h.missing_fields || []).join(', ');
+    const checks = (h.checks || []).filter(c => !c.ok).map(c => c.detail);
+    $('healthDetail').textContent = (missing ? 'Still open: ' + missing + '. ' : '') + (checks.join(' · ') || 'Fill the overview, pin a source, and cite at least one fact.');
+  }
+
+  const idx = p.index || {};
+  $('indexDetail').innerHTML = `${idx.file_count || 0} files · ${idx.candidate_count || 0} Hunt candidates · ${idx.pin_count || 0} pin(s)` +
+    (idx.overlay ? `<div class="path">${escapeHtml(idx.overlay)}</div>` : '');
+
+  const form = $('overviewForm');
+  form.summary.value = p.summary || '';
+  form.name.value = proj.name || '';
+  form.typology.value = filled(proj.typology) ? proj.typology : '';
+  form.client.value = filled(proj.client) ? proj.client : '';
+  form.stage.value = filled(proj.stage) ? proj.stage : '';
+  form.location.value = filled(proj.location) ? proj.location : '';
 
   const pins = p.pins || [];
   $('pins').innerHTML = pins.length ? pins.map(pin => `
@@ -215,7 +384,7 @@ function renderPage(p) {
     return `<div class="fact ${cited ? '' : 'rumor'}">
       <div class="label">${escapeHtml(f.label || f.key)} · ${escapeHtml(f.status || 'draft')}</div>
       <div class="val">${escapeHtml(f.value || '—')}</div>
-      <div class="path">${cited ? escapeHtml((f.cite_paths || []).join(', ')) : 'No citation — rumor'}</div>
+      <div class="path">${cited ? escapeHtml((f.cite_paths || []).join(', ')) : 'No citation — rumour'}</div>
       ${!cited ? `<div class="actions"><button data-cite-fact="${escapeAttr(f.key)}" data-label="${escapeAttr(f.label || f.key)}" data-value="${escapeAttr(f.value || '')}">Add cite…</button></div>` : ''}
     </div>`;
   }).join('') : '<p class="empty">No facts yet.</p>';
@@ -227,7 +396,7 @@ function renderPage(p) {
     const body = items.length ? items.map(it => `
       <div class="item">
         <div class="item-head">${escapeHtml(it.title || '')}
-          <span class="badge ${it.pinned ? 'pub' : 'draft'}">${it.pinned ? 'pinned' : 'candidate'}</span>
+          <span class="badge ${it.pinned ? 'pub' : ''}">${it.pinned ? 'pinned' : 'candidate'}</span>
         </div>
         <div class="path">${escapeHtml(it.path || '')}</div>
         ${it.snippet ? `<div class="snip">${escapeHtml(it.snippet)}</div>` : ''}
@@ -237,7 +406,7 @@ function renderPage(p) {
         </div>
       </div>`).join('') : '<p class="empty">No candidates from Hunt yet.</p>';
     return `<h3>${title}</h3><p class="hint">Auto from Hunt search — pin what is authoritative.</p>${body}`;
-  }).join('<hr style="border:none;border-top:1px solid var(--ink-12);margin:1rem 0">');
+  }).join('<hr class="sep">');
 
   $('docsSec').querySelectorAll('[data-pin-path]').forEach(btn => {
     btn.onclick = () => pin(btn.dataset.pinPath, btn.dataset.pinTitle, btn.dataset.pinRole);
@@ -289,6 +458,24 @@ $('backBtn').onclick = (e) => {
   $('listView').classList.remove('hidden');
   location.hash = '';
   loadList();
+};
+
+$('overviewForm').onsubmit = async (e) => {
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  await api('/api/atlas/page/' + encodeURIComponent(currentCode) + '/overview', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({
+      summary: fd.get('summary'),
+      name: fd.get('name'),
+      typology: fd.get('typology'),
+      client: fd.get('client'),
+      stage: fd.get('stage'),
+      location: fd.get('location'),
+    })
+  });
+  toast('Overview saved');
+  await refreshPage();
 };
 
 $('factForm').onsubmit = async (e) => {

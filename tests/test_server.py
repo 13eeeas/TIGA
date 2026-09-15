@@ -285,6 +285,66 @@ def test_projects_empty_on_empty_db(client) -> None:
     assert isinstance(resp.json(), list)
 
 
+def test_atlas_projects_page_uses_hunt_chrome(client) -> None:
+    """Projects UI shares Hunt header language, not a separate Atlas dialect."""
+    resp = client.get("/projects")
+    assert resp.status_code == 200
+    html = resp.text
+    assert "logo-name" in html
+    assert "blob-layer" in html
+    assert "the job in a glance" in html
+    assert "Needs curation" in html
+    assert "Project wiki" not in html
+    # Atlas-dialect all-caps buttons are gone; Hunt-weight buttons remain.
+    assert "letter-spacing:.04em;text-transform:uppercase" not in html
+
+
+def test_atlas_list_empty_project_is_needs_curation(client, db, tmp_path: Path) -> None:
+    db.execute(
+        "INSERT OR IGNORE INTO files "
+        "(file_id, file_path, file_name, extension, status, project_id) "
+        "VALUES ('fid-atlas', '/a/file.txt', 'file.txt', '.txt', 'INDEXED', 'NUS')"
+    )
+    db.commit()
+    with patch("core.atlas_wiki._module_cfg") as cfg_mock:
+        cfg_mock.work_dir = tmp_path
+        resp = client.get("/api/atlas/projects")
+    assert resp.status_code == 200
+    rows = resp.json()
+    nus = next(p for p in rows if p["project_id"] == "NUS")
+    assert nus["status"] == "needs-curation"
+    assert nus["published"] is False
+    assert "Needs curation" in nus["blurb"]
+
+
+def test_atlas_overview_endpoint_persists_overlay(client, tmp_path: Path) -> None:
+    from config import load_config
+
+    cfg_file = tmp_path / "config.yaml"
+    cfg_file.write_text("index_roots: ['/tmp']\n", encoding="utf-8")
+    cfg = load_config(config_file=cfg_file, work_dir=tmp_path)
+    with patch("core.atlas_wiki._module_cfg", cfg):
+        resp = client.post(
+            "/api/atlas/page/NUS/overview",
+            json={
+                "summary": "NUS BIZ3 is an education project for NUS in Singapore.",
+                "name": "NUS BIZ3",
+                "typology": "education",
+                "client": "NUS",
+                "stage": "construction",
+                "location": "Singapore",
+            },
+        )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["ok"] is True
+    overlay = tmp_path / "atlas" / "nus.overlay.json"
+    assert overlay.exists()
+    text = overlay.read_text(encoding="utf-8")
+    assert "NUS BIZ3" in text
+    assert "education" in text
+
+
 def test_storage_endpoint_returns_snapshot(client, db, tmp_path: Path) -> None:
     """GET /api/storage returns a reconciled snapshot without walking NAS."""
     work = tmp_path / "work"
