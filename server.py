@@ -557,6 +557,10 @@ class QueryResponse(BaseModel):
     fallback_suggestion: str | None = None
     index_stats:         dict | None = None
     latency_ms:          float
+    # Honesty signals for impossible / unsupported claims (API consumers).
+    support_status:      str | None = None   # supported|partial|unsupported|no_match|n/a
+    unsupported_tokens:  list[str] | None = None
+    critical_tokens:     list[str] | None = None
 
 
 class SessionResponse(BaseModel):
@@ -914,6 +918,30 @@ async def api_query(
     follow_up_prompts: list[str] = []
     results_page: list[ResultView] = []
     fallback_suggestion: str | None = None
+    support_status: str | None = None
+    unsupported_tokens: list[str] | None = None
+    critical_tokens: list[str] | None = None
+
+    def _apply_support_honesty(result_dicts: list[dict]) -> None:
+        """Attach support metadata and clamp confidence for unsupported claims."""
+        nonlocal confidence, answer_summary, support_status, unsupported_tokens, critical_tokens
+        try:
+            from core.retrieval_boost import assess_evidence_support
+            assessment = assess_evidence_support(req.query, result_dicts)
+        except Exception:
+            return
+        support_status = assessment["support_status"]
+        critical_tokens = assessment["critical_tokens"] or None
+        unsupported_tokens = assessment["unsupported_tokens"] or None
+        if support_status == "unsupported":
+            confidence = 0.0
+            answer_summary = (
+                "No indexed evidence supports the critical terms in this query "
+                f"({', '.join(assessment['unsupported_tokens'])}). "
+                "Showing no fabricated matches."
+            )
+        elif support_status == "partial":
+            confidence = min(confidence, 0.35)
 
     def run_semantic_fallback() -> None:
         """Run evidence retrieval when metadata routing has no answer."""
@@ -945,6 +973,20 @@ async def api_query(
             answer_summary = f"Found {len(base_results)} relevant evidence result(s)."
             follow_up_prompts = []
             confidence = max((r.final_score for r in base_results), default=0.0)
+        _apply_support_honesty([
+            {
+                "snippet": r.snippet,
+                "file_name": r.title,
+                "file_path": r.file_path or r.rel_path,
+                "rel_path": r.rel_path,
+                "chunk_text": getattr(r, "evidence_text", None) or r.snippet,
+            }
+            for r in base_results
+        ])
+        if support_status == "unsupported":
+            base_results = []
+            results_page = []
+            return
         mixed = sorted(base_results + _aggregate_dirs(base_results),
                        key=lambda x: x.final_score, reverse=True)
         results_page = mixed[req.offset : req.offset + req.top_k]
@@ -980,6 +1022,15 @@ async def api_query(
             for file in files_result
         ]
         results_page = file_views[req.offset : req.offset + req.top_k]
+        if route.filters.get("exact_filename") and not files_result:
+            support_status = "no_match"
+            critical_tokens = route.filters.get("path_terms") or None
+            unsupported_tokens = critical_tokens
+            confidence = 0.0
+            answer_summary = (
+                "No indexed file matches that exact name. "
+                "Not broadening to other files of the same type."
+            )
 
     elif mode == "cross_project":
         exec_result = execute_cross_project_query(route, conn=conn)
@@ -1000,10 +1051,15 @@ async def api_query(
     # A scoped native-file request (for example, "Istana CAD") is precise:
     # keep its no-match result visible instead of replacing it with unrelated
     # semantic evidence while that project's index is still catching up.
+    # Exact-filename lookups are also precise — never broaden into generic CAD.
     explicit_scoped_file_lookup = (
         mode == "file_locator"
         and bool(route.project_code)
-        and bool(route.filters.get("content_type") or route.filters.get("extensions"))
+        and bool(
+            route.filters.get("content_type")
+            or route.filters.get("extensions")
+            or route.filters.get("exact_filename")
+        )
     )
     if no_structured_evidence or (
         mode == "file_locator" and not files_result and not explicit_scoped_file_lookup
@@ -1089,6 +1145,9 @@ async def api_query(
         fallback_suggestion = fallback_suggestion,
         index_stats        = index_stats,
         latency_ms         = round(duration_ms, 1),
+        support_status     = support_status,
+        unsupported_tokens = unsupported_tokens,
+        critical_tokens    = critical_tokens,
     )
 
 

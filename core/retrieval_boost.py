@@ -6,7 +6,9 @@ Closes the gap between raw BM25-OR and pre-AI Google-style document search:
   2. Phrase-aware FTS query building
   3. Path / filename boost (archives live in folder structure)
   4. Project-code soft filter boost
-  5. Near-duplicate suppression (same file, keep best chunk)
+  5. Near-duplicate suppression (same file + name-family variants)
+  6. Exact-filename hints (no silent broaden to all .dwg / CAD)
+  7. Critical-token honesty (numbers / rare nouns → unsupported empty pack)
 
 All local — zero API cost. Makes the evidence pack clean before Einstein runs.
 """
@@ -14,6 +16,7 @@ All local — zero API cost. Makes the evidence pack clean before Einstein runs.
 from __future__ import annotations
 
 import re
+from pathlib import Path
 from typing import Any
 
 # Firm / architecture paraphrase lexicon — query tokens → retrieval expand terms.
@@ -230,24 +233,268 @@ def apply_archive_boosts(
     candidates.sort(key=lambda r: (-r["final_score"], r.get("file_path", "")))
 
 
+# Archive / query vocabulary that should NOT count as claim-critical tokens.
+# File-type and project-scope words must stay non-critical so good queries
+# like "NUS BIZ3 presentation ppt" / "CAD" / "design brief" keep working.
+_NON_CRITICAL = _STOP | frozenset({
+    "nus", "biz", "biz3", "approved", "final", "cost", "approval", "approvals",
+    "presentation", "presentations", "ppt", "pptx", "powerpoint", "deck", "slides",
+    "cad", "dwg", "dxf", "bim", "revit", "design", "brief", "report", "drawing",
+    "drawings", "tender", "submission", "document", "documents", "file", "files",
+    "folder", "latest", "version", "revision", "issue", "issued", "pdf", "docx",
+    "agreement", "contract", "qs", "quantity", "surveyor", "meeting", "minutes",
+    "client", "consultant", "architecture", "architectural", "building", "project",
+    "base", "set", "package", "documentation", "spec", "specification",
+    "discussion", "clarification", "requirement", "requirements", "programme",
+    "program", "summary", "evidence", "content", "details", "please", "need",
+    "looking", "want", "like", "using", "related", "regarding", "concerning",
+    "update", "updates", "current", "status", "info", "information", "check",
+    "search", "query", "ask", "asking", "there", "here", "have", "been",
+    "model", "site", "residential", "hospitality", "commercial", "education",
+    "healthcare", "hospital", "mixed", "masterplan", "hotel", "resort", "office", "school",
+    "green", "mark", "gold", "platinum", "leed", "tianmu",
+})
+
+_NUMBER_WORDS = frozenset({
+    "million", "billion", "trillion", "thousand", "hundred",
+})
+
+_FILENAME_TOKEN_RE = re.compile(
+    r"\b([a-z0-9][\w.-]{2,80}\.[a-z0-9]{1,12})\b",
+    re.IGNORECASE,
+)
+# Unique archive-style stems: at least two underscore segments (rare in prose).
+_UNIQUE_STEM_RE = re.compile(
+    r"\b([a-z][a-z0-9]*(?:_[a-z0-9]+){2,})\b",
+    re.IGNORECASE,
+)
+
+_STEM_NOISE_RE = re.compile(
+    r"(?:^|[\s_\-])(?:"
+    r"v\d+|rev(?:ision)?[\s_\-]?[a-z0-9]*|r\d+|final|draft|copy|wip|"
+    r"issue[\s_\-]?\d+|\d{8}|\d{4}[\s_\-]?\d{2}[\s_\-]?\d{2}"
+    r")(?=$|[\s_\-./])",
+    re.IGNORECASE,
+)
+
+
+def extract_filename_hints(query: str) -> list[str]:
+    """
+    Detect exact-filename / unique-stem tokens so file lookup does not
+    silently broaden to every matching extension (e.g. all .dwg files).
+    Returns stem and full-name hints suitable for path LIKE filters.
+    """
+    hints: list[str] = []
+    seen: set[str] = set()
+
+    def _add(token: str) -> None:
+        t = token.strip().lower()
+        if len(t) < 3 or t in seen or t in _NON_CRITICAL:
+            return
+        seen.add(t)
+        hints.append(t)
+
+    for m in _FILENAME_TOKEN_RE.finditer(query):
+        full = m.group(1)
+        _add(full)
+        stem = full.rsplit(".", 1)[0]
+        _add(stem)
+
+    for m in _UNIQUE_STEM_RE.finditer(query):
+        _add(m.group(1))
+
+    return hints
+
+
+def extract_critical_tokens(query: str) -> list[str]:
+    """
+    Claim-critical tokens that evidence must support: specific numbers,
+    magnitude words, exact filenames, and rare nouns.
+    Common archive / file-type vocabulary is excluded.
+    """
+    critical: list[str] = []
+    seen: set[str] = set()
+
+    def _add(token: str) -> None:
+        t = token.lower().strip()
+        if not t or t in seen or t in _NON_CRITICAL:
+            return
+        seen.add(t)
+        critical.append(t)
+
+    for hint in extract_filename_hints(query):
+        _add(hint)
+
+    for word in re.findall(r"[a-z0-9]+", query.lower()):
+        if word.isdigit() and len(word) >= 3:
+            _add(word)
+        elif word in _NUMBER_WORDS:
+            _add(word)
+        elif len(word) >= 4 and word not in _NON_CRITICAL and not word.isdigit():
+            # Rare-ish content noun (e.g. "moon", "xyzzy") — skip file-type vocab.
+            _add(word)
+
+    # Prefer stronger signals first (filenames / numbers already added).
+    return critical
+
+
+def _candidate_haystack(candidate: dict[str, Any]) -> str:
+    parts = [
+        str(candidate.get("chunk_text") or ""),
+        str(candidate.get("snippet") or ""),
+        str(candidate.get("file_name") or ""),
+        str(candidate.get("file_path") or ""),
+        str(candidate.get("rel_path") or ""),
+    ]
+    return " ".join(parts).lower()
+
+
+def tokens_supported_by_candidate(
+    candidate: dict[str, Any],
+    critical_tokens: list[str],
+) -> list[str]:
+    """Return which critical tokens appear in the candidate evidence."""
+    if not critical_tokens:
+        return []
+    hay = _candidate_haystack(candidate)
+    return [t for t in critical_tokens if t in hay]
+
+
+def assess_evidence_support(
+    query: str,
+    candidates: list[dict[str, Any]],
+    *,
+    top_n: int = 8,
+) -> dict[str, Any]:
+    """
+    Honesty signal for API consumers: do top hits actually mention
+    query-critical tokens (numbers, rare nouns, exact filenames)?
+
+    Returns:
+      {
+        "critical_tokens": [...],
+        "supported_tokens": [...],
+        "unsupported_tokens": [...],
+        "support_status": "supported" | "partial" | "unsupported" | "n/a",
+      }
+    """
+    critical = extract_critical_tokens(query)
+    if not critical:
+        return {
+            "critical_tokens": [],
+            "supported_tokens": [],
+            "unsupported_tokens": [],
+            "support_status": "n/a",
+        }
+
+    pool = candidates[: max(top_n, 1)]
+    supported: list[str] = []
+    seen: set[str] = set()
+    for c in pool:
+        for tok in tokens_supported_by_candidate(c, critical):
+            if tok not in seen:
+                seen.add(tok)
+                supported.append(tok)
+
+    unsupported = [t for t in critical if t not in seen]
+    if not supported:
+        status = "unsupported"
+    elif unsupported:
+        status = "partial"
+    else:
+        status = "supported"
+
+    return {
+        "critical_tokens": critical,
+        "supported_tokens": supported,
+        "unsupported_tokens": unsupported,
+        "support_status": status,
+    }
+
+
+def apply_critical_token_honesty(
+    candidates: list[dict[str, Any]],
+    query: str,
+    *,
+    empty_when_unsupported: bool = True,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """
+    Demote candidates that lack query-critical tokens. When the whole pack
+    fails to support any critical token, optionally return an empty list
+    (honest no-support) instead of flooding with generic near-misses.
+    """
+    assessment = assess_evidence_support(query, candidates)
+    critical = assessment["critical_tokens"]
+    if not critical or not candidates:
+        return candidates, assessment
+
+    for c in candidates:
+        hits = tokens_supported_by_candidate(c, critical)
+        c["_supported_critical"] = hits
+        if not hits:
+            # Strong demotion — keep ranking shape but surface unsupported pack.
+            c["final_score"] = float(c.get("final_score", 0.0)) * 0.12
+
+    candidates.sort(key=lambda r: (-r["final_score"], r.get("file_path", "")))
+    assessment = assess_evidence_support(query, candidates)
+
+    if empty_when_unsupported and assessment["support_status"] == "unsupported":
+        return [], assessment
+    return candidates, assessment
+
+
+def name_family_key(file_name: str, file_path: str = "") -> str:
+    """
+    Normalise presentation / tender variants into one family key so
+    RevA / Final / dated copies do not flood the evidence pack.
+    """
+    name = file_name or Path(file_path.replace("\\", "/")).name
+    stem = Path(name).stem.lower()
+    cleaned = _STEM_NOISE_RE.sub(" ", stem)
+    cleaned = re.sub(r"[^a-z0-9]+", "", cleaned)
+    return cleaned or stem or name.lower()
+
+
 def suppress_near_duplicates(
     candidates: list[dict[str, Any]],
     *,
     max_per_file: int = 2,
+    max_per_name_family: int = 1,
 ) -> list[dict[str, Any]]:
     """
-    Keep at most max_per_file chunks per file_id (already score-sorted).
-    Prevents one long PDF from flooding the evidence pack — Google-style diversity.
+    Keep at most max_per_file chunks per file_id and at most
+    max_per_name_family files per normalised name family (already score-sorted).
+
+    Name-family capping stops tender-presentation variants (RevA / Final /
+    dated exports) from flooding the top evidence pack.
     """
-    if max_per_file <= 0:
+    if max_per_file <= 0 and max_per_name_family <= 0:
         return candidates
-    counts: dict[str, int] = {}
+
+    file_counts: dict[str, int] = {}
+    family_counts: dict[str, int] = {}
     out: list[dict[str, Any]] = []
     for c in candidates:
         fid = str(c.get("file_id") or c.get("file_path") or "")
-        n = counts.get(fid, 0)
-        if n >= max_per_file:
-            continue
-        counts[fid] = n + 1
+        if max_per_file > 0:
+            n = file_counts.get(fid, 0)
+            if n >= max_per_file:
+                continue
+        family = name_family_key(
+            str(c.get("file_name") or ""),
+            str(c.get("file_path") or ""),
+        )
+        if max_per_name_family > 0 and family:
+            # Only count a new family member when this is the first chunk
+            # from this file (later chunks of the same file share the family
+            # slot already reserved by max_per_file).
+            first_chunk_of_file = file_counts.get(fid, 0) == 0
+            if first_chunk_of_file:
+                fn = family_counts.get(family, 0)
+                if fn >= max_per_name_family:
+                    continue
+                family_counts[family] = fn + 1
+
+        file_counts[fid] = file_counts.get(fid, 0) + 1
         out.append(c)
     return out

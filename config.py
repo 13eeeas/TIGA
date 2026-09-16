@@ -247,6 +247,8 @@ class Config:
         self.domain_expand_enabled: bool = ret.get("domain_expand_enabled", True)
         # Cap chunks from the same file in the ranked pool (evidence diversity)
         self.max_chunks_per_file: int = int(ret.get("max_chunks_per_file", 2))
+        # Cap distinct near-duplicate filenames (RevA/Final/dated presentation variants)
+        self.max_per_name_family: int = int(ret.get("max_per_name_family", 1))
 
         # --- Field test data collector (office → dev refinement) ---
         fc = data.get("field_collect", {})

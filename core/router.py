@@ -751,6 +751,19 @@ class QueryRouter:
         if "extensions" in f:
             f.pop("content_type", None)
 
+        # Exact / unique filenames must not broaden into every file of that
+        # extension (e.g. xyzzy_nonexistent_987654.dwg → all project CAD).
+        try:
+            from core.retrieval_boost import extract_filename_hints
+            filename_hints = extract_filename_hints(q)
+        except Exception:
+            filename_hints = []
+        if filename_hints:
+            existing = [str(t).lower() for t in (f.get("path_terms") or [])]
+            merged = list(dict.fromkeys(existing + filename_hints))
+            f["path_terms"] = merged
+            f["exact_filename"] = True
+
         # A presentation may be a native deck or an issued/exported PDF.
         # content_type alone misses the latter because PDFs retain PDF metadata.
         if any(_matches_term(q, term) for term in _PRESENTATION_FAMILY_TERMS):

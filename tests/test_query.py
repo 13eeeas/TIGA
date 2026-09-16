@@ -192,6 +192,49 @@ def test_presentation_terms_use_native_and_pdf_deck_family(query) -> None:
     assert route.filters["presentation_family"] is True
 
 
+def test_exact_nonexistent_filename_does_not_broaden_to_all_cad(tmp_path: Path, conn) -> None:
+    """Unique missing .dwg name must not return every CAD file in the project."""
+    cad = tmp_path / "NUS BIZ3" / "CAD" / "floor_plan.dwg"
+    cad.parent.mkdir(parents=True)
+    cad.write_bytes(b"dwg")
+    conn.execute(
+        "INSERT INTO files (file_id, file_path, file_name, extension, status, "
+        "project_code, project_id, content_type) "
+        "VALUES ('cad1', ?, 'floor_plan.dwg', '.dwg', 'INDEXED', 'NUS BIZ3', 'NUS BIZ3', 'CAD')",
+        (cad.as_posix(),),
+    )
+    conn.commit()
+
+    route = QueryRouter().classify("NUS BIZ3 xyzzy_nonexistent_987654.dwg")
+    assert route.filters.get("exact_filename") is True
+    result = execute_file_locator_query(route, conn=conn)
+    assert result["files"] == []
+    assert result["confidence"] == 0.0
+
+
+def test_search_empties_when_critical_tokens_unsupported(tmp_path: Path, conn) -> None:
+    """Impossible numeric claim must not surface generic cost/approval evidence."""
+    cfg_obj = _cfg(tmp_path)
+    cfg_obj.reranker_enabled = False
+    _seed(
+        conn,
+        tmp_path,
+        "NUS BIZ3/qs_agreement.txt",
+        "Final approved cost agreement between client and quantity surveyor.",
+        project_id="NUS BIZ3",
+    )
+
+    with patch("core.vectors.query_vector", return_value=[]):
+        results = search(
+            "NUS BIZ3 approved final cost 999 trillion",
+            conn=conn,
+            cfg_obj=cfg_obj,
+            filters={"project_path_contains": "NUS BIZ3"},
+        )
+
+    assert results == []
+
+
 def test_make_citation_single_root(tmp_path: Path) -> None:
     """Single root → citation has no bracket prefix."""
     roots = [tmp_path / "archive"]

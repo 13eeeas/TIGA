@@ -660,12 +660,20 @@ def _search_impl(
         )
 
     # Diversity: avoid one PDF flooding the pack (keeps best chunks per file)
+    # and cap near-duplicate presentation / tender name variants.
     if getattr(_cfg, "max_chunks_per_file", 2) > 0:
         from core.retrieval_boost import suppress_near_duplicates
         candidates = suppress_near_duplicates(
             candidates,
             max_per_file=int(getattr(_cfg, "max_chunks_per_file", 2)),
+            max_per_name_family=int(getattr(_cfg, "max_per_name_family", 1)),
         )
+
+    # Honesty: demote / empty when top hits lack query-critical tokens
+    # (specific numbers, rare nouns, exact filenames). Stops silent broaden
+    # into generic QS/approval excerpts for impossible claims.
+    from core.retrieval_boost import apply_critical_token_honesty
+    candidates, _support = apply_critical_token_honesty(candidates, query)
 
     # ── Step 3b: Cross-encoder reranking (optional) ────────────────────────────
     # When enabled, a cross-encoder reads (query, chunk) together and replaces
