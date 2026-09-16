@@ -362,9 +362,16 @@ def _auto_facts_from_card(card: dict[str, Any] | None) -> list[dict[str, Any]]:
 
 
 def compute_health(page: dict[str, Any]) -> dict[str, Any]:
-    """Published only with curated identity + ≥1 pin + cited facts.
+    """Published / 100 only when every gate passes.
 
-    Empty / Needs-curation cards must never report Published or 100/100.
+    Gates (aligned with Atlas UI chips that show "Needs curation"):
+      1. curated_fields — typology, client, stage, location all filled
+      2. has_pin — ≥1 pin
+      3. cited_facts — ≥1 cited fact and zero uncited kept facts
+      4. readable_blurb — human summary or curated identity blurb
+
+    Project code alone (legacy has_identity) is not enough. Empty /
+    Needs-curation cards must never report Published or 100/100.
     File counts are not part of this gate.
     """
     facts = page.get("facts") or []

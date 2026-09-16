@@ -125,18 +125,21 @@ def test_pin_only_does_not_publish_or_score_100() -> None:
     assert health["state"] == "Needs curation"
 
 
-def test_needs_curation_fields_block_published_even_with_pin_and_cites() -> None:
+def test_pins_cites_and_summary_without_core_fields_are_not_published() -> None:
+    """WOHA regression: pins + cited facts + summary must not yield Published · 100/100
+    while stage/typology/client/location still need curation.
+    """
     health = compute_health(
         {
             "project": {
                 "code": "NUS",
-                "name": "NUS",
+                "name": "NUS BIZ3",
                 "typology": "Needs curation",
                 "client": "Needs curation",
                 "stage": "Needs curation",
                 "location": "Needs curation",
             },
-            "summary": "",
+            "summary": "Staff note: campus building for the university.",
             "pins": [{"role": "other", "path": "/a.pdf"}],
             "facts": [
                 {
@@ -148,8 +151,72 @@ def test_needs_curation_fields_block_published_even_with_pin_and_cites() -> None
         }
     )
     assert health["published"] is False
+    assert health["state"] == "Needs curation"
     assert health["score"] < 100
     assert health["show_health_score"] is False
+    assert health["missing_fields"] == ["typology", "client", "stage", "location"]
+    curated_check = next(c for c in health["checks"] if c["id"] == "curated_fields")
+    assert curated_check["ok"] is False
+
+
+def test_empty_string_core_fields_block_published_like_needs_curation() -> None:
+    """UI shows 'Needs curation' for empty strings; health must match."""
+    health = compute_health(
+        {
+            "project": {
+                "code": "WOHA",
+                "name": "WOHA Project",
+                "typology": "",
+                "client": "",
+                "stage": "",
+                "location": "",
+            },
+            "summary": "Staff note: masterplan overview.",
+            "pins": [{"role": "overview_deck", "path": "/deck.pdf"}],
+            "facts": [
+                {
+                    "key": "client",
+                    "value": "Client",
+                    "cite_paths": ["/brief.pdf"],
+                }
+            ],
+        }
+    )
+    assert health["published"] is False
+    assert health["score"] < 100
+    assert set(health["missing_fields"]) == {
+        "typology",
+        "client",
+        "stage",
+        "location",
+    }
+
+
+def test_partial_core_fields_still_block_published() -> None:
+    health = compute_health(
+        {
+            "project": {
+                "code": "261",
+                "name": "Tianmu",
+                "typology": "residential",
+                "client": "Far East",
+                "stage": "",  # still open
+                "location": "Taipei",
+            },
+            "summary": "Tianmu residential for Far East in Taipei.",
+            "pins": [{"role": "other", "path": "/a.pdf"}],
+            "facts": [
+                {
+                    "key": "client",
+                    "value": "Far East",
+                    "cite_paths": ["/brief.pdf"],
+                }
+            ],
+        }
+    )
+    assert health["published"] is False
+    assert health["score"] < 100
+    assert health["missing_fields"] == ["stage"]
 
 
 def test_curated_fields_without_cited_facts_are_not_published() -> None:
@@ -166,6 +233,7 @@ def test_curated_fields_without_cited_facts_are_not_published() -> None:
 
 
 def test_published_when_curated_pin_and_cited_facts() -> None:
+    """Pins + cited facts + summary + filled core fields → Published / 100."""
     health = compute_health(
         {
             "project": _curated_project(),
@@ -186,6 +254,8 @@ def test_published_when_curated_pin_and_cited_facts() -> None:
     assert health["show_health_score"] is True
     assert health["score"] == 100
     assert health["missing_fields"] == []
+    curated_check = next(c for c in health["checks"] if c["id"] == "curated_fields")
+    assert curated_check["ok"] is True
 
 
 # ---------------------------------------------------------------------------
