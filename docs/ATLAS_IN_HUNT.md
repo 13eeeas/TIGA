@@ -29,6 +29,8 @@ Overlays live in `tiga_work/atlas/*.overlay.json` (survive re-index). Overview f
 ## Standalone Atlas repo
 
 `13eeeas/TIGA-Atlas` remains the design lab / offline tools. **Staff only use Hunt.**
+Ticket board + handoff: [`ATLAS_HANDOFF.md`](ATLAS_HANDOFF.md). Hunt → Atlas
+signals: [`HUNT_DATA_STRUCTURE.md`](HUNT_DATA_STRUCTURE.md).
 
 ## Rollback
 

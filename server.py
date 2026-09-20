@@ -10,8 +10,9 @@ Endpoints
   GET  /api/projects             — distinct project_ids + file counts
   GET  /api/project/{code}       — project data card
   GET  /api/atlas/projects       — wiki project list (blurb + curation status)
-  GET  /api/atlas/page/{code}    — auto Grokopedia page + wiki overlay
+  GET  /api/atlas/page/{code}    — assembled model page + wiki overlay
   POST /api/atlas/page/{code}/pin|hide|fact|overview|ask
+  POST /api/atlas/page/{code}/document|strategy|team|decision|precedent|lifecycle
   GET  /projects                 — Projects wiki UI (Atlas in Hunt)
   POST /api/session              — create new session, returns {session_id}
   GET  /api/session/{session_id} — message history for session
@@ -1293,6 +1294,56 @@ class AtlasOverviewRequest(BaseModel):
     location: str | None = None
 
 
+class AtlasDocumentRequest(BaseModel):
+    path: str
+    title: str = ""
+    authority: str = "candidate"
+    role: str = "other"
+    note: str = ""
+    supersedes: list[str] = []
+    superseded_by: list[str] = []
+
+
+class AtlasStrategyRequest(BaseModel):
+    tag: str
+    label: str = ""
+    note: str = ""
+    cite_paths: list[str] = []
+    status: str = "active"
+    id: str | None = None
+
+
+class AtlasTeamRequest(BaseModel):
+    role: str
+    name: str = ""
+    org: str = ""
+    note: str = ""
+    id: str | None = None
+
+
+class AtlasDecisionRequest(BaseModel):
+    title: str
+    status: str = "proposed"
+    rationale: str = ""
+    cite_paths: list[str] = []
+    decided_at: str | None = None
+    related_strategy_ids: list[str] = []
+    id: str | None = None
+
+
+class AtlasPrecedentRequest(BaseModel):
+    project_code: str
+    relation: str = "related"
+    note: str = ""
+    cite_paths: list[str] = []
+    id: str | None = None
+
+
+class AtlasLifecycleRequest(BaseModel):
+    stage: str
+    note: str = ""
+
+
 @app.get("/api/atlas/projects")
 async def api_atlas_projects(
     conn: sqlite3.Connection = Depends(get_db),
@@ -1388,6 +1439,147 @@ async def api_atlas_ask(
     page = get_wiki_page(code, conn=conn)
     result = wiki_compose(page, req.question.strip())
     _audit("Atlas ask", f"{code}: {req.question[:80]}")
+    return result
+
+
+def _atlas_save_row(code: str, mutate) -> dict[str, Any]:
+    from core.atlas_wiki import load_overlay, save_overlay
+    from config import cfg as _cfg
+
+    ov = load_overlay(code, _cfg)
+    row = mutate(ov)
+    path = save_overlay(code, ov, _cfg)
+    return {"ok": True, "row": row, "overlay": str(path)}
+
+
+@app.post("/api/atlas/page/{code}/document")
+async def api_atlas_document(code: str, req: AtlasDocumentRequest) -> dict[str, Any]:
+    from core.atlas_model import upsert_document
+
+    if not req.path.strip():
+        raise HTTPException(status_code=400, detail="path required")
+
+    def mutate(ov):
+        return upsert_document(
+            ov,
+            path=req.path.strip(),
+            title=req.title,
+            authority=req.authority,
+            role=req.role,
+            note=req.note,
+            supersedes=req.supersedes,
+            superseded_by=req.superseded_by,
+            source="wiki",
+        )
+
+    result = _atlas_save_row(code, mutate)
+    _audit("Atlas document", f"{code} {req.authority} → {req.path}")
+    return result
+
+
+@app.post("/api/atlas/page/{code}/strategy")
+async def api_atlas_strategy(code: str, req: AtlasStrategyRequest) -> dict[str, Any]:
+    from core.atlas_model import upsert_strategy
+
+    if not req.tag.strip():
+        raise HTTPException(status_code=400, detail="tag required")
+
+    def mutate(ov):
+        return upsert_strategy(
+            ov,
+            tag=req.tag,
+            label=req.label,
+            note=req.note,
+            cite_paths=req.cite_paths,
+            status=req.status,
+            strategy_id=req.id,
+        )
+
+    result = _atlas_save_row(code, mutate)
+    _audit("Atlas strategy", f"{code} {req.tag}")
+    return result
+
+
+@app.post("/api/atlas/page/{code}/team")
+async def api_atlas_team(code: str, req: AtlasTeamRequest) -> dict[str, Any]:
+    from core.atlas_model import upsert_team_member
+
+    if not req.role.strip():
+        raise HTTPException(status_code=400, detail="role required")
+
+    def mutate(ov):
+        return upsert_team_member(
+            ov,
+            role=req.role,
+            name=req.name,
+            org=req.org,
+            note=req.note,
+            member_id=req.id,
+        )
+
+    result = _atlas_save_row(code, mutate)
+    _audit("Atlas team", f"{code} {req.role}")
+    return result
+
+
+@app.post("/api/atlas/page/{code}/decision")
+async def api_atlas_decision(code: str, req: AtlasDecisionRequest) -> dict[str, Any]:
+    from core.atlas_model import upsert_decision
+
+    if not req.title.strip():
+        raise HTTPException(status_code=400, detail="title required")
+
+    def mutate(ov):
+        return upsert_decision(
+            ov,
+            title=req.title,
+            status=req.status,
+            rationale=req.rationale,
+            cite_paths=req.cite_paths,
+            decided_at=req.decided_at,
+            related_strategy_ids=req.related_strategy_ids,
+            decision_id=req.id,
+        )
+
+    result = _atlas_save_row(code, mutate)
+    _audit("Atlas decision", f"{code} {req.title[:60]}")
+    return result
+
+
+@app.post("/api/atlas/page/{code}/precedent")
+async def api_atlas_precedent(code: str, req: AtlasPrecedentRequest) -> dict[str, Any]:
+    from core.atlas_model import upsert_precedent
+
+    if not req.project_code.strip():
+        raise HTTPException(status_code=400, detail="project_code required")
+
+    def mutate(ov):
+        return upsert_precedent(
+            ov,
+            project_code=req.project_code,
+            relation=req.relation,
+            note=req.note,
+            cite_paths=req.cite_paths,
+            precedent_id=req.id,
+        )
+
+    result = _atlas_save_row(code, mutate)
+    _audit("Atlas precedent", f"{code} → {req.project_code}")
+    return result
+
+
+@app.post("/api/atlas/page/{code}/lifecycle")
+async def api_atlas_lifecycle(code: str, req: AtlasLifecycleRequest) -> dict[str, Any]:
+    from core.atlas_model import set_lifecycle
+
+    if not req.stage.strip():
+        raise HTTPException(status_code=400, detail="stage required")
+
+    def mutate(ov):
+        return set_lifecycle(ov, req.stage, note=req.note)
+
+    result = _atlas_save_row(code, mutate)
+    _audit("Atlas lifecycle", f"{code} stage={req.stage}")
     return result
 
 

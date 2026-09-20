@@ -32,6 +32,15 @@ from pathlib import Path
 from typing import Any
 
 from config import cfg as _module_cfg, Config
+from core.atlas_model import (
+    SCHEMA_VERSION as ATLAS_SCHEMA_VERSION,
+    assemble_from_rows,
+    hunt_document_proposals,
+    model_answers_project_questions,
+    normalize_overlay,
+    set_lifecycle,
+    upsert_document,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -178,25 +187,18 @@ def _overlay_path(code: str, cfg_obj: Config | None = None) -> Path:
 def load_overlay(code: str, cfg_obj: Config | None = None) -> dict[str, Any]:
     path = _overlay_path(code, cfg_obj)
     if not path.exists():
-        return {
-            "schema_version": 1,
-            "product": "tiga-atlas-overlay",
-            "project_code": code,
-            "updated_at": _utc(),
-            "pins": [],
-            "facts": [],
-            "hidden_paths": [],
-            "summary": None,
-            "project": {},
-        }
-    return json.loads(path.read_text(encoding="utf-8"))
+        return normalize_overlay(code, None)
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    return normalize_overlay(code, raw)
 
 
 def save_overlay(code: str, overlay: dict[str, Any], cfg_obj: Config | None = None) -> Path:
-    overlay["project_code"] = code
-    overlay["updated_at"] = _utc()
+    normalized = normalize_overlay(code, overlay)
+    normalized["project_code"] = code
+    normalized["updated_at"] = _utc()
+    normalized["schema_version"] = ATLAS_SCHEMA_VERSION
     path = _overlay_path(code, cfg_obj)
-    path.write_text(json.dumps(overlay, indent=2), encoding="utf-8")
+    path.write_text(json.dumps(normalized, indent=2), encoding="utf-8")
     return path
 
 
@@ -483,8 +485,9 @@ def get_wiki_page(
     ).fetchone()
     file_count = int(file_row["n"] if file_row is not None else 0)
 
+    proposals = hunt_document_proposals(conn, code)
     page = {
-        "schema_version": 1,
+        "schema_version": ATLAS_SCHEMA_VERSION,
         "product": "tiga-atlas-wiki",
         "project": project,
         "summary": human_summary or "",
@@ -512,6 +515,7 @@ def get_wiki_page(
             "overlay": str(_overlay_path(code, cfg)),
             "card_found": card is not None,
             "candidate_count": len(candidates),
+            "hunt_doc_proposals": len(proposals),
         },
     }
     page["health"] = compute_health(page)
@@ -519,6 +523,16 @@ def get_wiki_page(
         page["project"]["status"] = "published"
     else:
         page["project"]["status"] = "needs-curation"
+    # Ticket A: page assembles from structured rows (SoT), not free-form wiki.
+    page["model"] = assemble_from_rows(
+        code=code,
+        overlay=overlay,
+        project=page["project"],
+        blurb=blurb,
+        facts=facts,
+        hunt_proposals=proposals,
+    )
+    page["model_readiness"] = model_answers_project_questions(page["model"])
     return page
 
 
@@ -549,6 +563,16 @@ def wiki_pin(
             break
     else:
         pins.append(pin)
+    # Ticket A: pins are also first-class authoritative document rows.
+    upsert_document(
+        ov,
+        path=path,
+        title=title or Path(path).name,
+        authority="authoritative",
+        role=role,
+        note=note or "Pinned by wiki contributor",
+        source="wiki",
+    )
     save_overlay(code, ov, cfg_obj)
     return pin
 
@@ -621,10 +645,13 @@ def wiki_overview(
             proj.pop(key, None)
         else:
             proj[key] = value
+    if proj.get("stage"):
+        set_lifecycle(ov, str(proj["stage"]))
     save_overlay(code, ov, cfg_obj)
     return {
         "summary": ov.get("summary"),
         "project": dict(proj),
+        "lifecycle": dict(ov.get("lifecycle") or {}),
         "overlay": str(_overlay_path(code, cfg_obj)),
     }
 
