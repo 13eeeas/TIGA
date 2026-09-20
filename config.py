@@ -282,6 +282,10 @@ class Config:
         self.ocr_enabled: bool = ocr.get("enabled", False)
         self.ocr_on_empty_pdf: bool = ocr.get("on_empty_pdf", False)
         self.tesseract_cmd: str = ocr.get("tesseract_cmd", "tesseract")
+        self.ocr_confidence_threshold: float = float(
+            ocr.get("confidence_threshold", 0.55)
+        )
+        self.ocr_max_files_per_run: int = int(ocr.get("max_files_per_run", 50))
 
         # --- Einstein (Phase 2) ---
         ein = data.get("einstein", {})
