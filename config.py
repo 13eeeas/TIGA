@@ -253,6 +253,10 @@ class Config:
         self.retrieval_thin_min_top_score: float = float(
             ret.get("thin_min_top_score", 0.35)
         )
+        self.project_autoscope_enabled: bool = bool(
+            ret.get("project_autoscope_enabled", True)
+        )
+        self.fts_query_mode: str = str(ret.get("fts_query_mode", "and_phrase"))
 
         # --- Field test data collector (office → dev refinement) ---
         fc = data.get("field_collect", {})

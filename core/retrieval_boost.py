@@ -82,7 +82,7 @@ def domain_expand_terms(query: str) -> list[str]:
     return out
 
 
-def extract_phrases(query: str) -> list[str]:
+def extract_phrases(query: str, *, include_bigrams: bool = False) -> list[str]:
     """Known multi-word phrases present in the query (lowercase)."""
     q = query.lower()
     found: list[str] = []
@@ -92,12 +92,13 @@ def extract_phrases(query: str) -> list[str]:
     # Also treat quoted "..." as phrases
     for m in re.finditer(r'"([^"]{2,80})"', query):
         found.append(m.group(1).strip().lower())
-    # Adjacent content bigrams (length ≥2 each, not stopwords)
-    tokens = [t for t in re.findall(r"[a-z0-9]+", q) if t not in _STOP and len(t) > 1]
-    for i in range(len(tokens) - 1):
-        bigram = f"{tokens[i]} {tokens[i + 1]}"
-        if bigram not in found and len(bigram) >= 6:
-            found.append(bigram)
+    if include_bigrams:
+        # Adjacent content bigrams (length ≥2 each, not stopwords)
+        tokens = [t for t in re.findall(r"[a-z0-9]+", q) if t not in _STOP and len(t) > 1]
+        for i in range(len(tokens) - 1):
+            bigram = f"{tokens[i]} {tokens[i + 1]}"
+            if bigram not in found and len(bigram) >= 6:
+                found.append(bigram)
     # Cap to avoid FTS bloat
     return found[:6]
 
@@ -112,49 +113,75 @@ def build_fts_query(
     *,
     use_phrases: bool = True,
     use_domain_expand: bool = True,
+    mode: str = "and_phrase",
 ) -> str:
     """
-    Build an FTS5 MATCH string with:
-      - original content tokens (OR)
-      - synonym / domain expand tokens (OR)
-      - phrase clauses for known / bigram phrases (OR of "phrase")
+    Build an FTS5 MATCH string.
+
+    Default ``and_phrase`` (tighter):
+      - content tokens combined with AND (not OR sprawl)
+      - known phrases as OR alternatives for recall
+      - at most a few domain/synonym expands as OR alternatives
+
+    Legacy ``or_legacy``: previous OR-of-everything behaviour.
     """
     cleaned = re.sub(r"[^\w\s]", " ", query)
     base_tokens = [
         t for t in cleaned.split()
         if t.lower() not in _STOP and len(t) > 1
     ]
-    base_set = {t.lower() for t in base_tokens}
+    # Prefer longer / more specific tokens when capping AND terms
+    ranked = sorted(base_tokens, key=lambda t: (-len(t), t.lower()))
+    required = ranked[:6]
 
     extra: list[str] = []
+    seen = {t.lower() for t in required}
     for term in expanded_terms or []:
         for word in re.sub(r"[^\w\s]", " ", term).split():
             w = word.lower()
-            if w not in base_set and w not in _STOP and len(w) > 2:
-                base_set.add(w)
+            if w not in seen and w not in _STOP and len(w) > 2:
+                seen.add(w)
                 extra.append(word)
 
     if use_domain_expand:
         for syn in domain_expand_terms(query):
-            if syn not in base_set and len(syn) > 2:
-                base_set.add(syn)
+            if syn not in seen and len(syn) > 2:
+                seen.add(syn)
                 extra.append(syn)
 
-    clauses: list[str] = []
-    # Phrase clauses first (higher specificity — BM25 still ranks)
+    if mode == "or_legacy":
+        clauses: list[str] = []
+        if use_phrases:
+            for phrase in extract_phrases(query, include_bigrams=True):
+                safe = phrase.replace('"', "")
+                if safe:
+                    clauses.append(f'"{safe}"')
+        clauses.extend((base_tokens + extra)[:40])
+        return " OR ".join(clauses) if clauses else '""'
+
+    # and_phrase (default)
+    alts: list[str] = []
+    if required:
+        if len(required) == 1:
+            alts.append(required[0])
+        else:
+            alts.append("(" + " AND ".join(required) + ")")
+
     if use_phrases:
-        for phrase in extract_phrases(query):
-            # FTS5 phrase: "green mark"
+        for phrase in extract_phrases(query, include_bigrams=False):
             safe = phrase.replace('"', "")
             if safe:
-                clauses.append(f'"{safe}"')
+                alts.append(f'"{safe}"')
 
-    all_tokens = (base_tokens + extra)[:40]
-    clauses.extend(all_tokens)
+    # Keep expands as optional recall lanes — capped so they don't OR-explode
+    for term in extra[:3]:
+        alts.append(term)
 
-    if not clauses:
+    if not alts:
         return '""'
-    return " OR ".join(clauses)
+    if len(alts) == 1:
+        return alts[0]
+    return " OR ".join(alts)
 
 
 def path_filename_boost(

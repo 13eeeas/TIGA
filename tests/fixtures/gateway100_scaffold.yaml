@@ -1,0 +1,17 @@
+# Gateway 100-Q retrieval scaffold (graded paths)
+# Fill expected_paths as the 3–5 project POC index grows.
+# Run: python tiga.py eval   (uses tiga_work/fixtures/eval_queries.yaml by default)
+# Copy entries here into eval_queries.yaml or point --fixture when wired.
+
+queries:
+  - query: "261 project brief"
+    project_code: "261"
+    expected_paths: []
+    expected_citations: []
+  - query: "tender documentation dwellings"
+    expected_paths: []
+  - query: "green mark certification"
+    expected_paths: []
+  - query: "facade strategy across projects"
+    expected_paths: []
+  # …grow toward 100 graded staff queries on the live POC corpus
