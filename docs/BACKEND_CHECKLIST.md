@@ -76,8 +76,10 @@
 - [x] **Phrase-aware FTS** + **domain paraphrase expand** (`core/retrieval_boost.py`)
 - [x] **Path / filename boost** + **project-code boost** (Google-classic archive signals)
 - [x] **Per-file chunk cap** so one PDF cannot flood the evidence pack
-- [ ] Tune BM25 OR behavior further on multi-project NAS corpus
-- [ ] Project scoping: auto-filter when project code detected in query
+- [x] **Tighter BM25** `fts_query_mode: and_phrase` (AND content tokens; capped expand OR)
+- [x] Project autoscope when code detected (`apply_project_autoscope`) + cross-project escape hatch
+- [ ] Tune thresholds on multi-project live NAS corpus
+- [ ] Grow graded fixture toward 100-Q on 3–5 project POC
 
 ### Reranker (critical)
 - [x] Cross-encoder module (`core/reranker.py`)
@@ -263,7 +265,7 @@ Week 4   Track D + Track F (cards, 100-Q run, memo)
 | Reranker off by default | was `config.py` | **Fixed in init template** |
 | Rerank uses snippet not full text | `reranker.py`, `query.py` | **Fixed** |
 | Only 3 snippets to LLM | `compose.py` | **Fixed — evidence pack 12** |
-| Eval = path recall only | `core/eval.py` | Still TODO |
+| Eval = path recall only | `core/eval.py` | **Improved** — Recall@k / NDCG@5 / citation precision; 100-Q corpus still TODO |
 | Latest boost query-triggered only | `core/query.py` | **Fixed — soft default** |
 | Near-dup suppression missing | — | **Partial:** exact fingerprint dedupe at discover |
 | Index 3–5 POC projects | your NAS + config | **Your next step** |

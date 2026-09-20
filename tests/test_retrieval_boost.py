@@ -31,6 +31,20 @@ def test_build_fts_includes_phrase_and_expand() -> None:
     q = build_fts_query("dwellings for Tianmu", use_phrases=True, use_domain_expand=True)
     assert "units" in q.lower() or "residential" in q.lower()
     assert "Tianmu" in q or "tianmu" in q.lower()
+    # Default and_phrase mode should AND content tokens, not OR-sprawl them
+    assert " AND " in q
+    assert q.count(" OR ") <= 6
+
+
+def test_build_fts_or_legacy_mode() -> None:
+    q = build_fts_query(
+        "dwellings for Tianmu",
+        use_phrases=True,
+        use_domain_expand=True,
+        mode="or_legacy",
+    )
+    assert " OR " in q
+    assert " AND " not in q
 
 
 def test_path_boost_higher_when_name_matches() -> None:

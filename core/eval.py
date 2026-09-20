@@ -164,6 +164,69 @@ def _has_hit(returned_paths: list[str], expected_paths: list[str]) -> bool:
     return False
 
 
+def _path_matches(candidate: str, expected: str) -> bool:
+    c = candidate.replace("\\", "/")
+    e = expected.replace("\\", "/")
+    return c.endswith(e) or e in c
+
+
+def recall_at_k(
+    returned_paths: list[str],
+    expected_paths: list[str],
+    k: int,
+) -> float:
+    """Fraction of expected paths found in the top-k returned paths."""
+    if not expected_paths or k <= 0:
+        return 0.0
+    top = returned_paths[:k]
+    hits = sum(
+        1 for ep in expected_paths
+        if any(_path_matches(fp, ep) for fp in top)
+    )
+    return hits / len(expected_paths)
+
+
+def simple_ndcg_at_k(
+    returned_paths: list[str],
+    expected_paths: list[str],
+    k: int,
+) -> float:
+    """Binary-relevance NDCG@k (ideal ranking = all expected paths first)."""
+    import math
+    if not expected_paths or k <= 0:
+        return 0.0
+    top = returned_paths[:k]
+    dcg = 0.0
+    for i, fp in enumerate(top):
+        rel = 1.0 if any(_path_matches(fp, ep) for ep in expected_paths) else 0.0
+        if rel:
+            dcg += rel / math.log2(i + 2)
+    ideal_hits = min(len(expected_paths), k)
+    idcg = sum(1.0 / math.log2(i + 2) for i in range(ideal_hits))
+    return (dcg / idcg) if idcg > 0 else 0.0
+
+
+def citation_precision(
+    returned_citations: list[str],
+    expected_citations: list[str],
+) -> float:
+    """Fraction of returned citations that match an expected citation/path."""
+    if not returned_citations:
+        return 1.0 if not expected_citations else 0.0
+    if not expected_citations:
+        return 1.0
+    hits = 0
+    for cite in returned_citations:
+        c = cite.replace("\\", "/")
+        path_part = c.split("#", 1)[0]
+        for exp in expected_citations:
+            e = exp.replace("\\", "/")
+            if c == e or path_part.endswith(e) or e in path_part or e in c:
+                hits += 1
+                break
+    return hits / len(returned_citations)
+
+
 # ---------------------------------------------------------------------------
 # Eval runner
 # ---------------------------------------------------------------------------
@@ -181,7 +244,8 @@ def run_eval(
     queries: if None, load from tiga_work/fixtures/eval_queries.yaml.
              if provided, treat as ad-hoc (no expected_paths checked).
     """
-    from core.query import search
+    from core.query import apply_project_autoscope, search
+    from core.router import get_router
 
     cfg.ensure_dirs()
     k = top_k or cfg.top_k
@@ -208,15 +272,34 @@ def run_eval(
     hits = 0
     total_citations = 0
     invalid_count = 0
+    recall5_scores: list[float] = []
+    recall10_scores: list[float] = []
+    ndcg5_scores: list[float] = []
+    cite_prec_scores: list[float] = []
+    router = get_router()
 
     for entry in fixture:
         query_str = entry.get("query", "")
         expected_paths: list[str] = entry.get("expected_paths", [])
+        expected_citations: list[str] = entry.get(
+            "expected_citations", expected_paths
+        )
+
+        try:
+            route = router.classify(query_str)
+            filters = apply_project_autoscope(
+                route.filters,
+                route.project_code or entry.get("project_code"),
+                query=query_str,
+                enabled=getattr(cfg, "project_autoscope_enabled", True),
+            )
+        except Exception:
+            filters = {}
 
         # Run query — empty result is OK pre-Phase 4
         t0 = time.perf_counter()
         try:
-            results = search(query_str, top_k=k)
+            results = search(query_str, top_k=max(k, 10), filters=filters or None)
         except Exception as e:
             logger.warning("Search failed for %r: %s — treating as empty", query_str, e)
             results = []
@@ -224,16 +307,33 @@ def run_eval(
         latencies_ms.append(elapsed_ms)
 
         # Recall
-        returned_paths = [r.get("file_path", "") for r in results]
-        hit = _has_hit(returned_paths, expected_paths)
+        returned_paths = [
+            r.get("file_path", "") or r.get("rel_path", "") for r in results
+        ]
+        hit = _has_hit(returned_paths[:k], expected_paths)
         if hit:
             hits += 1
 
-        # Citations — collected from results once query engine returns them
+        r5 = recall_at_k(returned_paths, expected_paths, 5)
+        r10 = recall_at_k(returned_paths, expected_paths, 10)
+        n5 = simple_ndcg_at_k(returned_paths, expected_paths, 5)
+        recall5_scores.append(r5)
+        recall10_scores.append(r10)
+        ndcg5_scores.append(n5)
+
+        # Citations — prefer explicit citation field
         q_citations: list[str] = []
-        for r in results:
+        for r in results[:k]:
+            if r.get("citation"):
+                q_citations.append(r["citation"])
             q_citations.extend(r.get("citations", []))
-        q_invalid = [c for c in q_citations if not validate_citation(c, db_path, root_paths)]
+        cp = citation_precision(q_citations, expected_citations)
+        cite_prec_scores.append(cp)
+
+        q_invalid = [
+            c for c in q_citations
+            if not validate_citation(c, db_path, root_paths)
+        ]
         total_citations += len(q_citations)
         invalid_count  += len(q_invalid)
 
@@ -245,12 +345,19 @@ def run_eval(
             "expected_paths":    expected_paths,
             "citations":         q_citations,
             "invalid_citations": q_invalid,
+            "recall@5":          round(r5, 4),
+            "recall@10":         round(r10, 4),
+            "ndcg@5":            round(n5, 4),
+            "citation_precision": round(cp, 4),
         }
         query_reports.append(q_report)
 
         if verbose:
             marker = "PASS" if hit else "MISS"
             print(f"\n[{marker}] {query_str!r}  ({elapsed_ms:.0f} ms)")
+            print(
+                f"       recall@5={r5:.2f}  ndcg@5={n5:.2f}  cite_prec={cp:.2f}"
+            )
             for path in returned_paths[:k]:
                 print(f"       {path}")
             if q_invalid:
@@ -259,6 +366,10 @@ def run_eval(
     # Aggregate
     n = len(fixture)
     top5_recall = round(hits / n, 4) if n else 0.0
+
+    def _mean(xs: list[float]) -> float:
+        return round(sum(xs) / len(xs), 4) if xs else 0.0
+
     citation_valid_pct = (
         round((1 - invalid_count / total_citations) * 100, 2)
         if total_citations > 0 else 100.0
@@ -271,6 +382,10 @@ def run_eval(
         "ts":                 ts,
         "total_queries":      n,
         "top5_recall":        top5_recall,
+        "recall@5":           _mean(recall5_scores),
+        "recall@10":          _mean(recall10_scores),
+        "ndcg@5":             _mean(ndcg5_scores),
+        "citation_precision": _mean(cite_prec_scores),
         "citation_valid_pct": citation_valid_pct,
         "invalid_citations":  invalid_count,
         "total_citations":    total_citations,
@@ -291,6 +406,12 @@ def run_eval(
     print(f"\n{'-' * 52}")
     print(f"  Queries:          {n}")
     print(f"  Top-5 recall:     {top5_recall * 100:.0f}%")
+    print(
+        f"  Recall@5 / @10:   {report['recall@5'] * 100:.0f}% / "
+        f"{report['recall@10'] * 100:.0f}%"
+    )
+    print(f"  NDCG@5:           {report['ndcg@5']:.3f}")
+    print(f"  Cite precision:   {report['citation_precision'] * 100:.0f}%")
     print(f"  Citation valid:   {citation_valid_pct:.0f}%  [{gate}]")
     print(f"  Latency p50/p95:  {p50:.0f} / {p95:.0f} ms")
     print(f"  Report:           {report_path}")

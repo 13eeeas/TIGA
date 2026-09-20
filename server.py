@@ -108,6 +108,7 @@ from core.index_state import (
 from core.query import (
     search, execute_structured_query,
     execute_file_locator_query, execute_cross_project_query,
+    apply_project_autoscope,
 )
 from core.router import _FILE_LOCATOR_CONCEPTS, _STRUCTURED_CONCEPTS, get_router
 
@@ -919,9 +920,12 @@ async def api_query(
         """Run evidence retrieval when metadata routing has no answer."""
         nonlocal answer_summary, follow_up_prompts, confidence, results_page
         pool_k = cfg.retrieval_candidate_pool(max((req.top_k + req.offset), req.top_k))
-        search_filters = req.filters or {}
-        if route.project_code:
-            search_filters = {**search_filters, "project_path_contains": route.project_code}
+        search_filters = apply_project_autoscope(
+            req.filters or {},
+            route.project_code,
+            query=req.query,
+            enabled=cfg.project_autoscope_enabled,
+        )
         # YAML synonym sets are valuable for routing, but expanding a
         # stakeholder/file-location set into an evidence query can overwhelm
         # the user's specific terms (e.g. "acoustic M&E discussion").  Keep

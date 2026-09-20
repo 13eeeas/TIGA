@@ -229,6 +229,49 @@ def _vector_compatible_filters(filters: dict[str, Any] | None) -> dict[str, Any]
     return out if out else None
 
 
+_ESCAPE_SCOPE_PHRASES = (
+    "across projects",
+    "all projects",
+    "every project",
+    "compare projects",
+    "cross project",
+    "cross-project",
+    "between projects",
+)
+
+
+def wants_project_scope_escape(query: str) -> bool:
+    """True when the user explicitly asks to search beyond one project."""
+    q = (query or "").lower()
+    return any(p in q for p in _ESCAPE_SCOPE_PHRASES)
+
+
+def apply_project_autoscope(
+    filters: dict[str, Any] | None,
+    project_code: str | None,
+    *,
+    query: str = "",
+    enabled: bool = True,
+    force_all: bool = False,
+) -> dict[str, Any]:
+    """
+    Hard-scope retrieval to a detected project code unless escaped.
+
+    Sets ``project_path_contains`` (BM25 path LIKE) when a code is present
+    and the query does not ask for cross-project search.
+    """
+    out: dict[str, Any] = dict(filters or {})
+    if not enabled or force_all or not project_code:
+        return out
+    if wants_project_scope_escape(query):
+        out["scope"] = "all"
+        return out
+    out.setdefault("project_path_contains", str(project_code))
+    # Router may have left a dead project_code key — keep path filter as source of truth
+    out.pop("project_code", None)
+    return out
+
+
 # ---------------------------------------------------------------------------
 # Project scope resolver — converts location/typology → file_id allowlist
 # ---------------------------------------------------------------------------
@@ -305,12 +348,14 @@ def _build_boosted_query(
     Build a BM25 / FTS5 query with synonym + domain expand + phrases.
     Delegates to retrieval_boost (Google-classic signals, no API).
     """
+    from config import cfg as _cfg
     from core.retrieval_boost import build_fts_query
     return build_fts_query(
         query,
         expanded_terms,
         use_phrases=use_phrases,
         use_domain_expand=use_domain_expand,
+        mode=getattr(_cfg, "fts_query_mode", "and_phrase"),
     )
 
 

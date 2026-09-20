@@ -247,6 +247,10 @@ class Config:
         self.domain_expand_enabled: bool = ret.get("domain_expand_enabled", True)
         # Cap chunks from the same file in the ranked pool (evidence diversity)
         self.max_chunks_per_file: int = int(ret.get("max_chunks_per_file", 2))
+        self.project_autoscope_enabled: bool = bool(
+            ret.get("project_autoscope_enabled", True)
+        )
+        self.fts_query_mode: str = str(ret.get("fts_query_mode", "and_phrase"))
 
         # --- Field test data collector (office → dev refinement) ---
         fc = data.get("field_collect", {})
