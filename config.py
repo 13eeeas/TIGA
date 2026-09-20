@@ -247,6 +247,12 @@ class Config:
         self.domain_expand_enabled: bool = ret.get("domain_expand_enabled", True)
         # Cap chunks from the same file in the ranked pool (evidence diversity)
         self.max_chunks_per_file: int = int(ret.get("max_chunks_per_file", 2))
+        # Agentic retry when the first evidence pack is thin
+        self.retrieval_retry_max: int = int(ret.get("retry_max", 1))
+        self.retrieval_thin_min_results: int = int(ret.get("thin_min_results", 1))
+        self.retrieval_thin_min_top_score: float = float(
+            ret.get("thin_min_top_score", 0.35)
+        )
 
         # --- Field test data collector (office → dev refinement) ---
         fc = data.get("field_collect", {})

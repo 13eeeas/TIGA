@@ -96,6 +96,23 @@ def test_health_endpoint_ollama_down(client) -> None:
 # POST /api/query
 # ---------------------------------------------------------------------------
 
+def _fake_search_results():
+    """Non-thin evidence pack so compose/retry paths exercise normally."""
+    return [{
+        "chunk_id": "cid-001",
+        "file_id": "fid-001",
+        "ref_value": "p1",
+        "rel_path": "proj/brief.txt",
+        "file_path": "/tmp/proj/brief.txt",
+        "file_name": "brief.txt",
+        "project_id": "2023_HOSP",
+        "typology": "healthcare",
+        "snippet": "hospital architecture brief design",
+        "final_score": 0.8,
+        "citation": "proj/brief.txt#p1",
+    }]
+
+
 def _semantic_route():
     """Return a mock RouteResult that forces semantic mode."""
     from core.router import RouteResult
@@ -115,7 +132,7 @@ def test_query_endpoint_returns_answer_payload(client) -> None:
         "classify": lambda self, q, project_code=None: _semantic_route(),
     })()
     with (
-        patch("server.search", return_value=[]),
+        patch("server.search", return_value=_fake_search_results()),
         patch("server.compose_answer", return_value=_fake_compose_result()),
         patch("server.get_router", return_value=mock_router),
     ):
@@ -142,7 +159,7 @@ def test_query_creates_session_if_none_provided(client) -> None:
         "classify": lambda self, q, project_code=None: _semantic_route(),
     })()
     with (
-        patch("server.search", return_value=[]),
+        patch("server.search", return_value=_fake_search_results()),
         patch("server.compose_answer", return_value=_fake_compose_result()),
         patch("server.get_router", return_value=mock_router),
     ):
@@ -162,7 +179,7 @@ def test_query_preserves_provided_session_id(client) -> None:
         "classify": lambda self, q, project_code=None: _semantic_route(),
     })()
     with (
-        patch("server.search", return_value=[]),
+        patch("server.search", return_value=_fake_search_results()),
         patch("server.compose_answer", return_value=_fake_compose_result()),
         patch("server.get_router", return_value=mock_router),
     ):
