@@ -110,6 +110,13 @@ Do **not** demo only GFA lookup or a blank wiki page. Validate with 10–20 staf
 
 Fixture: [`../tests/fixtures/moat_validation.yaml`](../tests/fixtures/moat_validation.yaml).
 
+```bash
+python tiga.py eval --moat
+python tiga.py eval --moat --llm-off   # FIND baseline only
+```
+
+Hunt task board (Notion): [TIGA Hunt](https://app.notion.com/p/3e1807c3efa681938a8bcccc126bd756).
+
 **Gate:** if staff do not ask questions of this shape, do not scale the ontology. Also prove search with Ollama/API **disabled** still returns cited evidence.
 
 ---

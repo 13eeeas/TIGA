@@ -539,13 +539,23 @@ def cmd_eval(args: argparse.Namespace) -> None:
         sys.exit(code)
         return
 
-    from core.eval import run_eval
+    from core.eval import default_moat_fixture_path, run_eval
 
-    if getattr(args, "search_only", False):
+    if getattr(args, "search_only", False) or getattr(args, "llm_off", False):
         print("Search-only eval (Hunt retrieval — no API / no compose)\n")
 
+    fixture = getattr(args, "fixture", None)
+    if getattr(args, "moat", False):
+        fixture = str(default_moat_fixture_path())
+        print(f"Moat fixture: {fixture}\n")
+
     queries = args.queries if args.queries else None
-    code = run_eval(queries=queries, top_k=args.top_k)
+    code = run_eval(
+        queries=queries,
+        top_k=args.top_k,
+        fixture_path=fixture,
+        llm_off_only=bool(getattr(args, "llm_off", False)),
+    )
     sys.exit(code)
 
 
@@ -1821,6 +1831,20 @@ def build_parser() -> argparse.ArgumentParser:
                       help="Run routing-only eval (fast, no Ollama required)")
     p_ev.add_argument("--search-only", action="store_true",
                       help="Label run as Hunt-only (default eval never calls API)")
+    p_ev.add_argument(
+        "--fixture",
+        help="Eval YAML path (list or {queries: [...]}; default: tiga_work/fixtures/eval_queries.yaml)",
+    )
+    p_ev.add_argument(
+        "--moat",
+        action="store_true",
+        help="Use tests/fixtures/moat_validation.yaml (architecture-intelligence gate)",
+    )
+    p_ev.add_argument(
+        "--llm-off",
+        action="store_true",
+        help="Only run fixture entries marked llm_off_ok (FIND baseline; no compose)",
+    )
     p_ev.add_argument("--stress", action="store_true",
                       help="Run all 100 stress-test questions end-to-end and export HTML report")
     p_ev.add_argument("--project", default=None,

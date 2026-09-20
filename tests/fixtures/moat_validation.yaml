@@ -3,9 +3,13 @@
 # Purpose: Prove the killer-demo shape before scaling ontology / Atlas graph work.
 # These are NOT "what is the GFA" or blank-wiki demos.
 #
-# Usage (when wired into eval):
+# Usage:
+#   python tiga.py eval --moat
+#   python tiga.py eval --moat --llm-off
 #   python tiga.py eval --fixture tests/fixtures/moat_validation.yaml
-# Until then: use as staff-trial script + fill expected_* as POC corpus grows.
+#
+# Until expected_* are filled against the live POC corpus: loader skips empty
+# query placeholders; graded recall stays 0 until expected_paths / substrings set.
 #
 # Gate:
 #   - If staff never ask questions of this shape, do not scale ontology.

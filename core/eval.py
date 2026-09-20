@@ -2,10 +2,13 @@
 core/eval.py — Evaluation harness for search quality.
 
 Usage:
-  python tiga.py eval                        # load fixture
-  python tiga.py eval --queries "hospital"   # ad-hoc
+  python tiga.py eval                                    # work_dir fixture
+  python tiga.py eval --fixture path/to/queries.yaml     # list or {queries: [...]}
+  python tiga.py eval --moat                             # architecture-intelligence gate
+  python tiga.py eval --moat --llm-off                   # FIND baseline only
+  python tiga.py eval --queries "hospital"               # ad-hoc
 
-Reads:  tiga_work/fixtures/eval_queries.yaml
+Reads:  tiga_work/fixtures/eval_queries.yaml (default) or --fixture / --moat
 Writes: tiga_work/reports/eval_<timestamp>.json
 Exit:   0 = pass  |  1 = invalid citations detected (hard gate)
 
@@ -122,12 +125,57 @@ def validate_citation(
 # Fixture helpers
 # ---------------------------------------------------------------------------
 
+def default_moat_fixture_path() -> Path:
+    """Repo-shipped moat validation fixture (architecture-intelligence gate)."""
+    return Path(__file__).resolve().parent.parent / "tests" / "fixtures" / "moat_validation.yaml"
+
+
+def _normalize_fixture_entries(data: Any) -> list[dict[str, Any]]:
+    """
+    Accept list fixtures or dict fixtures with a ``queries`` key
+    (moat_validation.yaml / gateway100_scaffold.yaml shape).
+    """
+    if data is None:
+        return []
+    if isinstance(data, list):
+        raw = data
+    elif isinstance(data, dict):
+        raw = data.get("queries") or data.get("items") or []
+        if not isinstance(raw, list):
+            return []
+    else:
+        return []
+
+    out: list[dict[str, Any]] = []
+    for entry in raw:
+        if not isinstance(entry, dict):
+            continue
+        query = (entry.get("query") or "").strip()
+        if not query:
+            continue
+        normalized = dict(entry)
+        normalized["query"] = query
+        paths = list(normalized.get("expected_paths") or [])
+        # Moat fixtures may use substring expectations instead of full paths.
+        for sub in normalized.get("expected_path_substrings") or []:
+            if sub and sub not in paths:
+                paths.append(sub)
+        normalized["expected_paths"] = paths
+        out.append(normalized)
+    return out
+
+
 def _load_fixture(fixture_path: Path) -> list[dict[str, Any]]:
     if not fixture_path.exists():
         return []
     with fixture_path.open("r", encoding="utf-8") as f:
         data = yaml.safe_load(f)
-    return data if isinstance(data, list) else []
+    return _normalize_fixture_entries(data)
+
+
+def filter_llm_off_entries(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Keep only FIND-baseline queries marked ``llm_off_ok: true``."""
+    return [e for e in entries if e.get("llm_off_ok")]
 
 
 def _ad_hoc_fixture(queries: list[str]) -> list[dict[str, Any]]:
@@ -235,14 +283,18 @@ def run_eval(
     queries: list[str] | None = None,
     top_k: int | None = None,
     verbose: bool = True,
+    fixture_path: Path | str | None = None,
+    llm_off_only: bool = False,
 ) -> int:
     """
     Run eval and return exit code (0 = pass, 1 = invalid citations found).
 
     Search-only: calls core.query.search only — never compose or external API.
 
-    queries: if None, load from tiga_work/fixtures/eval_queries.yaml.
+    queries: if None, load from fixture_path or tiga_work/fixtures/eval_queries.yaml.
              if provided, treat as ad-hoc (no expected_paths checked).
+    fixture_path: optional YAML (list or ``{queries: [...]}`` including moat fixture).
+    llm_off_only: when True, keep only entries with ``llm_off_ok: true`` (FIND baseline).
     """
     from core.query import apply_project_autoscope, search
     from core.router import get_router
@@ -253,17 +305,29 @@ def run_eval(
     root_paths = [str(r) for r in cfg.index_roots]
 
     # Load fixture
+    resolved_fixture: Path | None = None
     if queries:
         fixture = _ad_hoc_fixture(queries)
     else:
-        fixture_path = cfg.work_dir / "fixtures" / _FIXTURE_FILENAME
-        fixture = _load_fixture(fixture_path)
+        if fixture_path:
+            resolved_fixture = Path(fixture_path)
+        else:
+            resolved_fixture = cfg.work_dir / "fixtures" / _FIXTURE_FILENAME
+        fixture = _load_fixture(resolved_fixture)
+        if llm_off_only:
+            fixture = filter_llm_off_entries(fixture)
         if not fixture:
-            print(
-                f"No eval fixture found at {fixture_path}\n"
-                "Run `python tiga.py init` to generate it, then add your test queries.",
-                file=sys.stderr,
+            hint = (
+                f"No eval fixture found at {resolved_fixture}\n"
+                "Run `python tiga.py init` to generate it, then add your test queries."
             )
+            if llm_off_only:
+                hint = (
+                    f"No llm_off_ok queries in {resolved_fixture}\n"
+                    "Mark FIND-baseline entries with llm_off_ok: true "
+                    "(see tests/fixtures/moat_validation.yaml)."
+                )
+            print(hint, file=sys.stderr)
             return 0
 
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
@@ -381,6 +445,8 @@ def run_eval(
     report: dict[str, Any] = {
         "ts":                 ts,
         "total_queries":      n,
+        "fixture_path":       str(resolved_fixture) if resolved_fixture else None,
+        "llm_off_only":       bool(llm_off_only),
         "top5_recall":        top5_recall,
         "recall@5":           _mean(recall5_scores),
         "recall@10":          _mean(recall10_scores),
