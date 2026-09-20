@@ -375,7 +375,19 @@ def _pipeline_run(fn_name: str, kwargs: dict | None = None) -> None:
                     })
                 _ps_append("Extract complete")
             elif fn_name == "ocr":
-                _ps_append("OCR not implemented — skipped")
+                from core.ocr import run_ocr_pass
+                ocr_stats = run_ocr_pass(
+                    conn, cfg, progress=_pipeline_progress,
+                )
+                if ocr_stats.get("disabled"):
+                    _ps_append("OCR skipped — enable ocr.enabled in config")
+                else:
+                    _ps_append(
+                        "OCR complete: "
+                        f"indexed={ocr_stats.get('indexed', 0)} "
+                        f"review={ocr_stats.get('queued_review', 0)} "
+                        f"candidates={ocr_stats.get('candidates', 0)}"
+                    )
             elif fn_name == "index":
                 from core.index import run_index as _run_index
                 stats = _run_index(conn, cfg, progress=_pipeline_progress)

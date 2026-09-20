@@ -812,32 +812,37 @@ def _run_image_indexing(conn: sqlite3.Connection, cfg_obj: Config) -> dict[str, 
                     (img_cls.image_type, row["file_id"]),
                 )
 
-                # Path-based synthetic chunk: renders always; scans when OCR off
-                if not img_cls.needs_ocr or not ocr_on:
-                    desc = build_image_synthetic_description(path, img_cls)
-                    if desc:
-                        # Upsert a synthetic text chunk for this image
-                        from core.db import upsert_chunk as _upsert_chunk
-                        chunk_id = _hash.sha256(
-                            f"{row['file_id']}::image_context".encode()
-                        ).hexdigest()
-                        c_hash = _hash.sha256(desc.encode()).hexdigest()
-                        existing = conn.execute(
-                            "SELECT content_hash FROM chunks WHERE chunk_id=?",
-                            (chunk_id,),
-                        ).fetchone()
-                        if not existing:
-                            _upsert_chunk(conn, {
-                                "chunk_id": chunk_id,
-                                "file_id": row["file_id"],
-                                "ref_value": "image_context",
-                                "text": desc,
-                                "token_estimate": len(desc.split()),
-                                "content_hash": c_hash,
-                            })
-                            stats["images_indexed"] += 1
-                        else:
-                            stats["images_skipped"] += 1
+                # Path-based synthetic chunk for renders.
+                # Scanned docs are left for the selective OCR pass when OCR is on.
+                if img_cls.needs_ocr and ocr_on:
+                    stats["images_skipped"] += 1
+                    continue
+
+                desc = build_image_synthetic_description(path, img_cls)
+                if desc:
+                    from core.db import upsert_chunk as _upsert_chunk
+                    chunk_id = _hash.sha256(
+                        f"{row['file_id']}::image_context".encode()
+                    ).hexdigest()
+                    c_hash = _hash.sha256(desc.encode()).hexdigest()
+                    existing = conn.execute(
+                        "SELECT content_hash FROM chunks WHERE chunk_id=?",
+                        (chunk_id,),
+                    ).fetchone()
+                    if not existing:
+                        _upsert_chunk(conn, {
+                            "chunk_id": chunk_id,
+                            "file_id": row["file_id"],
+                            "ref_value": "image_context",
+                            "text": desc,
+                            "token_estimate": len(desc.split()),
+                            "content_hash": c_hash,
+                        })
+                        stats["images_indexed"] += 1
+                    else:
+                        stats["images_skipped"] += 1
+                else:
+                    stats["images_skipped"] += 1
 
             except Exception as e:
                 logger.debug("image indexing failed for %s: %s", row.get("file_path"), e)

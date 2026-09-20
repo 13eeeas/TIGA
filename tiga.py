@@ -523,6 +523,10 @@ def cmd_eval(args: argparse.Namespace) -> None:
         _cmd_review_failures()
         return
 
+    if getattr(args, "review_ocr", False):
+        _cmd_review_ocr()
+        return
+
     if getattr(args, "routing", False):
         from core.eval import run_routing_eval
         code = run_routing_eval(verbose=True)
@@ -648,6 +652,35 @@ def _cmd_review_failures() -> None:
             continue
 
     print(f"\nDone. {corrected} correction(s) saved.")
+
+
+def _cmd_review_ocr() -> None:
+    """List recent low-confidence OCR pulls queued for human review."""
+    from config import cfg
+    from core.ocr import load_ocr_review_queue
+
+    entries = load_ocr_review_queue(cfg, limit=20)
+    if not entries:
+        print("No OCR review items logged yet.")
+        print("Enable ocr.enabled and run the OCR pipeline stage to populate.")
+        return
+
+    print(f"\nOCR review queue — last {len(entries)} items")
+    print("=" * 60)
+    for entry in entries:
+        ts = str(entry.get("timestamp", "?"))[:16]
+        conf = entry.get("confidence", 0)
+        path = entry.get("file_path", "")
+        reason = entry.get("reason", "?")
+        preview = (entry.get("text_preview") or "").replace("\n", " ")[:100]
+        print(f"\n[{ts}] conf={conf:.2f}  reason={reason}")
+        print(f"  {path}")
+        if preview:
+            print(f"  preview: {preview}")
+    print(
+        "\nApprove by re-running OCR after fixing the scan, "
+        "or lower ocr.confidence_threshold for bulk accept."
+    )
 
 
 def cmd_serve(_args: argparse.Namespace) -> None:
@@ -1782,6 +1815,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_ev.add_argument("--top-k", type=int, default=5)
     p_ev.add_argument("--review-failures", action="store_true",
                       help="Review last 20 low-confidence queries interactively")
+    p_ev.add_argument("--review-ocr", action="store_true",
+                      help="List low-confidence OCR pulls queued for human review")
     p_ev.add_argument("--routing", action="store_true",
                       help="Run routing-only eval (fast, no Ollama required)")
     p_ev.add_argument("--search-only", action="store_true",
