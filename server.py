@@ -109,6 +109,7 @@ from core.query import (
     search, execute_structured_query,
     execute_file_locator_query, execute_cross_project_query,
 )
+from core.retrieval_retry import run_search_with_retry, thin_pack_answer
 from core.router import _FILE_LOCATOR_CONCEPTS, _STRUCTURED_CONCEPTS, get_router
 
 logging.basicConfig(level=logging.INFO)
@@ -866,12 +867,15 @@ def _log_query(
     confidence: float,
     result_count: int,
     duration_ms: float,
+    *,
+    retries: list[dict] | None = None,
+    exhausted: bool = False,
 ) -> None:
     """Log query to tiga_work/logs/queries.log (and low_confidence.log if needed)."""
     try:
         log_dir = cfg.work_dir / "logs"
         log_dir.mkdir(parents=True, exist_ok=True)
-        entry = json.dumps({
+        entry_obj = {
             "timestamp": datetime.now().isoformat(),
             "query": query,
             "project_code": project_code,
@@ -879,10 +883,14 @@ def _log_query(
             "confidence": round(confidence, 3),
             "result_count": result_count,
             "duration_ms": round(duration_ms, 1),
-        }, ensure_ascii=False)
+        }
+        if retries:
+            entry_obj["retries"] = retries
+            entry_obj["retry_exhausted"] = exhausted
+        entry = json.dumps(entry_obj, ensure_ascii=False)
         with open(log_dir / "queries.log", "a", encoding="utf-8") as f:
             f.write(entry + "\n")
-        if confidence < 0.6:
+        if confidence < 0.6 or exhausted or (retries and len(retries) > 1):
             with open(log_dir / "low_confidence.log", "a", encoding="utf-8") as f:
                 f.write(entry + "\n")
     except Exception as e:
@@ -914,10 +922,13 @@ async def api_query(
     follow_up_prompts: list[str] = []
     results_page: list[ResultView] = []
     fallback_suggestion: str | None = None
+    retry_log: list[dict] = []
+    retry_exhausted = False
 
     def run_semantic_fallback() -> None:
         """Run evidence retrieval when metadata routing has no answer."""
         nonlocal answer_summary, follow_up_prompts, confidence, results_page
+        nonlocal retry_log, retry_exhausted, fallback_suggestion
         pool_k = cfg.retrieval_candidate_pool(max((req.top_k + req.offset), req.top_k))
         search_filters = req.filters or {}
         if route.project_code:
@@ -931,10 +942,50 @@ async def api_query(
             tags = set(route.expanded_query.concept_tags)
             if not tags.intersection(_STRUCTURED_CONCEPTS | _FILE_LOCATOR_CONCEPTS):
                 expanded_terms = route.expanded_query.expanded_terms
-        sr = search(req.query, top_k=pool_k, filters=search_filters or None,
-                    conn=conn, expanded_terms=expanded_terms, use_vector=req.compose,
-                    validate_citations=req.compose)
-        if req.compose:
+
+        def _do_search(q: str, **kwargs):
+            return search(q, **kwargs)
+
+        outcome = run_search_with_retry(
+            query=req.query,
+            route=route,
+            search_fn=_do_search,
+            search_kwargs={
+                "top_k": pool_k,
+                "filters": search_filters or None,
+                "conn": conn,
+                "expanded_terms": expanded_terms,
+                "use_vector": req.compose,
+                "validate_citations": req.compose,
+            },
+            max_retries=cfg.retrieval_retry_max,
+            min_results=cfg.retrieval_thin_min_results,
+            min_top_score=cfg.retrieval_thin_min_top_score,
+        )
+        retry_log = [
+            {
+                "attempt": a.attempt,
+                "query": a.query,
+                "reason": a.reason,
+                "top_score": a.top_score,
+                "result_count": a.result_count,
+                "thin": a.thin,
+            }
+            for a in outcome.attempts
+        ]
+        retry_exhausted = outcome.exhausted
+        sr = outcome.results
+
+        if outcome.exhausted:
+            base_results = [ResultView.from_search_result(r) for r in sr]
+            answer_summary = thin_pack_answer(req.query)
+            follow_up_prompts = []
+            confidence = 0.0
+            if not fallback_suggestion:
+                fallback_suggestion = _get_fallback_suggestion(
+                    "semantic", route.filters, route.project_code
+                )
+        elif req.compose:
             cr = compose_answer(req.query, list(sr), session_id=session_id, conn=conn)
             answer_summary = cr.answer_summary
             follow_up_prompts = cr.follow_ups
@@ -1034,7 +1085,16 @@ async def api_query(
 
     # ── Log query ────────────────────────────────────────────────────────────
     result_count = len(files_result) if files_result is not None else len(results_page)
-    _log_query(req.query, route.project_code, mode, confidence, result_count, duration_ms)
+    _log_query(
+        req.query,
+        route.project_code,
+        mode,
+        confidence,
+        result_count,
+        duration_ms,
+        retries=retry_log or None,
+        exhausted=retry_exhausted,
+    )
 
     # Field test collector — rich Hunt events for office → dev refinement
     try:
