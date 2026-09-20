@@ -1,37 +1,41 @@
 # Atlas inside Hunt — cited project wiki
 
-**North star:** Notion-like browse + Wikipedia-like contribution + Grokopedia-like auto draft, **always cited**.
+**North star:** Notion-like browse + Wikipedia-like contribution + Grokopedia-like auto draft, **always cited**. Structured rows (schema v2) are the source of truth; free-form blurb is optional gloss.
 
 ## Product map (one LAN portal)
 
 | Mode | URL | Role |
 |------|-----|------|
 | **Search** | `/` | Hunt — find files |
-| **Projects** | `/projects` | Atlas — wiki blurb + pins/facts (same UI language as Hunt) |
+| **Projects** | `/projects` | Atlas — wiki blurb + pins/facts + structured model |
 | **Ask** | `/projects#ask` | Einstein-lite — pins + cited facts only |
 
 ## Behaviour
 
 1. **Wiki blurb first** — opening a project shows a short human overview (what / client or typology / stage / location if known), readable in under five seconds. File counts live under **Index**, never as the hero.
-2. **Auto (Grokopedia)** — Hunt seed queries + project card → candidates + draft facts (uncited = rumours).
+2. **Auto (Grokopedia)** — Hunt seed queries + project card → candidates + draft facts (uncited = rumours). Hunt `is_latest` / `is_superseded` → document **proposals** only.
 3. **Wiki (Wikipedia)** — anyone can edit the overview, **Pin as truth**, **Hide** junk, **Save fact** with a citation path. No code.
 4. **Gate** — **Published** (and a health score) only when curated identity fields + ≥1 pin + ≥1 cited fact (and no uncited kept facts) exist. Empty / Needs-curation cards never show Published 100/100.
 5. **Ask** — refuses until a pin exists; never invents from uncited auto facts.
+6. **Model** — `GET /api/atlas/page/{code}` returns `model` + `model_readiness` assembled from structured rows (`core/atlas_model.py`).
 
-Overlays live in `tiga_work/atlas/*.overlay.json` (survive re-index). Overview fields are `summary` + `project` on that overlay.
+Overlays live in `tiga_work/atlas/*.overlay.json` (schema_version **2**; survive re-index). Overview fields are `summary` + `project` plus row kinds (`documents`, `strategies`, `team`, `decisions`, `precedents`, `lifecycle`).
 
 ## API
 
 - `GET /api/atlas/projects`
-- `GET /api/atlas/page/{code}`
+- `GET /api/atlas/page/{code}` — includes `model`, `model_readiness`
 - `POST /api/atlas/page/{code}/pin|hide|unhide|fact|overview|ask`
+- `POST /api/atlas/page/{code}/document|strategy|team|decision|precedent|lifecycle`
 
-## Standalone Atlas repo / project
+## Tickets / boundary
 
-`13eeeas/TIGA-Atlas` remains the design lab / offline tools. **Staff only use Hunt.**
+- Board + A–E: [`ATLAS_HANDOFF.md`](ATLAS_HANDOFF.md) — Ticket **A shipped**; **B** (auto-curation) next
+- Hunt → Atlas signals: [`HUNT_DATA_STRUCTURE.md`](HUNT_DATA_STRUCTURE.md)
+- Notion: [TIGA Atlas](https://app.notion.com/p/3e1807c3efa68120983ac9fe5f081350)
 
-Strategy handoff (data model, auto-curation, publish/MCP, Einstein-over-Atlas) lives in the **Atlas project** — see [`ATLAS_HANDOFF.md`](ATLAS_HANDOFF.md). Hunt’s data-structure role: [`HUNT_DATA_STRUCTURE.md`](HUNT_DATA_STRUCTURE.md).
+`13eeeas/TIGA-Atlas` remains the design lab / offline tools if used. **Staff only use Hunt.**
 
 ## Rollback
 
-This slice is additive on the existing overlay schema (`summary` + `project` + `pins` / `facts` / `hidden_paths`). Revert the PR (or `update.sh --sha <previous>`) to restore the previous Projects UI and Published gate. Existing `tiga_work/atlas/*.overlay.json` files stay valid either way — do not delete them.
+Additive on the overlay schema. v1 overlays normalize to v2 on load. Revert the PR (or `update.sh --sha <previous>`) to restore the previous Projects UI and Published gate. Do not delete existing `tiga_work/atlas/*.overlay.json` files.
