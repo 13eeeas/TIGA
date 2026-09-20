@@ -152,6 +152,14 @@ body{font-family:'Source Serif 4',Georgia,serif;background:var(--page-bg);color:
 .results-section.visible{display:flex}
 .summary-card{background:var(--glass-bg);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border:1px solid var(--glass-border);border-bottom-color:var(--glass-border-lo);border-radius:16px;padding:18px 22px;box-shadow:var(--glass-shadow),inset 0 1.5px 0 var(--glass-inner);font-size:14.5px;line-height:1.72;font-weight:300;color:var(--ink);animation:fadeUp .35s ease both;transition:background .35s,color .35s}
 .summary-label{font-size:10.5px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:var(--coral);margin-bottom:8px}
+.claim-list{margin-top:12px;display:flex;flex-direction:column;gap:6px}
+.claim-row{display:flex;align-items:flex-start;gap:8px;font-size:12.5px;line-height:1.45;color:var(--ink-60)}
+.claim-badge,.support-badge{flex-shrink:0;font-size:10px;font-weight:500;letter-spacing:.04em;text-transform:uppercase;padding:2px 6px;border-radius:4px}
+.claim-badge.supported,.support-badge.supported{color:#2f6b4f;background:rgba(47,107,79,.12)}
+.claim-badge.weak,.support-badge.weak{color:#8a6a2f;background:rgba(138,106,47,.14)}
+.claim-badge.unsupported,.support-badge.unsupported{color:#8a3b2f;background:rgba(138,59,47,.12)}
+.verification-meta{margin-top:8px;font-size:11px;color:var(--ink-60)}
+.file-meta{font-size:11.5px;color:var(--ink-60);font-weight:300;flex-shrink:0;display:flex;align-items:center;gap:6px}
 .results-list{display:flex;flex-direction:column;gap:6px}
 .result-item{background:var(--glass-bg);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border:1px solid var(--glass-border);border-bottom-color:var(--glass-border-lo);border-radius:14px;padding:13px 16px;display:flex;align-items:center;gap:13px;cursor:pointer;box-shadow:var(--glass-shadow),inset 0 1px 0 var(--glass-inner);transition:box-shadow .2s,border-color .2s,transform .15s,background .35s}
 .result-item:hover{border-color:rgba(201,100,66,.35);box-shadow:0 10px 36px var(--coral-glow),0 2px 8px rgba(0,0,0,.08),inset 0 1.5px 0 var(--glass-inner);transform:translateY(-1.5px)}
@@ -160,7 +168,6 @@ body{font-family:'Source Serif 4',Georgia,serif;background:var(--page-bg);color:
 .file-info{flex:1;min-width:0}
 .file-name{font-size:14px;font-weight:400;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:color .35s}
 .file-path{font-size:12px;color:var(--ink-60);font-weight:300;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.file-meta{font-size:11.5px;color:var(--ink-60);font-weight:300;flex-shrink:0}
 .result-actions{display:flex;gap:5px;flex-shrink:0}
 .action-btn{width:28px;height:28px;border-radius:7px;border:1px solid var(--glass-border);background:var(--glass-bg);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--ink-60);box-shadow:inset 0 1px 0 var(--glass-inner);transition:all .15s;font-size:13px}
 .action-btn:hover{border-color:var(--coral);color:var(--coral)}
@@ -377,6 +384,8 @@ body{font-family:'Source Serif 4',Georgia,serif;background:var(--page-bg);color:
     <div class="summary-card">
       <div class="summary-label">Summary</div>
       <div id="summaryText"></div>
+      <div class="claim-list" id="claimList"></div>
+      <div class="verification-meta" id="verificationMeta"></div>
     </div>
     <div class="results-list" id="resultsList"></div>
     <div class="followups" id="followUps"></div>
@@ -594,6 +603,21 @@ function showResults(data, append) {
     document.getElementById('resultsList').innerHTML = '';
     document.getElementById('followUps').innerHTML = '';
     document.getElementById('summaryText').textContent = data.answer_summary || '—';
+
+    const claimList = document.getElementById('claimList');
+    claimList.innerHTML = '';
+    (data.claim_verdicts || []).forEach(v => {
+      const row = document.createElement('div');
+      row.className = 'claim-row';
+      row.innerHTML =
+        `<span class="claim-badge ${esc(v.status || '')}">${esc(v.status || '')}</span>` +
+        `<span>${esc(v.claim || '')}</span>`;
+      claimList.appendChild(row);
+    });
+    const vMeta = document.getElementById('verificationMeta');
+    vMeta.textContent = data.verification_summary
+      ? `Citation check: ${data.verification_summary}`
+      : '';
   }
 
   // File-locator responses from older running workers expose matches as
@@ -626,13 +650,16 @@ function showResults(data, append) {
     const nameOnly = r.title || r.rel_path.split('/').pop() || r.rel_path;
     const score    = Math.round((r.final_score || 0) * 100);
     const meta     = [r.project_id, r.typology].filter(Boolean).join(' · ');
+    const support  = r.support_status
+      ? `<span class="support-badge ${esc(r.support_status)}">${esc(r.support_status)}</span>`
+      : '';
 
     // Directory results: no vote buttons, show folder snippet
     const actionsHtml = isDir ? `
       <div class="result-actions">
         <div class="file-meta" style="font-size:11px;color:var(--coral);white-space:nowrap">📁 folder</div>
       </div>` : `
-      <div class="file-meta">${score}%</div>
+      <div class="file-meta">${support}<span>${score}%</span></div>
       <div class="result-actions">
         <button class="action-btn" title="Preview"
           onclick="openPreview(${idx})" aria-label="Preview">

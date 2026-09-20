@@ -97,7 +97,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from config import cfg, ollama_available
-from core.compose import ComposeResult, ResultView, compose_answer
+from core.compose import ClaimVerdict, ComposeResult, ResultView, compose_answer
 from core.db import create_session, get_connection, get_stats
 from core.index_state import (
     annotate_job,
@@ -537,6 +537,14 @@ class ResultItem(BaseModel):
     typology:    str
     ext:         str
     final_score: float
+    support_status: str | None = None  # supported | weak | unsupported
+
+
+class ClaimVerdictItem(BaseModel):
+    claim: str
+    status: str  # supported | weak | unsupported
+    citations: list[str] = []
+    reason: str = ""
 
 
 class OpenFileRequest(BaseModel):
@@ -557,6 +565,8 @@ class QueryResponse(BaseModel):
     fallback_suggestion: str | None = None
     index_stats:         dict | None = None
     latency_ms:          float
+    claim_verdicts:      list[ClaimVerdictItem] | None = None
+    verification_summary: str | None = None
 
 
 class SessionResponse(BaseModel):
@@ -914,10 +924,13 @@ async def api_query(
     follow_up_prompts: list[str] = []
     results_page: list[ResultView] = []
     fallback_suggestion: str | None = None
+    claim_verdicts: list[ClaimVerdict] = []
+    verification_summary: str | None = None
 
     def run_semantic_fallback() -> None:
         """Run evidence retrieval when metadata routing has no answer."""
         nonlocal answer_summary, follow_up_prompts, confidence, results_page
+        nonlocal claim_verdicts, verification_summary
         pool_k = cfg.retrieval_candidate_pool(max((req.top_k + req.offset), req.top_k))
         search_filters = req.filters or {}
         if route.project_code:
@@ -940,11 +953,15 @@ async def api_query(
             follow_up_prompts = cr.follow_ups
             confidence = cr.confidence
             base_results = cr.results
+            claim_verdicts = list(cr.claim_verdicts)
+            verification_summary = cr.verification_summary or None
         else:
             base_results = [ResultView.from_search_result(r) for r in sr]
             answer_summary = f"Found {len(base_results)} relevant evidence result(s)."
             follow_up_prompts = []
             confidence = max((r.final_score for r in base_results), default=0.0)
+            claim_verdicts = []
+            verification_summary = None
         mixed = sorted(base_results + _aggregate_dirs(base_results),
                        key=lambda x: x.final_score, reverse=True)
         results_page = mixed[req.offset : req.offset + req.top_k]
@@ -1081,6 +1098,7 @@ async def api_query(
                 typology    = v.typology,
                 ext         = v.ext,
                 final_score = v.final_score,
+                support_status = v.support_status,
             )
             for v in results_page
         ],
@@ -1089,6 +1107,16 @@ async def api_query(
         fallback_suggestion = fallback_suggestion,
         index_stats        = index_stats,
         latency_ms         = round(duration_ms, 1),
+        claim_verdicts     = [
+            ClaimVerdictItem(
+                claim=v.claim,
+                status=v.status,
+                citations=list(v.citations),
+                reason=v.reason,
+            )
+            for v in claim_verdicts
+        ] or None,
+        verification_summary = verification_summary,
     )
 
 

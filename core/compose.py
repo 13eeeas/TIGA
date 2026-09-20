@@ -6,7 +6,8 @@ compose_answer(query, results, session_id, cfg_obj, conn)
   2. Load session history.
   3. Call enterprise API (or Ollama fallback) for synthesis.
   4. Optional follow-up prompts.
-  5. Persist session + audit log.
+  5. Claim-support verification against the evidence pack.
+  6. Persist session + audit log.
 
 Hard rule: citations come from results list only — never from model output.
 """
@@ -15,6 +16,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import sqlite3
 import time
 from dataclasses import dataclass, field
@@ -36,12 +38,45 @@ logger = logging.getLogger(__name__)
 _SESSION_HISTORY = 6
 _FALLBACK_MAX = 1200
 _FALLBACK_PREFIX = "[Synthesis unavailable — showing raw excerpts] "
+_UNSUPPORTED_PREFIX = "Not enough evidence in the archive for: "
+
+_CLAIM_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
+_CITE_REF_RE = re.compile(r"\[(\d+)\]")
+_TOKEN_RE = re.compile(r"[a-z0-9][a-z0-9\-]{1,}", re.I)
+
+_VERIFY_STOPWORDS = frozenset({
+    "a", "an", "the", "and", "or", "but", "is", "are", "was", "were",
+    "be", "been", "being", "have", "has", "had", "do", "does", "did",
+    "will", "would", "could", "should", "may", "might", "shall", "can",
+    "for", "to", "of", "in", "on", "at", "by", "from", "with", "into",
+    "through", "during", "before", "after", "about", "it", "its", "this",
+    "that", "these", "those", "what", "which", "who", "when", "where",
+    "why", "how", "all", "each", "every", "both", "few", "more", "most",
+    "other", "some", "such", "no", "not", "only", "same", "so", "than",
+    "too", "very", "just", "also", "any", "if", "as", "i", "me", "my",
+    "you", "your", "he", "she", "they", "their", "them", "we", "our", "us",
+    "cannot", "can't", "find", "found", "archive", "evidence", "enough",
+    "according", "based", "using", "provided", "source", "sources",
+    "project", "projects", "building", "architecture", "architectural",
+})
+
+_HEDGE_PHRASES = (
+    "cannot find",
+    "can't find",
+    "could not find",
+    "not enough evidence",
+    "no relevant",
+    "does not contain",
+    "don't have enough",
+    "do not have enough",
+)
 
 _SYSTEM_PROMPT = (
     "You are TIGA Einstein, an architecture firm research assistant. "
     "Answer using ONLY the provided evidence excerpts. "
     "If the evidence does not contain the answer, say you cannot find it in the archive. "
-    "Do not invent facts. Reference sources by the citation label shown in each block."
+    "Do not invent facts. Reference sources by the citation label shown in each block "
+    "(e.g. [1], [2])."
 )
 
 _FOLLOWUP_PROMPT = (
@@ -63,6 +98,7 @@ class ResultView:
     ext:         str
     final_score: float
     evidence_text: str = ""
+    support_status: str | None = None  # supported | weak | unsupported
 
     @classmethod
     def from_search_result(
@@ -86,7 +122,17 @@ class ResultView:
             ext=Path(rel).suffix.lower() if rel else "",
             final_score=float(r.get("final_score", 0.0)),
             evidence_text=ev,
+            support_status=r.get("support_status"),
         )
+
+
+@dataclass
+class ClaimVerdict:
+    claim: str
+    status: str  # supported | weak | unsupported
+    citation_indexes: list[int] = field(default_factory=list)  # 1-based
+    citations: list[str] = field(default_factory=list)
+    reason: str = ""
 
 
 @dataclass
@@ -98,6 +144,8 @@ class ComposeResult:
     latency_ms: float
     compose_provider: str = ""
     evidence_chunk_ids: list[str] = field(default_factory=list)
+    claim_verdicts: list[ClaimVerdict] = field(default_factory=list)
+    verification_summary: str = ""
 
 
 def _hydrate_chunk_texts(
@@ -176,6 +224,165 @@ def _fallback_answer(views: list[ResultView]) -> str:
     return _FALLBACK_PREFIX + raw[:_FALLBACK_MAX]
 
 
+def _claim_tokens(text: str) -> set[str]:
+    return {
+        t.lower()
+        for t in _TOKEN_RE.findall(text or "")
+        if t.lower() not in _VERIFY_STOPWORDS and len(t) > 2
+    }
+
+
+def _split_claims(answer: str) -> list[str]:
+    text = (answer or "").strip()
+    if not text:
+        return []
+    parts = [p.strip() for p in _CLAIM_SPLIT_RE.split(text) if p.strip()]
+    return parts or [text]
+
+
+def _is_hedge_claim(claim: str) -> bool:
+    lowered = claim.lower()
+    return any(p in lowered for p in _HEDGE_PHRASES)
+
+
+def _overlap_score(claim_toks: set[str], evidence_toks: set[str]) -> float:
+    if not claim_toks:
+        return 0.0
+    hit = len(claim_toks & evidence_toks)
+    return hit / len(claim_toks)
+
+
+def _score_claim(
+    claim: str,
+    views: list[ResultView],
+) -> tuple[str, list[int], str]:
+    """Return (status, 1-based citation indexes, reason)."""
+    if _is_hedge_claim(claim):
+        return "supported", [], "honest hedge / insufficient-evidence statement"
+
+    claim_toks = _claim_tokens(claim)
+    cited_indexes = [
+        int(m.group(1))
+        for m in _CITE_REF_RE.finditer(claim)
+        if 1 <= int(m.group(1)) <= len(views)
+    ]
+
+    scored: list[tuple[float, int]] = []
+    for i, v in enumerate(views, 1):
+        body = v.evidence_text or v.snippet or ""
+        score = _overlap_score(claim_toks, _claim_tokens(body))
+        scored.append((score, i))
+
+    # Prefer explicitly cited evidence when the model attached [n] refs.
+    if cited_indexes:
+        cited_scores = [s for s, i in scored if i in cited_indexes]
+        best = max(cited_scores) if cited_scores else 0.0
+        indexes = cited_indexes
+    else:
+        scored.sort(reverse=True)
+        best = scored[0][0] if scored else 0.0
+        # Keep evidence indexes with meaningful overlap.
+        indexes = [i for s, i in scored if s >= 0.2][:3]
+
+    hit_count = int(round(best * len(claim_toks))) if claim_toks else 0
+    if best >= 0.45 or hit_count >= 3:
+        return "supported", indexes, f"lexical overlap {best:.2f}"
+    if best > 0.2 or hit_count >= 2:
+        return "weak", indexes, f"partial overlap {best:.2f}"
+    return "unsupported", [], "no usable overlap with evidence pack"
+
+
+def _apply_support_status(
+    display_views: list[ResultView],
+    evidence_views: list[ResultView],
+    verdicts: list[ClaimVerdict],
+) -> None:
+    """Aggregate claim statuses onto result rows by citation string."""
+    by_cite: dict[str, list[str]] = {}
+    for v in verdicts:
+        for cite in v.citations:
+            by_cite.setdefault(cite, []).append(v.status)
+
+    rank = {"unsupported": 0, "weak": 1, "supported": 2}
+
+    def worst(statuses: list[str]) -> str:
+        return min(statuses, key=lambda s: rank.get(s, 1))
+
+    for view in evidence_views:
+        statuses = by_cite.get(view.citation)
+        if statuses:
+            view.support_status = worst(statuses)
+
+    cite_status = {
+        v.citation: v.support_status
+        for v in evidence_views
+        if v.support_status
+    }
+    for view in display_views:
+        if view.citation in cite_status:
+            view.support_status = cite_status[view.citation]
+
+
+def verify_claims(
+    answer: str,
+    evidence_views: list[ResultView],
+) -> tuple[str, list[ClaimVerdict], str]:
+    """
+    Check each answer claim against the evidence pack.
+
+    Unsupported claims are stripped and replaced with an explicit
+    insufficient-evidence note. Returns (rewritten_answer, verdicts, summary).
+    """
+    claims = _split_claims(answer)
+    if not claims:
+        return answer, [], ""
+
+    verdicts: list[ClaimVerdict] = []
+    kept: list[str] = []
+    dropped: list[str] = []
+
+    for claim in claims:
+        status, indexes, reason = _score_claim(claim, evidence_views)
+        citations = [
+            evidence_views[i - 1].citation
+            for i in indexes
+            if 0 < i <= len(evidence_views)
+        ]
+        verdicts.append(
+            ClaimVerdict(
+                claim=claim,
+                status=status,
+                citation_indexes=indexes,
+                citations=citations,
+                reason=reason,
+            )
+        )
+        if status == "unsupported":
+            dropped.append(claim.rstrip(".!? "))
+        else:
+            kept.append(claim)
+
+    counts = {
+        "supported": sum(1 for v in verdicts if v.status == "supported"),
+        "weak": sum(1 for v in verdicts if v.status == "weak"),
+        "unsupported": sum(1 for v in verdicts if v.status == "unsupported"),
+    }
+    summary = (
+        f"{counts['supported']} supported, "
+        f"{counts['weak']} weak, "
+        f"{counts['unsupported']} unsupported"
+    )
+
+    if not dropped:
+        return answer, verdicts, summary
+
+    parts = list(kept)
+    for claim in dropped:
+        parts.append(f"{_UNSUPPORTED_PREFIX}{claim}.")
+    rewritten = " ".join(parts).strip()
+    return rewritten, verdicts, summary
+
+
 def _call_followups(
     query: str,
     context: str,
@@ -250,7 +457,19 @@ def compose_answer(
             else []
         )
 
+        claim_verdicts: list[ClaimVerdict] = []
+        verification_summary = ""
+        if synthesis_ok and getattr(_cfg, "compose_verify_claims", True):
+            answer_summary, claim_verdicts, verification_summary = verify_claims(
+                answer_summary, evidence_views
+            )
+            _apply_support_status(display_views, evidence_views, claim_verdicts)
+
         confidence = _confidence(evidence_views or display_views)
+        if any(v.status == "unsupported" for v in claim_verdicts):
+            confidence = min(confidence, 0.45)
+        elif any(v.status == "weak" for v in claim_verdicts):
+            confidence = min(confidence, 0.65)
 
         if session_id:
             try:
@@ -271,6 +490,12 @@ def compose_answer(
                     "provider": provider_label,
                     "evidence_chunks": len(evidence_views),
                     "chunk_ids": chunk_ids,
+                    "verification": verification_summary,
+                    "claim_counts": {
+                        "supported": sum(1 for v in claim_verdicts if v.status == "supported"),
+                        "weak": sum(1 for v in claim_verdicts if v.status == "weak"),
+                        "unsupported": sum(1 for v in claim_verdicts if v.status == "unsupported"),
+                    },
                 }),
             )
         except Exception as e:
@@ -284,6 +509,8 @@ def compose_answer(
             latency_ms=latency_ms,
             compose_provider=provider_label,
             evidence_chunk_ids=[c for c in chunk_ids if c],
+            claim_verdicts=claim_verdicts,
+            verification_summary=verification_summary,
         )
 
     finally:

@@ -139,3 +139,69 @@ def test_session_persistence_saves_messages(tmp_path: Path, conn) -> None:
     ).fetchall()
     roles = [r["role"] for r in rows]
     assert roles == ["user", "assistant"]
+
+
+def test_verify_claims_marks_supported_and_unsupported() -> None:
+    from core.compose import ResultView, verify_claims
+
+    views = [
+        ResultView(
+            title="brief",
+            rel_path="proj/brief.pdf",
+            file_path="/tmp/proj/brief.pdf",
+            citation="proj/brief.pdf#p1",
+            snippet="hospital architecture brief",
+            project_id="261",
+            typology="healthcare",
+            ext=".pdf",
+            final_score=0.8,
+            evidence_text="hospital architecture brief design requirements for project 261",
+        )
+    ]
+    answer = (
+        "The hospital brief covers design requirements for project 261. "
+        "The project budget is exactly 48 million dollars."
+    )
+    rewritten, verdicts, summary = verify_claims(answer, views)
+    assert len(verdicts) == 2
+    assert verdicts[0].status == "supported"
+    assert verdicts[1].status == "unsupported"
+    assert "Not enough evidence in the archive for:" in rewritten
+    assert "48 million" in rewritten
+    assert "1 supported" in summary
+    assert "1 unsupported" in summary
+
+
+def test_compose_strips_unsupported_claims(tmp_path: Path, conn) -> None:
+    _seed_chunk(conn, tmp_path)
+    cfg_obj = _cfg(tmp_path)
+    hallucinated = (
+        "The hospital brief covers design requirements for project 261. "
+        "The facade is clad in titanium panels from Norway."
+    )
+    with patch("core.compose.chat_completion", return_value=(hallucinated, "openai:test")):
+        result = compose_answer(
+            "hospital brief",
+            [_fake_result()],
+            conn=conn,
+            cfg_obj=cfg_obj,
+        )
+    assert "Not enough evidence in the archive for:" in result.answer_summary
+    assert any(v.status == "unsupported" for v in result.claim_verdicts)
+    assert result.verification_summary
+    assert result.confidence <= 0.45
+    assert any(v.support_status for v in result.results)
+
+
+def test_fallback_skips_claim_verification(tmp_path: Path, conn) -> None:
+    _seed_chunk(conn, tmp_path)
+    cfg_obj = _cfg(tmp_path)
+    with patch("core.compose.chat_completion", side_effect=LLMError("down")):
+        result = compose_answer(
+            "hospital brief",
+            [_fake_result()],
+            conn=conn,
+            cfg_obj=cfg_obj,
+        )
+    assert result.claim_verdicts == []
+    assert result.answer_summary.startswith("[Synthesis unavailable")

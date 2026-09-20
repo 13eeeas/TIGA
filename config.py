@@ -276,6 +276,7 @@ class Config:
         self.compose_azure_api_version: str = comp.get(
             "azure_api_version", "2024-02-15-preview"
         )
+        self.compose_verify_claims: bool = bool(comp.get("verify_claims", True))
 
         # --- OCR (opt-in only) ---
         ocr = data.get("ocr", {})

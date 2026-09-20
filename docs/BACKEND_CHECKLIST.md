@@ -194,6 +194,9 @@
 - [ ] **100-Q Gateway set** on real 3–5 projects with expected answers
 - [ ] **Answer correctness** (human or LLM-judge with rubric) → target >85%
 - [ ] **Citation supports claim** → target >95%
+  - Progress: post-compose claim verification landed (`core/compose.py` `verify_claims`);
+    unsupported claims rewritten to insufficient-evidence notes; API/UI expose
+    `claim_verdicts` + `support_status`. Still need corpus-level >95% gate.
 - [ ] **Hallucination flag** on sample → target <3%
 - [ ] Latency p50/p95 → target <10 s
 - [ ] Export **`eval_gateway1_<date>.json`** + 1-page memo template
