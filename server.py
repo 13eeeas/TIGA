@@ -13,6 +13,7 @@ Endpoints
   GET  /api/atlas/page/{code}    — assembled model page + wiki overlay
   POST /api/atlas/page/{code}/pin|hide|fact|overview|ask
   POST /api/atlas/page/{code}/document|strategy|team|decision|precedent|lifecycle
+  POST /api/atlas/page/{code}/proposals/stage|approve|reject
   GET  /projects                 — Projects wiki UI (Atlas in Hunt)
   POST /api/session              — create new session, returns {session_id}
   GET  /api/session/{session_id} — message history for session
@@ -1344,6 +1345,13 @@ class AtlasLifecycleRequest(BaseModel):
     note: str = ""
 
 
+class AtlasProposalActionRequest(BaseModel):
+    path: str = ""
+    id: str | None = None
+    authority: str | None = None
+    note: str = ""
+
+
 @app.get("/api/atlas/projects")
 async def api_atlas_projects(
     conn: sqlite3.Connection = Depends(get_db),
@@ -1580,6 +1588,66 @@ async def api_atlas_lifecycle(code: str, req: AtlasLifecycleRequest) -> dict[str
 
     result = _atlas_save_row(code, mutate)
     _audit("Atlas lifecycle", f"{code} stage={req.stage}")
+    return result
+
+
+@app.post("/api/atlas/page/{code}/proposals/stage")
+async def api_atlas_proposals_stage(
+    code: str,
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict[str, Any]:
+    """Stage Hunt is_latest / is_superseded signals as proposal rows (Ticket B)."""
+    from core.atlas_wiki import wiki_stage_proposals
+
+    result = wiki_stage_proposals(code, conn)
+    _audit("Atlas stage proposals", f"{code} pending={result.get('pending')}")
+    return result
+
+
+@app.post("/api/atlas/page/{code}/proposals/approve")
+async def api_atlas_proposals_approve(
+    code: str,
+    req: AtlasProposalActionRequest,
+) -> dict[str, Any]:
+    """Human-approve a Hunt proposal → confirmed Atlas document (Ticket B)."""
+    from core.atlas_wiki import wiki_approve_document
+
+    if not (req.path or "").strip() and not req.id:
+        raise HTTPException(status_code=400, detail="path or id required")
+    try:
+        result = wiki_approve_document(
+            code,
+            path=(req.path or "").strip(),
+            doc_id=req.id or "",
+            authority=req.authority,
+            note=req.note,
+        )
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    _audit("Atlas approve proposal", f"{code} → {req.path or req.id}")
+    return result
+
+
+@app.post("/api/atlas/page/{code}/proposals/reject")
+async def api_atlas_proposals_reject(
+    code: str,
+    req: AtlasProposalActionRequest,
+) -> dict[str, Any]:
+    """Reject a Hunt proposal so it will not re-stage as truth (Ticket B)."""
+    from core.atlas_wiki import wiki_reject_document
+
+    if not (req.path or "").strip() and not req.id:
+        raise HTTPException(status_code=400, detail="path or id required")
+    try:
+        result = wiki_reject_document(
+            code,
+            path=(req.path or "").strip(),
+            doc_id=req.id or "",
+            note=req.note,
+        )
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    _audit("Atlas reject proposal", f"{code} → {req.path or req.id}")
     return result
 
 

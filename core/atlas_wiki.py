@@ -543,6 +543,67 @@ def get_wiki_page(
     return page
 
 
+def wiki_stage_proposals(
+    code: str,
+    conn: sqlite3.Connection,
+    cfg_obj: Config | None = None,
+) -> dict[str, Any]:
+    """Persist Hunt authority signals as proposal rows (Ticket B stage step)."""
+    from core.atlas_model import (
+        hunt_document_proposals,
+        list_pending_proposals,
+        merge_document_proposals,
+    )
+
+    ov = load_overlay(code, cfg_obj)
+    proposals = hunt_document_proposals(conn, code)
+    added = merge_document_proposals(ov, proposals)
+    path = save_overlay(code, ov, cfg_obj)
+    pending = list_pending_proposals(ov)
+    return {
+        "ok": True,
+        "staged_new": len(added),
+        "pending": len(pending),
+        "proposals": pending,
+        "overlay": str(path),
+    }
+
+
+def wiki_approve_document(
+    code: str,
+    *,
+    path: str = "",
+    doc_id: str = "",
+    authority: str | None = None,
+    note: str = "",
+    cfg_obj: Config | None = None,
+) -> dict[str, Any]:
+    from core.atlas_model import approve_document_proposal
+
+    ov = load_overlay(code, cfg_obj)
+    row = approve_document_proposal(
+        ov, path=path, doc_id=doc_id, authority=authority, note=note
+    )
+    save_path = save_overlay(code, ov, cfg_obj)
+    return {"ok": True, "document": row, "overlay": str(save_path)}
+
+
+def wiki_reject_document(
+    code: str,
+    *,
+    path: str = "",
+    doc_id: str = "",
+    note: str = "",
+    cfg_obj: Config | None = None,
+) -> dict[str, Any]:
+    from core.atlas_model import reject_document_proposal
+
+    ov = load_overlay(code, cfg_obj)
+    row = reject_document_proposal(ov, path=path, doc_id=doc_id, note=note)
+    save_path = save_overlay(code, ov, cfg_obj)
+    return {"ok": True, "document": row, "overlay": str(save_path)}
+
+
 def wiki_pin(
     code: str,
     *,

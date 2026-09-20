@@ -129,6 +129,7 @@ PROJECT
 - `GET /api/atlas/page/{code}` — includes `model` and `model_readiness`
 - Mutators: `pin`, `fact`, `overview`, `document`, `strategy`, `team`,
   `decision`, `precedent`, `lifecycle`, `ask`
+- Auto-curation: `proposals/stage`, `proposals/approve`, `proposals/reject`
 
 ---
 

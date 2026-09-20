@@ -178,6 +178,82 @@ def test_hunt_proposals_do_not_overwrite_wiki_docs(tmp_path: Path) -> None:
     assert old["source"] == "hunt-proposal"
 
 
+def test_ticket_b_stage_approve_reject_e2e(tmp_path: Path) -> None:
+    """Archive signals → stage → approve authoritative + reject superseded."""
+    from core.atlas_wiki import (
+        get_wiki_page,
+        wiki_approve_document,
+        wiki_reject_document,
+        wiki_stage_proposals,
+    )
+
+    cfg = _cfg(tmp_path)
+    conn = get_connection(cfg.get_db_path())
+    upsert_file(
+        conn,
+        {
+            "file_id": "f_new",
+            "file_path": "/archive/261/facade_tender.pdf",
+            "file_name": "facade_tender.pdf",
+            "project_id": "261",
+        },
+    )
+    upsert_file(
+        conn,
+        {
+            "file_id": "f_old",
+            "file_path": "/archive/261/facade_dd.pdf",
+            "file_name": "facade_dd.pdf",
+            "project_id": "261",
+        },
+    )
+    conn.execute(
+        "UPDATE files SET is_latest = 1, is_superseded = 0, revision = 3 WHERE file_id = 'f_new'"
+    )
+    conn.execute(
+        "UPDATE files SET is_latest = 0, is_superseded = 1, revision = 2 WHERE file_id = 'f_old'"
+    )
+    conn.commit()
+
+    staged = wiki_stage_proposals("261", conn, cfg_obj=cfg)
+    assert staged["pending"] >= 2
+    assert staged["staged_new"] >= 2
+
+    approved = wiki_approve_document(
+        "261",
+        path="/archive/261/facade_tender.pdf",
+        cfg_obj=cfg,
+    )
+    assert approved["document"]["status"] == "confirmed"
+    assert approved["document"]["source"] == "curated"
+    assert approved["document"]["authority"] == "authoritative"
+
+    rejected = wiki_reject_document(
+        "261",
+        path="/archive/261/facade_dd.pdf",
+        note="Wrong package",
+        cfg_obj=cfg,
+    )
+    assert rejected["document"]["status"] == "rejected"
+
+    # Re-stage must not resurrect rejected path as pending truth.
+    restaged = wiki_stage_proposals("261", conn, cfg_obj=cfg)
+    pending_paths = {p["path"] for p in restaged["proposals"]}
+    assert "/archive/261/facade_dd.pdf" not in pending_paths
+
+    with patch("core.atlas_wiki._auto_candidates", return_value=[]):
+        page = get_wiki_page("261", conn, cfg_obj=cfg)
+    conn.close()
+
+    auth_paths = [d["path"] for d in page["model"]["documents"]["authoritative"]]
+    assert any(p.endswith("facade_tender.pdf") for p in auth_paths)
+    # Rejected must not appear as SoT superseded/authoritative.
+    supers = [d["path"] for d in page["model"]["documents"]["superseded"]]
+    assert not any(p.endswith("facade_dd.pdf") for p in supers)
+    pending = page["model"]["documents"]["pending_proposals"]
+    assert not any(p.get("path", "").endswith("facade_tender.pdf") for p in pending)
+
+
 def test_get_wiki_page_exposes_model(tmp_path: Path) -> None:
     cfg = _cfg(tmp_path)
     conn = get_connection(cfg.get_db_path())

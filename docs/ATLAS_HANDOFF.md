@@ -14,7 +14,7 @@ from the model. Steal Notion UX patterns; do not chase Notion wiki/collab parity
 | Ticket | Title | Priority | Status |
 |--------|-------|----------|--------|
 | **A** | Atlas data model (priority over UI) | P0 | **Shipped** — `core/atlas_model.py` |
-| **B** | Auto-curation loop | P0 | Next — Hunt proposes → human approve |
+| **B** | Auto-curation loop | P0 | **Shipped** — stage / approve / reject APIs |
 | **C** | Asymmetric Atlas UI | P1 | Depends on A |
 | **D** | Publish surfaces (MCP / Notion sync) | P2 | After A; Notion is a renderer |
 | **E** | Einstein last | P2 | Reason over Atlas + Hunt evidence |
@@ -64,7 +64,7 @@ citations; blank “wiki only” is not the source of truth.
 
 ---
 
-## B — Auto-curation loop (next)
+## B — Auto-curation loop (shipped)
 
 ### Goal
 
@@ -73,13 +73,23 @@ Invert Notion’s maintenance burden.
 ```
 Archive change (Egnyte/NAS)
   → Hunt detects / extracts candidates
-  → stage / revision / authority proposals
+  → POST .../proposals/stage
   → human approve / reject
-  → Atlas (and optional Notion) updated
+  → Atlas overlay updated (confirmed or rejected)
 ```
 
-**Acceptance:** At least one end-to-end path: new tender deck or superseding
-façade report → candidate flag → human approve → Atlas fact/doc row updated.
+### Implementation
+
+- `POST /api/atlas/page/{code}/proposals/stage` — persist Hunt `is_latest` /
+  `is_superseded` as `source=hunt-proposal` rows
+- `POST /api/atlas/page/{code}/proposals/approve` — `{path}` → `status=confirmed`,
+  `source=curated` (authoritative also lifts a pin)
+- `POST /api/atlas/page/{code}/proposals/reject` — `{path}` → rejected; will not
+  re-stage as truth
+- Model exposes `documents.pending_proposals`
+
+**Acceptance met:** tender/façade supersede path can be staged, one doc approved
+into authoritative SoT, the other rejected without silent truth.
 
 ---
 

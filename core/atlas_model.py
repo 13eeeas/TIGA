@@ -64,6 +64,7 @@ def empty_overlay(code: str) -> dict[str, Any]:
         "pins": [],
         "hidden_paths": [],
         "open_questions": [],
+        "rejected_document_paths": [],
     }
 
 
@@ -93,6 +94,8 @@ def normalize_overlay(code: str, overlay: dict[str, Any] | None) -> dict[str, An
         out["project"] = {}
     if not isinstance(out.get("lifecycle"), dict):
         out["lifecycle"] = {}
+    if not isinstance(out.get("rejected_document_paths"), list):
+        out["rejected_document_paths"] = []
 
     # Sync lifecycle.stage from curated project.stage when missing.
     stage = out["project"].get("stage")
@@ -182,6 +185,7 @@ def upsert_document(
         "supersedes": supersedes if supersedes is not None else list((existing or {}).get("supersedes") or []),
         "superseded_by": superseded_by if superseded_by is not None else list((existing or {}).get("superseded_by") or []),
         "source": source or (existing or {}).get("source") or "wiki",
+        "status": "confirmed" if (source or (existing or {}).get("source") or "wiki") != "hunt-proposal" else "proposal",
         "updated_at": _utc(),
     }
     if existing:
@@ -376,20 +380,40 @@ def merge_document_proposals(
     """Attach Hunt proposals without overwriting wiki-confirmed document rows."""
     docs = overlay.setdefault("documents", [])
     by_path = {str(d.get("path")): d for d in docs if d.get("path")}
+    rejected_paths = {
+        str(d.get("path"))
+        for d in docs
+        if d.get("path") and d.get("status") == "rejected"
+    }
+    rejected_paths.update(
+        str(p) for p in (overlay.get("rejected_document_paths") or []) if p
+    )
     added: list[dict[str, Any]] = []
     for prop in proposals:
         path = prop.get("path")
-        if not path:
+        if not path or path in rejected_paths:
             continue
         existing = by_path.get(path)
-        if existing and existing.get("source") != "hunt-proposal":
-            # Wiki / confirmed row wins; keep Hunt note as hint only.
-            continue
-        if existing and existing.get("source") == "hunt-proposal":
-            for i, d in enumerate(docs):
-                if d.get("path") == path:
-                    docs[i] = {**existing, **prop, "id": existing.get("id") or prop.get("id")}
-                    break
+        if existing is not None:
+            if existing.get("status") == "rejected":
+                continue
+            # Confirmed / wiki / curated rows win — do not clobber.
+            if existing.get("status") == "confirmed" or existing.get("source") in (
+                "wiki",
+                "curated",
+            ):
+                continue
+            if existing.get("source") == "hunt-proposal":
+                for i, d in enumerate(docs):
+                    if d.get("path") == path:
+                        docs[i] = {
+                            **existing,
+                            **prop,
+                            "id": existing.get("id") or prop.get("id"),
+                        }
+                        break
+                continue
+            # Unknown existing source — leave alone.
             continue
         docs.append(prop)
         by_path[path] = prop
@@ -397,12 +421,130 @@ def merge_document_proposals(
     return added
 
 
+def list_pending_proposals(overlay: dict[str, Any]) -> list[dict[str, Any]]:
+    """Document rows awaiting human approve/reject (Ticket B)."""
+    return [
+        d
+        for d in (overlay.get("documents") or [])
+        if d.get("status") == "proposal"
+        or (
+            d.get("source") == "hunt-proposal"
+            and d.get("status") not in ("confirmed", "rejected")
+        )
+    ]
+
+
+def approve_document_proposal(
+    overlay: dict[str, Any],
+    *,
+    path: str = "",
+    doc_id: str = "",
+    authority: str | None = None,
+    note: str = "",
+) -> dict[str, Any]:
+    """Promote a Hunt proposal (or candidate) to confirmed Atlas truth."""
+    docs = overlay.setdefault("documents", [])
+    target = None
+    for d in docs:
+        if path and d.get("path") == path:
+            target = d
+            break
+        if doc_id and d.get("id") == doc_id:
+            target = d
+            break
+    if target is None:
+        raise KeyError(f"proposal not found: path={path!r} id={doc_id!r}")
+
+    proposed = (
+        authority
+        or target.get("proposed_authority")
+        or target.get("authority")
+        or "candidate"
+    )
+    if proposed not in DOC_AUTHORITIES:
+        proposed = "candidate"
+
+    target["authority"] = proposed
+    target.pop("proposed_authority", None)
+    target["source"] = "curated"
+    target["status"] = "confirmed"
+    target["updated_at"] = _utc()
+    if note:
+        prev = (target.get("note") or "").strip()
+        target["note"] = f"{prev} | approved: {note}".strip(" |") if prev else f"approved: {note}"
+    else:
+        # Keep Hunt signal note; mark confirmation lightly.
+        if "approved" not in (target.get("note") or "").lower():
+            signal = (target.get("note") or "").strip()
+            target["note"] = f"{signal} · human-approved".strip(" ·") if signal else "human-approved"
+
+    # Confirmed authoritative docs also lift into pins for Published gate compatibility.
+    if proposed == "authoritative" and target.get("path"):
+        pins = overlay.setdefault("pins", [])
+        if not any(p.get("path") == target["path"] for p in pins):
+            pins.append(
+                {
+                    "role": target.get("role") or "other",
+                    "path": target["path"],
+                    "title": target.get("title") or "",
+                    "note": "Approved from Hunt proposal",
+                    "source": "curated",
+                    "pinned_at": _utc(),
+                }
+            )
+    return target
+
+
+def reject_document_proposal(
+    overlay: dict[str, Any],
+    *,
+    path: str = "",
+    doc_id: str = "",
+    note: str = "",
+) -> dict[str, Any]:
+    """Reject a Hunt proposal so it is not silent Atlas truth and will not re-stage."""
+    docs = overlay.setdefault("documents", [])
+    target = None
+    idx = -1
+    for i, d in enumerate(docs):
+        if path and d.get("path") == path:
+            target = d
+            idx = i
+            break
+        if doc_id and d.get("id") == doc_id:
+            target = d
+            idx = i
+            break
+    if target is None:
+        raise KeyError(f"proposal not found: path={path!r} id={doc_id!r}")
+
+    target["status"] = "rejected"
+    target["source"] = "hunt-proposal-rejected"
+    target["updated_at"] = _utc()
+    if note:
+        target["reject_note"] = note
+
+    rejected = overlay.setdefault("rejected_document_paths", [])
+    p = target.get("path")
+    if p and p not in rejected:
+        rejected.append(p)
+
+    # Keep row for audit trail but documents_by_authority will ignore rejected.
+    if idx >= 0:
+        docs[idx] = target
+    return target
+
+
 def documents_by_authority(overlay: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
     buckets = {k: [] for k in DOC_AUTHORITIES}
     for doc in overlay.get("documents") or []:
+        if doc.get("status") == "rejected":
+            continue
         auth = doc.get("authority") if doc.get("authority") in DOC_AUTHORITIES else "candidate"
         # Proposals stay candidates until Ticket B approval, even if Hunt said authoritative.
-        if doc.get("status") == "proposal" or doc.get("source") == "hunt-proposal":
+        if doc.get("status") == "proposal" or (
+            doc.get("source") == "hunt-proposal" and doc.get("status") != "confirmed"
+        ):
             if auth == "authoritative":
                 # Still surface under authoritative *proposals* list via flag; bucket as candidate for SoT.
                 buckets["candidate"].append({**doc, "proposed_authority": auth})
@@ -477,6 +619,7 @@ def assemble_from_rows(
             "authoritative": docs["authoritative"],
             "superseded": docs["superseded"],
             "candidates": docs["candidate"],
+            "pending_proposals": list_pending_proposals(ov),
         },
         "related": list(ov.get("precedents") or []),
         "open_questions": list(ov.get("open_questions") or []),

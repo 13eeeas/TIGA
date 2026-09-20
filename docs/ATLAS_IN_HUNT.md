@@ -27,10 +27,11 @@ Overlays live in `tiga_work/atlas/*.overlay.json` (schema_version **2**; survive
 - `GET /api/atlas/page/{code}` — includes `model`, `model_readiness`
 - `POST /api/atlas/page/{code}/pin|hide|unhide|fact|overview|ask`
 - `POST /api/atlas/page/{code}/document|strategy|team|decision|precedent|lifecycle`
+- `POST /api/atlas/page/{code}/proposals/stage|approve|reject` — Ticket B auto-curation
 
 ## Tickets / boundary
 
-- Board + A–E: [`ATLAS_HANDOFF.md`](ATLAS_HANDOFF.md) — Ticket **A shipped**; **B** (auto-curation) next
+- Board + A–E: [`ATLAS_HANDOFF.md`](ATLAS_HANDOFF.md) — Tickets **A** and **B shipped**; **C** UI next
 - Hunt → Atlas signals: [`HUNT_DATA_STRUCTURE.md`](HUNT_DATA_STRUCTURE.md)
 - Notion: [TIGA Atlas](https://app.notion.com/p/3e1807c3efa68120983ac9fe5f081350)
 
