@@ -26,9 +26,11 @@ Overlays live in `tiga_work/atlas/*.overlay.json` (survive re-index). Overview f
 - `GET /api/atlas/page/{code}`
 - `POST /api/atlas/page/{code}/pin|hide|unhide|fact|overview|ask`
 
-## Standalone Atlas repo
+## Standalone Atlas repo / project
 
 `13eeeas/TIGA-Atlas` remains the design lab / offline tools. **Staff only use Hunt.**
+
+Strategy handoff (data model, auto-curation, publish/MCP, Einstein-over-Atlas) lives in the **Atlas project** — see [`ATLAS_HANDOFF.md`](ATLAS_HANDOFF.md). Hunt’s data-structure role: [`HUNT_DATA_STRUCTURE.md`](HUNT_DATA_STRUCTURE.md).
 
 ## Rollback
 

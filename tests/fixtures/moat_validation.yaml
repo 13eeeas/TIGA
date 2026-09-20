@@ -1,0 +1,167 @@
+# Moat validation — architecture-intelligence questions
+#
+# Purpose: Prove the killer-demo shape before scaling ontology / Atlas graph work.
+# These are NOT "what is the GFA" or blank-wiki demos.
+#
+# Usage (when wired into eval):
+#   python tiga.py eval --fixture tests/fixtures/moat_validation.yaml
+# Until then: use as staff-trial script + fill expected_* as POC corpus grows.
+#
+# Gate:
+#   - If staff never ask questions of this shape, do not scale ontology.
+#   - Gateway 1 also requires llm_off_ok queries to return cited hits with
+#     compose/API/Ollama disabled (Hunt FIND baseline).
+#
+# Fill expected_project_codes / expected_path_substrings / comparison_facets
+# against the live 3–5 project POC index.
+
+version: 1
+purpose: moat_validation
+demo_shape: >
+  Architecture comparison with citations — projects, strategies, NV/cooling,
+  structure, presentation evidence (file + page), open originals.
+
+queries:
+  # --- Killer demo pattern (cross-project strategy compare) ---
+  - id: moat_nv_education_under_24m
+    query: >
+      Show education projects under 24 m where naturally ventilated circulation
+      formed part of the social strategy. Compare section strategy, cooling
+      approach, structural system, and relevant presentation material.
+    intent: cross_project_compare
+    comparison_facets:
+      - typology
+      - height_m
+      - natural_ventilation
+      - section_strategy
+      - cooling
+      - structure
+      - presentation_evidence
+    expected_answer_shape: table
+    table_columns: [Project, Strategy, NV, Structure, Evidence]
+    expected_project_codes: []
+    expected_path_substrings: []
+    requires_llm: false
+    notes: Primary moat question — fill codes/paths from POC corpus.
+
+  - id: moat_facade_supersede
+    query: >
+      For the active façade package on this project, which document is
+      authoritative and which earlier reports does it supersede?
+    intent: authority_revision
+    comparison_facets: [authoritative_doc, superseded_docs, revision, issue_status]
+    expected_project_codes: []
+    expected_path_substrings: []
+    requires_llm: false
+    notes: Deterministic authority signals should drive ranking; LLM optional for narrative.
+
+  - id: moat_passive_cooling_precedent
+    query: >
+      Which completed hospitality projects used a related passive-cooling or
+      landscape strategy, and what are the precedent drawings?
+    intent: precedent
+    comparison_facets: [typology, design_strategy, precedent_drawings]
+    expected_project_codes: []
+    expected_path_substrings: []
+    requires_llm: false
+
+  - id: moat_team_consultants_stage
+    query: >
+      Who were the façade consultants at DD, and is there a later tender package
+      that changes the issued detail?
+    intent: team_plus_authority
+    comparison_facets: [team, stage, issued_detail, tender_package]
+    expected_project_codes: []
+    expected_path_substrings: []
+    requires_llm: false
+
+  - id: moat_section_strategy_compare
+    query: >
+      Compare section strategy and structural system across recent education
+      projects that feature naturally ventilated communal circulation.
+    intent: cross_project_compare
+    comparison_facets: [section_strategy, structure, natural_ventilation]
+    expected_project_codes: []
+    expected_path_substrings: []
+    requires_llm: false
+
+  - id: moat_open_evidence_drawings
+    query: >
+      Open the three most relevant drawings that support the natural-ventilation
+      circulation comparison for these education projects.
+    intent: file_finder
+    comparison_facets: [drawing, evidence]
+    expected_project_codes: []
+    expected_path_substrings: []
+    requires_llm: false
+    notes: FIND-only — no synthesis required.
+
+  # --- LLM-off baseline (must pass with generative LLM disabled) ---
+  - id: llm_off_latest_tender_presentation
+    query: find the latest tender presentation
+    intent: file_finder
+    llm_off_ok: true
+    requires_llm: false
+    expected_project_codes: []
+    expected_path_substrings: []
+    notes: Autoscope + revision/latest heuristics; cited hit required with compose off.
+
+  - id: llm_off_project_brief
+    query: project brief
+    intent: file_finder
+    llm_off_ok: true
+    requires_llm: false
+    expected_project_codes: []
+    expected_path_substrings: []
+
+  - id: llm_off_superseded_vs_issued
+    query: issued façade drawings not superseded
+    intent: authority_revision
+    llm_off_ok: true
+    requires_llm: false
+    expected_project_codes: []
+    expected_path_substrings: []
+
+  - id: llm_off_stage_folder
+    query: tender documentation
+    intent: file_finder
+    llm_off_ok: true
+    requires_llm: false
+    expected_project_codes: []
+    expected_path_substrings: []
+
+  # --- Grow toward 10–20 real WOHA staff questions ---
+  - id: moat_placeholder_staff_01
+    query: ""
+    intent: TBD
+    expected_project_codes: []
+    expected_path_substrings: []
+    notes: Replace with real staff trial question.
+
+  - id: moat_placeholder_staff_02
+    query: ""
+    intent: TBD
+    expected_project_codes: []
+    expected_path_substrings: []
+    notes: Replace with real staff trial question.
+
+  - id: moat_placeholder_staff_03
+    query: ""
+    intent: TBD
+    expected_project_codes: []
+    expected_path_substrings: []
+    notes: Replace with real staff trial question.
+
+  - id: moat_placeholder_staff_04
+    query: ""
+    intent: TBD
+    expected_project_codes: []
+    expected_path_substrings: []
+    notes: Replace with real staff trial question.
+
+  - id: moat_placeholder_staff_05
+    query: ""
+    intent: TBD
+    expected_project_codes: []
+    expected_path_substrings: []
+    notes: Replace with real staff trial question.

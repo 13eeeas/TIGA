@@ -8,15 +8,31 @@ This document overrides older roadmap language where they conflict.
 
 ## 1. Objective
 
-**Build an office-LAN company-knowledge search system that finds the right evidence first, then answers with citations.**
+**Build an architecture intelligence layer that turns messy project archives into structured, cited institutional knowledge — available on the LAN first, and optionally to other surfaces later.**
 
-Staff on the LAN ask plain-English questions about project archives and get:
+Staff ask plain-English questions about project archives and get:
 
 - relevant source files / pages / chunks
-- a short synthesized answer grounded only in that evidence
+- structured project understanding (stage, authority, strategies, precedents) as it matures
+- a short synthesized answer grounded only in that evidence (when an LLM is available)
 - clickable citations back to the NAS originals
 
-Success is measured by retrieval accuracy and daily usefulness — not by chatbot flash, agent demos, or indexing the whole 30–40 TB archive.
+Success is measured by retrieval accuracy, architecture-native understanding, and daily usefulness — not by chatbot flash, agent demos, Notion/Egnyte parity, or indexing the whole 30–40 TB archive.
+
+### Intelligence-ownership principle
+
+**TIGA owns architecture intelligence, not commodity infrastructure.**
+
+Provide a complete first-party experience for core workflows, while remaining interoperable with enterprise platforms where they provide superior commodity capabilities. External products may complement or replace individual interface/infrastructure layers without compromising TIGA’s domain knowledge model.
+
+Decision test for every feature:
+
+| Question | Action |
+|----------|--------|
+| Is this **architecture intelligence**? | Build seriously |
+| Is this **generic enterprise software** (storage, wiki chrome, generic chat, ACL)? | Borrow / defer — do not spend scarce build time competing |
+
+Do **not** try to win as “better Egnyte + better Notion + better ChatGPT.” Those layers commoditize. The durable layer is the architecture ontology: projects, strategies, authority/revision, precedents, cited institutional memory.
 
 ### North star (near term)
 
@@ -59,20 +75,46 @@ If the internet or an API is down, the product degrades to **cited search result
 
 ## 3. Core architecture principle
 
-**Search first. AI second.**
+**Search first. Structured knowledge second. Generative AI last.**
 
 ```
-Company files (NAS)
-  → Ingest + clean (parse, hash, dedupe, version)
+Company files (NAS / Egnyte / other)
+  → Ingest + clean (parse, hash, dedupe, version, authority)
   → Search index (metadata + BM25 + embeddings)
   → Rerank (top ~50 → top ~8–15)
-  → Answer model (local and/or approved API)
+  → Cited evidence pack  ← product works here with zero generative LLM
+  → Optional answer model (local and/or approved API)
   → Cited answer + source links
 ```
 
 - Do **not** train a model to memorize the archive.
 - Do **not** send whole files to a model by default.
 - Search inside files; send only the best pages/sections; every factual claim must be traceable to a source.
+- Use **deterministic** logic wherever the answer is deterministic (stage from folders, Rev D > Rev C, supersede heuristics). Use an LLM only where interpretation is actually required.
+
+### No generative LLM required (binding)
+
+**TIGA must remain fully usable without a generative LLM.** Local and enterprise LLMs are optional reasoning layers over deterministic retrieval and structured project knowledge.
+
+Clarification: local **embeddings** and **reranking** are allowed and expected for Hunt quality. “No LLM required” means no **generative** model is required for the core product — not that TIGA abandons ML.
+
+### Three operating modes
+
+| Mode | What happens | Role |
+|------|--------------|------|
+| **No generative LLM** | Search, filter, citations, Atlas browse, structured knowledge | **Mandatory baseline** |
+| **Local LLM** | Summaries, rewrite, metadata suggestions, candidate extracts | Optional / degraded |
+| **Enterprise API LLM** | Reasoning, comparison, synthesis over evidence packs | Preferred once approved |
+
+### Product map: FIND / KNOW / THINK
+
+| Mode | Product | Job |
+|------|---------|-----|
+| **FIND** | **TIGA Hunt** | Locate authoritative files, pages, chunks; return cited evidence |
+| **KNOW** | **TIGA Atlas** | Structured project memory (ontology graph); thin UI; publishable |
+| **THINK** | **TIGA Einstein** | Reason over Atlas structure + Hunt evidence packs |
+
+Standalone first-party system first. Notion / ChatGPT / MCP are optional **downstream surfaces**, not the product’s existence.
 
 ### Minimal stack (POC)
 
@@ -236,11 +278,36 @@ All options assume: **raw NAS files never leave the building as bulk upload.** O
 
 | Name | Role | When |
 |------|------|------|
-| **TIGA Hunt** (Fit Hub search) | Ingest, index, retrieve, cited answer | Now — the product |
-| **TIGA Atlas** | Project memory / cross-project graph | After Hunt retrieval gate |
-| **TIGA Einstein** | Stronger expert reasoning over Hunt evidence | After Hunt retrieval gate; may be API-backed under §8 |
+| **TIGA Hunt** (FIND) | Ingest, index, retrieve, cited evidence | Now — Gateway 1 product |
+| **TIGA Atlas** (KNOW) | Architecture ontology / project memory; UI stays thin | After Hunt retrieval gate; data model before chrome |
+| **TIGA Einstein** (THINK) | Expert reasoning over Atlas + Hunt evidence | After Atlas can answer “what is this project / what superseded what”; API-backed under §8 |
 
-Do not build Atlas/Einstein features that compete with fixing retrieval.
+Do not build Atlas/Einstein features that compete with fixing retrieval. Do not build Notion-parity wiki/collab before the Atlas **data model** and auto-curation loop exist.
+
+### Build / Borrow
+
+| Layer | Decision |
+|-------|----------|
+| File storage | **Borrow** — Egnyte / NAS |
+| ACL / enterprise permissions | **Borrow** — firm IdP / storage |
+| Generic document retrieval / vector search | **Borrow** where better; commodity |
+| Frontier LLM | **Borrow** — approved enterprise API |
+| Wiki editor / generic project DB UI | **Borrow** — optionally Notion as renderer |
+| Architecture ontology | **BUILD** |
+| Revision / authority reasoning | **BUILD** |
+| Project knowledge extraction | **BUILD** |
+| Cross-project precedent engine | **BUILD** |
+| Architecture-specific retrieval ranking | **BUILD** |
+| Firm knowledge-quality / evaluation | **BUILD** |
+| Institutional-memory / auto-curation layer | **BUILD** |
+
+### Near-term rule (post-#20–#23)
+
+Do **not** open another long Hunt plumbing sprint. Use the merged stack (citation verify, thin-pack retry, autoscope/BM25, OCR review) to clear the POC / staff trial. Next tickets come from **ontology + auto-curation evidence** from that trial — not more RAG demos.
+
+Killer demo shape (moat validation) is architecture comparison with citations — not “what is the GFA” or “show a blank wiki page.” See [`HUNT_DATA_STRUCTURE.md`](HUNT_DATA_STRUCTURE.md) and `tests/fixtures/moat_validation.yaml`.
+
+Atlas ownership (data model, auto-curation, publish/MCP, Einstein-over-Atlas) lives in the **Atlas project** — see [`ATLAS_HANDOFF.md`](ATLAS_HANDOFF.md).
 
 ---
 
@@ -256,4 +323,4 @@ Do not build Atlas/Einstein features that compete with fixing retrieval.
 
 ## 11. One-sentence roadmap
 
-**Curate a small authoritative LAN corpus → hybrid search → local rerank → send only the best evidence to a firm-approved answer model (local or API) → return cited answers → benchmark ruthlessly → scale only what proves useful.**
+**Curate a small authoritative LAN corpus → hybrid search → local rerank → cited evidence that works with zero generative LLM → optional firm-approved synthesis → deepen architecture ontology + auto-curation → benchmark ruthlessly → scale only what proves useful.**
