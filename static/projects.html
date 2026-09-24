@@ -66,6 +66,62 @@ a{color:var(--coral);text-decoration:none}
 .top-nav-link{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-60);padding:6px 10px;border-radius:999px;text-decoration:none}
 .top-nav-link:hover,.top-nav-link.active{background:var(--toggle-bg);color:var(--ink)}
 .page{width:100%;max-width:760px;margin:0 auto;padding:8px 24px 80px}
+.page.article{max-width:1120px}
+.mast{margin-bottom:22px}
+.site-body{display:block}
+.rail{display:flex;flex-wrap:wrap;align-items:center;gap:10px 18px;margin:0 0 16px}
+.toc{display:flex;flex-wrap:wrap;gap:6px 14px;margin:0;padding:0;list-style:none}
+.toc a{font-size:14px;font-weight:300;color:var(--ink-60);text-decoration:none}
+.toc a:hover{color:var(--coral)}
+.record{display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:36px;align-items:start;margin-bottom:28px}
+.lead-brief p{font-size:17.5px;font-weight:300;line-height:1.55;margin:0}
+.infobox{width:100%;border-collapse:collapse}
+.infobox th{text-align:left;font-weight:400;font-size:13px;color:var(--ink-60);padding:7px 12px 7px 0;vertical-align:baseline}
+.infobox td{font-size:15px;font-weight:300;padding:7px 0;border-bottom:1px solid var(--ink-12)}
+.kicker{font-size:13px;color:var(--ink-60);margin:0 0 6px}
+.ask{margin:8px 0 0}
+.ask input{width:100%;font:inherit;font-size:15px;padding:10px 12px;border:1px solid var(--ink-12);border-radius:10px;background:transparent;color:inherit}
+.ask-answer{font-size:14px;font-weight:300;line-height:1.5;margin:8px 0 0;white-space:pre-wrap}
+.views{display:flex;flex-wrap:wrap;gap:8px 16px;margin:0 0 22px}
+.views button{font:inherit;font-size:14px;background:none;border:0;padding:0;color:var(--ink-60);cursor:pointer}
+.views button.on{color:var(--ink);border-bottom:1px solid var(--coral)}
+.atlas-map{display:grid;grid-template-columns:minmax(0,1fr) 250px;gap:16px;align-items:start}
+.viewport{position:relative;height:min(68vh,640px);min-height:420px;overflow:hidden;border:1px solid var(--ink-12);border-radius:16px;cursor:grab;background:rgba(255,255,255,.28)}
+.world{position:absolute;left:0;top:0;width:1600px;height:900px;transform-origin:0 0}
+.world svg{position:absolute;inset:0;width:1600px;height:900px;pointer-events:none}
+.gnode{position:absolute;transform:translate(-50%,-50%);width:156px;text-align:center;font:inherit;font-size:14px;background:var(--glass-bg);border:1px solid var(--glass-border);border-radius:14px;padding:10px 8px;cursor:pointer;color:inherit}
+.gnode.on{border-color:rgba(201,100,66,.85);box-shadow:0 8px 24px var(--coral-glow)}
+.gnode small{display:block;font-size:11px;color:var(--ink-60);margin-bottom:2px}
+.gedge{stroke:rgba(20,20,20,.28);stroke-width:1.25}
+.map-side h2{font-family:'Lora',Georgia,serif;font-size:22px;font-weight:400;margin:0 0 6px}
+.map-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.map-actions button{font:inherit;font-size:13px;padding:6px 10px;border-radius:999px;border:1px solid var(--ink-12);background:transparent;color:inherit;cursor:pointer}
+@media(max-width:720px){.atlas-map{grid-template-columns:1fr}}
+.article-sec{margin:0 0 28px}
+.article-sec h2{font-family:'Lora',Georgia,serif;font-size:22px;font-weight:400;margin:0 0 10px}
+.obj{border-top:1px solid var(--ink-12);padding:10px 0}
+.obj h3{font-family:'Lora',Georgia,serif;font-size:16px;font-weight:400;margin:0 0 4px}
+.obj p{margin:0 0 4px;font-size:14.5px;font-weight:300;line-height:1.45}
+.unresolved{font-size:15px;font-weight:300;line-height:1.5;color:var(--ink-60);margin:0 0 10px}
+.work{width:100%;border-collapse:collapse;margin:0 0 16px}
+.work caption{text-align:left;font-family:'Lora',Georgia,serif;font-size:16px;padding:0 0 6px}
+.work th{text-align:left;font-weight:400;font-size:13px;color:var(--ink-60);padding:7px 12px 7px 0;vertical-align:baseline;width:28%}
+.work td{font-size:14px;font-weight:300;padding:7px 8px 7px 0;border-bottom:1px solid var(--ink-12);vertical-align:baseline}
+.files-label{font-family:'Lora',Georgia,serif;font-size:13px;font-weight:400;color:var(--ink-60);margin:8px 0 10px}
+@media(max-width:720px){.record{grid-template-columns:1fr}}
+.article-grid{display:block}
+.article-grid .section{margin:0 0 22px}
+.article-grid .section h3{font-size:20px;margin:0 0 8px}
+.stream{border-top:1px solid var(--ink-12);padding:8px 0}
+.stream summary{display:grid;grid-template-columns:minmax(120px,180px) minmax(0,1fr) auto;gap:12px;align-items:baseline;margin:0;list-style:none}
+.stream summary::-webkit-details-marker{display:none}
+.stream-name{font-family:'Lora',Georgia,serif;font-size:15px}
+.stream .sources{margin:8px 0 4px 180px}
+.topic{font-size:15px;font-weight:300;line-height:1.5;margin:0 0 12px}
+.section summary{cursor:pointer;font-family:'Lora',Georgia,serif;font-size:16px;margin-bottom:10px}
+@media(max-width:640px){
+  .article-grid{grid-template-columns:1fr}
+}
 .hero-title{font-family:'Lora',Georgia,serif;font-size:clamp(28px,4.5vw,42px);font-weight:400;letter-spacing:-.01em;line-height:1.3;margin:0 0 10px}
 .title-accent{font-style:italic;color:var(--coral);font-weight:400}
 .lede{color:var(--ink-60);font-size:15.5px;font-weight:300;line-height:1.55;margin:0 0 22px;max-width:40rem}
@@ -80,7 +136,10 @@ a{color:var(--coral);text-decoration:none}
 .section{background:var(--glass-bg);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border:1px solid var(--glass-border);border-bottom-color:var(--glass-border-lo);border-radius:16px;padding:16px 18px;margin:0 0 10px;box-shadow:var(--glass-shadow),inset 0 1.5px 0 var(--glass-inner)}
 .section h3{margin:0 0 6px;font-size:15px;font-weight:400;font-family:'Lora',Georgia,serif}
 .hint{color:var(--ink-60);font-size:13px;font-weight:300;margin:0 0 12px;line-height:1.5}
-.item{border-top:1px solid var(--ink-12);padding:10px 0}
+.sources{margin:0;padding-left:1.2rem}
+.item{padding:6px 0}
+.source-link{font:inherit;font-size:14px;color:inherit;background:none;border:0;padding:0;cursor:pointer;text-align:left}
+.source-link:hover{color:var(--coral)}
 .item:first-of-type{border-top:0;padding-top:0}
 .item-head{font-size:14px;font-weight:400}
 .path{font-size:12px;color:var(--ink-60);font-weight:300;margin-top:2px;word-break:break-all}
@@ -150,8 +209,6 @@ hr.sep{border:none;border-top:1px solid var(--ink-12);margin:14px 0}
       <nav class="top-nav" aria-label="Primary">
         <a class="top-nav-link" href="/">Search</a>
         <a class="top-nav-link active" href="/projects">Projects</a>
-        <a class="top-nav-link" href="/projects#ask">Ask</a>
-        <a class="top-nav-link" href="/storage">Storage</a>
       </nav>
       <button class="icon-btn" id="themeToggle" title="Toggle theme" aria-label="Toggle colour theme">
         <svg class="icon-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
@@ -177,22 +234,31 @@ hr.sep{border:none;border-top:1px solid var(--ink-12);margin:14px 0}
   <main class="page">
     <div id="listView">
       <h1 class="hero-title">Projects,<br><span class="title-accent">the job in a glance</span></h1>
-      <p class="lede">A short wiki blurb of what the job is — not an index dashboard. Pin sources, cite facts, and fill the overview so staff can read it in five seconds.</p>
+      <p class="lede">The job in a sentence, then each live stream: client, consultants, authorities, drawings, meetings.</p>
       <div class="grid" id="projectGrid"><p class="empty">Loading projects…</p></div>
     </div>
 
     <div id="pageView" class="hidden">
       <a class="back" href="#" id="backBtn">← All projects</a>
-      <h1 class="hero-title" id="pageTitle">Project</h1>
-      <p class="lede" id="pageBlurb"></p>
-      <div class="chips" id="chips"></div>
-      <div class="section" id="statusSec">
-        <div class="status-line" id="healthState"></div>
-        <div class="health-detail" id="healthDetail"></div>
-      </div>
+      <header class="mast">
+        <p class="kicker" id="kicker"></p>
+        <h1 class="hero-title" id="pageTitle">Project</h1>
+        <div class="record">
+          <article class="lead-brief" id="leadBrief"></article>
+          <table class="infobox" id="infoTable"></table>
+        </div>
+        <form class="ask" id="askForm">
+          <input id="askQ" name="q" placeholder="Ask Atlas about this project…" autocomplete="off">
+        </form>
+        <p class="ask-answer" id="askAnswer"></p>
+      </header>
+      <div class="site-body">
+      <div class="sheet">
+      <nav class="views" id="views"></nav>
+      <div id="story"></div>
 
-      <div class="section">
-        <h3>Overview</h3>
+      <details class="section" style="margin-top:12px">
+        <summary>Edit overview</summary>
         <p class="hint">What this job is, for whom (or typology), stage, and location if known. Saved to the wiki overlay — survives re-index.</p>
         <form class="form" id="overviewForm">
           <label>Blurb <textarea name="summary" rows="3" placeholder="e.g. NUS BIZ3 is a tertiary education project for NUS in Singapore, currently at construction."></textarea></label>
@@ -203,46 +269,8 @@ hr.sep{border:none;border-top:1px solid var(--ink-12);margin:14px 0}
           <label>Location <input name="location" placeholder="e.g. Singapore"></label>
           <button class="primary" type="submit">Save overview</button>
         </form>
-      </div>
-
-      <details class="section index-detail" id="indexSec">
-        <summary>Index</summary>
-        <p class="hint" id="indexDetail" style="margin-top:10px">File counts and overlay path — secondary to the job blurb.</p>
       </details>
-
-      <div class="section" id="pinsSec">
-        <h3>Authoritative pins</h3>
-        <p class="hint">Human-confirmed sources of truth. Auto candidates below are not trusted until pinned.</p>
-        <div class="pin-grid" id="pins"></div>
       </div>
-
-      <div class="section" id="factsSec">
-        <h3>Cited facts</h3>
-        <p class="hint">Auto facts start uncited (rumours). Add a path cite to keep them — wiki style.</p>
-        <div class="fact-grid" id="facts"></div>
-        <form class="form" id="factForm" style="margin-top:1rem">
-          <h3>Add / update fact</h3>
-          <label>Key <input name="key" required placeholder="client"></label>
-          <label>Label <input name="label" required placeholder="Client"></label>
-          <label>Value <input name="value" required placeholder="NUS"></label>
-          <label>Citation path <input name="cite" required placeholder="/Projects/.../file.pdf"></label>
-          <label>Status
-            <select name="status"><option>draft</option><option>verified</option><option>disputed</option></select>
-          </label>
-          <button class="primary" type="submit">Save fact</button>
-        </form>
-      </div>
-
-      <div class="section" id="docsSec"></div>
-
-      <div class="section" id="ask">
-        <h3>Ask</h3>
-        <p class="hint">Answers only from pins + cited facts. Locked until the page has a pin. Einstein stays out of this slice.</p>
-        <form class="form" id="askForm">
-          <label>Question <input name="question" required placeholder="What is the latest GA set?"></label>
-          <button class="primary" type="submit">Ask</button>
-        </form>
-        <pre class="ask-out hidden" id="askOut"></pre>
       </div>
     </div>
   </main>
@@ -320,8 +348,11 @@ async function loadList() {
 
 async function openPage(code) {
   currentCode = code;
+  mapCenter = 'root';
+  mapPos = {};
   $('listView').classList.add('hidden');
   $('pageView').classList.remove('hidden');
+  document.querySelector('.page').classList.add('article');
   location.hash = 'p/' + encodeURIComponent(code);
   await refreshPage();
 }
@@ -341,37 +372,21 @@ function renderPage(p) {
   const proj = p.project || {};
   const h = p.health || {};
   $('pageTitle').textContent = proj.name || proj.code;
-  $('pageBlurb').textContent = p.blurb || 'Needs curation.';
-  const identity = [
-    ['typology', 'Typology'],
-    ['client', 'Client'],
-    ['stage', 'Stage'],
-    ['location', 'Location'],
+  const line = p.blurb || '';
+  $('leadBrief').innerHTML = line ? `<p>${escapeHtml(line)}</p>` : '';
+  const gfa = (p.facts || []).find(f => f.key === 'gfa');
+  const rows = [
+    ['Client', proj.client],
+    ['Typology', proj.typology],
+    ['Stage', proj.stage],
+    ['Location', proj.location],
+    ['GFA', gfa && gfa.value],
   ];
-  $('chips').innerHTML = identity.map(([k, label]) => {
-    const ok = filled(proj[k]);
-    const val = ok ? String(proj[k]) : 'Needs curation';
-    return `<span class="chip ${ok ? '' : 'missing'}"><strong>${label}</strong> ${escapeHtml(val)}</span>`;
+  $('infoTable').innerHTML = rows.map(([label, value]) => {
+    const shown = filled(value) ? escapeHtml(String(value)) : '—';
+    return `<tr><th>${label}</th><td>${shown}</td></tr>`;
   }).join('');
-
-  if (h.published && h.show_health_score) {
-    $('healthState').innerHTML = `${statusBadge(true)} ${h.score}/100`;
-    $('healthDetail').textContent = 'Identity, pin, and cited facts are in place.';
-  } else {
-    $('healthState').innerHTML = statusBadge(false);
-    const missing = h.missing_fields || [];
-    const bits = [];
-    if (missing.length) bits.push('Still open: ' + missing.join(', '));
-    if (!(h.pin_count > 0)) bits.push('pin a source');
-    if (!(h.cited_facts > 0)) bits.push('cite at least one fact');
-    $('healthDetail').textContent = bits.length
-      ? bits.join(' · ') + '.'
-      : 'Fill the overview, pin a source, and cite at least one fact.';
-  }
-
-  const idx = p.index || {};
-  $('indexDetail').innerHTML = `${idx.file_count || 0} files · ${idx.candidate_count || 0} Hunt candidates · ${idx.pin_count || 0} pin(s)` +
-    (idx.overlay ? `<div class="path">${escapeHtml(idx.overlay)}</div>` : '');
+  void h;
 
   const form = $('overviewForm');
   form.summary.value = p.summary || '';
@@ -381,57 +396,427 @@ function renderPage(p) {
   form.stage.value = filled(proj.stage) ? proj.stage : '';
   form.location.value = filled(proj.location) ? proj.location : '';
 
-  const pins = p.pins || [];
-  $('pins').innerHTML = pins.length ? pins.map(pin => `
-    <div class="pin">
-      <div class="role">${escapeHtml(pin.role || 'other')}</div>
-      <div>${escapeHtml(pin.title || pin.path || '')}</div>
-      <div class="path">${escapeHtml(pin.path || '')}</div>
-    </div>`).join('') : '<p class="empty">No pins yet — pin a candidate below.</p>';
+  const idx = p.index || {};
+  $('kicker').textContent = [proj.code, filled(proj.stage) ? proj.stage : 'Stage not resolved', idx.file_count ? `${Number(idx.file_count).toLocaleString()} files` : ''].filter(Boolean).join(' · ');
+  renderStory(p);
+  void h;
+}
 
-  const facts = p.facts || [];
-  $('facts').innerHTML = facts.length ? facts.map(f => {
-    const cited = (f.cite_paths || []).length > 0;
-    return `<div class="fact ${cited ? '' : 'rumor'}">
-      <div class="label">${escapeHtml(f.label || f.key)} · ${escapeHtml(f.status || 'draft')}</div>
-      <div class="val">${escapeHtml(f.value || '—')}</div>
-      <div class="path">${cited ? escapeHtml((f.cite_paths || []).join(', ')) : 'No citation — rumour'}</div>
-      ${!cited ? `<div class="actions"><button data-cite-fact="${escapeAttr(f.key)}" data-label="${escapeAttr(f.label || f.key)}" data-value="${escapeAttr(f.value || '')}">Add cite…</button></div>` : ''}
+let storyView = 'map';
+let mapCenter = 'root';
+let mapShow = '';
+let mapCam = { x: 40, y: 70, z: 1 };
+let mapPos = {};
+
+function receptionModel(focus, projectName) {
+  const decision = (focus.decisions || []).find(item => /rev f/i.test(item.title || ''));
+  const evidence = (decision && decision.evidence) || [];
+  const revF = evidence.find(item => /022F/i.test(item.title || ''));
+  const revE = evidence.find(item => /022E/i.test(item.title || ''));
+  const bollard = (focus.issues || []).find(item => /bollard|VO-024/i.test(item.title || ''));
+  const voFile = ((bollard && bollard.evidence) || []).find(item => /VO-024/i.test(item.title || ''));
+  if (!revF) return null;
+  const fileNode = (id, file) => file ? {
+    id, title: file.title, kind: 'Evidence', date: file.date || '', path: file.path || '', children: [],
+  } : null;
+  const nodes = {
+    hica: { id: 'hica', title: projectName, kind: 'Project', children: ['reception'], parent: '' },
+    reception: { id: 'reception', title: 'Reception', kind: 'Area', children: ['dropoff'], parent: 'hica' },
+    dropoff: { id: 'dropoff', title: 'Drop-off', kind: 'Area', children: ['bollard', 'revf', 'vo'], parent: 'reception' },
+    bollard: { id: 'bollard', title: 'Bollard arrangement', kind: 'Issue', status: 'Filed, not read', date: (bollard && bollard.date) || '', children: voFile ? ['vo-file'] : [], parent: 'dropoff', note: 'A bollard variation was filed. The drawing has not been read.' },
+    revf: { id: 'revf', title: 'Rev F', kind: 'Decision', status: 'Issued', date: (decision && decision.date) || '', children: [], parent: 'dropoff', supersedes: revE ? 'reve' : '', why: (decision && decision.why) || '' },
+    vo: { id: 'vo', title: 'VO-024', kind: 'Event', status: 'Filed, not read', date: (bollard && bollard.date) || '', children: voFile ? ['vo-file'] : [], parent: 'dropoff' },
+  };
+  if (revE) nodes.reve = { id: 'reve', title: 'Rev E', kind: 'Decision', status: 'Earlier sheet', date: revE.date || '', children: ['reve-file'], parent: 'revf' };
+  const fNode = fileNode('revf-file', revF);
+  const eNode = fileNode('reve-file', revE);
+  const vNode = fileNode('vo-file', voFile);
+  if (fNode) nodes['revf-file'] = { ...fNode, parent: 'revf' };
+  nodes.revf.children = ['reve', 'revf-file'].filter(id => nodes[id]);
+  if (eNode) nodes['reve-file'] = { ...eNode, parent: 'reve' };
+  if (vNode) nodes['vo-file'] = { ...vNode, parent: 'vo' };
+
+  const extra = [
+    ['facade', 'Facade', 'Area', (focus.events || []).find(item => item.area === 'Facade')],
+    ['waterproof', 'Waterproofing', 'Issue', (focus.issues || []).find(item => item.area === 'Waterproofing')],
+    ['approvals', 'Approvals', 'Event', (focus.events || []).find(item => item.area === 'Approvals')],
+    ['meeting', 'Stakeholder meeting', 'Event', (focus.events || []).find(item => item.area === 'Coordination')],
+    ['operator', 'Hotel operator', 'Event', (focus.events || []).find(item => item.area === 'Hotel operator')],
+  ];
+  extra.forEach(([id, title, kind, source]) => {
+    if (!source) return;
+    const files = source.evidence || [];
+    nodes[id] = {
+      id, title, kind, date: source.date || '', status: source.status || '',
+      why: source.why || '', parent: 'hica', children: files.map((_, i) => id + '-file-' + i),
+    };
+    files.forEach((file, i) => {
+      const fid = id + '-file-' + i;
+      nodes[fid] = { id: fid, title: file.title, kind: 'Evidence', date: file.date || '', path: file.path || '', children: [], parent: id };
+    });
+    nodes.hica.children.push(id);
+  });
+  return nodes;
+}
+
+function placeMap(nodes) {
+  const node = nodes[mapCenter];
+  const cx = 800;
+  const cy = 420;
+  mapPos[node.id] = { x: cx, y: cy };
+  const visible = [node];
+  const ring = [];
+  if (node.parent && nodes[node.parent]) ring.push(nodes[node.parent]);
+  let kids = (node.children || []).map(id => nodes[id]).filter(Boolean);
+  kids = kids.filter(item => item.kind !== 'Evidence' || mapShow === 'evidence' || (nodes[mapCenter] && nodes[mapCenter].kind === 'Set'));
+  ring.push(...kids);
+  const radius = Math.max(240, 120 + ring.length * 28);
+  ring.forEach((item, i) => {
+    const angle = (-Math.PI / 2) + (i / Math.max(ring.length, 1)) * Math.PI * 2;
+    mapPos[item.id] = { x: cx + Math.cos(angle) * radius, y: cy + Math.sin(angle) * radius };
+    visible.push(item);
+  });
+  return visible;
+}
+
+function fitMap(viewport) {
+  const ids = [...viewport.querySelectorAll('.gnode')].map(el => el.dataset.map);
+  if (!ids.length) return;
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  ids.forEach(id => {
+    const at = mapPos[id];
+    if (!at) return;
+    minX = Math.min(minX, at.x - 100);
+    maxX = Math.max(maxX, at.x + 100);
+    minY = Math.min(minY, at.y - 46);
+    maxY = Math.max(maxY, at.y + 46);
+  });
+  const pad = 28;
+  const bw = Math.max(maxX - minX, 1);
+  const bh = Math.max(maxY - minY, 1);
+  const z = Math.min(1.15, (viewport.clientWidth - pad * 2) / bw, (viewport.clientHeight - pad * 2) / bh);
+  mapCam.z = Math.max(0.35, z);
+  mapCam.x = (viewport.clientWidth - bw * mapCam.z) / 2 - minX * mapCam.z;
+  mapCam.y = (viewport.clientHeight - bh * mapCam.z) / 2 - minY * mapCam.z;
+}
+
+function projectModel(p) {
+  const name = (p.project || {}).name || (p.project || {}).code || 'Project';
+  const nodes = { root: { id: 'root', title: name, kind: 'Project', children: [], parent: '' } };
+  Object.entries(p.sections || {}).forEach(([key, section]) => {
+    const sid = 'sec-' + key;
+    nodes[sid] = { id: sid, title: section.title || key, kind: 'Area', children: [], parent: 'root' };
+    nodes.root.children.push(sid);
+    streamGroups(section).forEach((group) => {
+      const gid = sid + '::' + group.name;
+      nodes[gid] = {
+        id: gid,
+        title: group.name,
+        kind: 'Set',
+        date: (group.latest && group.latest.snippet) || '',
+        children: [],
+        parent: sid,
+      };
+      nodes[sid].children.push(gid);
+      group.items.forEach((item, index) => {
+        const fid = gid + '::' + index;
+        nodes[fid] = {
+          id: fid,
+          title: item.title,
+          kind: 'Evidence',
+          date: item.snippet || '',
+          path: item.path || '',
+          children: [],
+          parent: gid,
+        };
+        nodes[gid].children.push(fid);
+      });
+    });
+  });
+  return nodes.root.children.length ? nodes : null;
+}
+
+function renderMap(p) {
+  const nodes = projectModel(p);
+  if (!nodes) return '<p class="unresolved">No filed shelves for this project yet.</p>';
+  if (!nodes[mapCenter]) mapCenter = 'root';
+  const visible = placeMap(nodes);
+  const node = nodes[mapCenter];
+  const here = mapPos[node.id];
+  const lines = visible.filter(item => item.id !== node.id).map(item => {
+    const at = mapPos[item.id];
+    return `<line class="gedge" data-a="${node.id}" data-b="${item.id}" x1="${here.x}" y1="${here.y}" x2="${at.x}" y2="${at.y}"/>`;
+  }).join('');
+  const buttons = visible.map(item => {
+    const at = mapPos[item.id];
+    const label = item.title.length > 42 ? item.title.slice(0, 40) + '…' : item.title;
+    return `<button type="button" class="gnode${item.id === mapCenter ? ' on' : ''}" data-map="${item.id}" style="left:${at.x}px;top:${at.y}px"><small>${escapeHtml(item.kind)}${item.date ? ' · ' + escapeHtml(item.date) : ''}</small>${escapeHtml(label)}</button>`;
+  }).join('');
+  const open = node.path ? `<p><button type="button" class="source-link" data-open-path="${escapeAttr(node.path)}">Open this file</button></p>` : '';
+  return `
+    <p class="hint">Drag the canvas to move. Scroll to zoom. Click a shelf, then a set, and the files in that set appear.</p>
+    <div class="atlas-map">
+      <div class="viewport" id="mapViewport">
+        <div class="world" id="mapWorld" style="transform:translate(${mapCam.x}px,${mapCam.y}px) scale(${mapCam.z})">
+          <svg viewBox="0 0 1600 900">${lines}</svg>
+          ${buttons}
+        </div>
+      </div>
+      <aside class="map-side">
+        <h2>${escapeHtml(node.title.length > 48 ? node.title.slice(0, 46) + '…' : node.title)}</h2>
+        <p class="hint">${escapeHtml(node.kind)}${node.status ? ' · ' + escapeHtml(node.status) : ''}${node.date ? ' · ' + escapeHtml(node.date) : ''}</p>
+        ${node.why ? `<p>${escapeHtml(node.why)}</p>` : ''}
+        ${node.note ? `<p>${escapeHtml(node.note)}</p>` : ''}
+        ${open}
+        <div class="map-actions">
+          <button type="button" data-map-show="history">Show history</button>
+          <button type="button" data-map-show="evidence">Show evidence</button>
+        </div>
+      </aside>
     </div>`;
-  }).join('') : '<p class="empty">No facts yet.</p>';
+}
 
-  const sections = p.sections || {};
-  const order = [['key_documents','Key documents'],['drawings_models','Drawings & models'],['correspondence','Correspondence & authority']];
-  $('docsSec').innerHTML = order.map(([key, title]) => {
-    const items = (sections[key] && sections[key].items) || [];
-    const body = items.length ? items.map(it => `
-      <div class="item">
-        <div class="item-head">${escapeHtml(it.title || '')}
-          <span class="badge ${it.pinned ? 'pub' : ''}">${it.pinned ? 'pinned' : 'candidate'}</span>
-        </div>
-        <div class="path">${escapeHtml(it.path || '')}</div>
-        ${it.snippet ? `<div class="snip">${escapeHtml(it.snippet)}</div>` : ''}
-        <div class="actions">
-          ${!it.pinned ? `<button data-pin-path="${escapeAttr(it.path)}" data-pin-title="${escapeAttr(it.title || '')}" data-pin-role="${escapeAttr(it.suggested_role || 'other')}">Pin as truth</button>` : ''}
-          <button class="danger" data-hide-path="${escapeAttr(it.path)}">Hide</button>
-        </div>
-      </div>`).join('') : '<p class="empty">No candidates from Hunt yet.</p>';
-    return `<h3>${title}</h3><p class="hint">Auto from Hunt search — pin what is authoritative.</p>${body}`;
-  }).join('<hr class="sep">');
+function bindMap(root) {
+  const viewport = root.querySelector('#mapViewport');
+  const world = root.querySelector('#mapWorld');
+  if (!viewport || !world) return;
+  const apply = () => { world.style.transform = `translate(${mapCam.x}px,${mapCam.y}px) scale(${mapCam.z})`; };
+  fitMap(viewport);
+  apply();
+  const redraw = () => {
+    world.querySelectorAll('.gedge').forEach(line => {
+      const a = mapPos[line.dataset.a];
+      const b = mapPos[line.dataset.b];
+      if (!a || !b) return;
+      line.setAttribute('x1', a.x); line.setAttribute('y1', a.y);
+      line.setAttribute('x2', b.x); line.setAttribute('y2', b.y);
+    });
+  };
+  let drag = null;
+  viewport.onwheel = (e) => {
+    e.preventDefault();
+    mapCam.z = Math.min(2.2, Math.max(0.45, mapCam.z * (e.deltaY < 0 ? 1.08 : 0.92)));
+    apply();
+  };
+  viewport.onpointerdown = (e) => {
+    if (e.target.closest('.source-link')) return;
+    const hit = e.target.closest('.gnode');
+    drag = { x: e.clientX, y: e.clientY, hit, moved: false, cx: mapCam.x, cy: mapCam.y };
+    if (hit) {
+      const at = mapPos[hit.dataset.map];
+      drag.ox = at.x; drag.oy = at.y;
+    }
+    viewport.setPointerCapture(e.pointerId);
+  };
+  viewport.onpointermove = (e) => {
+    if (!drag) return;
+    const dx = e.clientX - drag.x;
+    const dy = e.clientY - drag.y;
+    if (Math.abs(dx) + Math.abs(dy) > 5) drag.moved = true;
+    if (drag.hit && drag.moved) {
+      mapPos[drag.hit.dataset.map] = { x: drag.ox + dx / mapCam.z, y: drag.oy + dy / mapCam.z };
+      drag.hit.style.left = mapPos[drag.hit.dataset.map].x + 'px';
+      drag.hit.style.top = mapPos[drag.hit.dataset.map].y + 'px';
+      redraw();
+    } else if (!drag.hit) {
+      mapCam.x = drag.cx + dx;
+      mapCam.y = drag.cy + dy;
+      apply();
+    }
+  };
+  viewport.onpointerup = () => {
+    if (drag && drag.hit && !drag.moved) {
+      mapCenter = drag.hit.dataset.map;
+      mapShow = '';
+      renderStory(currentPage);
+    }
+    drag = null;
+  };
+}
 
-  $('docsSec').querySelectorAll('[data-pin-path]').forEach(btn => {
-    btn.onclick = () => pin(btn.dataset.pinPath, btn.dataset.pinTitle, btn.dataset.pinRole);
+function evidenceList(rows) {
+  if (!rows || !rows.length) return '';
+  return `<p class="hint">Evidence ${rows.map(it => `<button type="button" class="source-link" data-open-path="${escapeAttr(it.path || '')}">${escapeHtml(it.title || 'file')}</button>`).join(' · ')}</p>`;
+}
+
+function renderStory(p) {
+  const focus = p.focus || {};
+  const events = focus.events || [];
+  const issues = focus.issues || [];
+  const decisions = focus.decisions || [];
+  const working = focus.working || [];
+  const views = [
+    ['map', 'Map'],
+    ['overview', 'Overview'],
+    ['timeline', 'Timeline'],
+    ['issues', 'Issues'],
+    ['decisions', 'Decisions'],
+  ];
+  $('views').innerHTML = views.map(([id, label]) => `<button type="button" data-view="${id}" class="${storyView === id ? 'on' : ''}">${label}</button>`).join('');
+  $('views').querySelectorAll('[data-view]').forEach(btn => {
+    btn.onclick = () => { storyView = btn.dataset.view; renderStory(p); };
   });
-  $('docsSec').querySelectorAll('[data-hide-path]').forEach(btn => {
-    btn.onclick = () => hide(btn.dataset.hidePath);
+  const idx = p.index || {};
+  const line = p.blurb || 'Project description not confidently resolved from indexed primary sources.';
+  const areas = [...new Set([...events, ...issues, ...decisions].map(item => item.area).filter(Boolean))];
+  const shelfItems = Object.values(p.sections || {}).flatMap(section => (section.items || []).map(item => ({ ...item, shelf: section.title })));
+  const dated = shelfItems.filter(item => item.snippet).sort((a, b) => String(b.snippet).localeCompare(String(a.snippet)));
+  let body = '';
+  if (storyView === 'map') {
+    body = renderMap(p);
+  } else if (storyView === 'overview' && !events.length) {
+    body = `
+      <section class="article-sec"><h2>Right now</h2>
+        <p>${escapeHtml(line)}</p>
+        <p class="hint">${dated.length ? `Latest file in view is dated ${escapeHtml(dated[0].snippet)}.` : 'No dated files in the shelves yet.'}</p>
+      </section>
+      <section class="article-sec"><h2>Shelves</h2>
+        ${Object.entries(p.sections || {}).map(([key, section]) => `<article class="obj"><h3>${escapeHtml(section.title || key)}</h3><p>${(section.items || []).length} files in view</p></article>`).join('') || '<p class="unresolved">No shelves.</p>'}
+      </section>
+      <section class="article-sec"><h2>Current working set</h2>
+        <table class="work"><tbody>${dated.slice(0, 8).map(it => `<tr><th>${escapeHtml(it.shelf || '')}</th><td><button type="button" class="source-link" data-open-path="${escapeAttr(it.path || '')}">${escapeHtml(it.title || '')}</button></td><td>${escapeHtml(it.snippet || '')}</td></tr>`).join('')}</tbody></table>
+      </section>`;
+  } else if (storyView === 'timeline' && !events.length) {
+    body = `<section class="article-sec"><h2>Timeline</h2>${dated.slice(0, 16).map(it => `<article class="obj"><h3>${escapeHtml(it.snippet)} · ${escapeHtml(it.title)}</h3><p>${escapeHtml(it.shelf || '')}</p></article>`).join('') || '<p class="unresolved">No dated files.</p>'}</section>`;
+  } else if (storyView === 'overview') {
+    body = `
+      <section class="article-sec"><h2>Right now</h2>
+        <p>${escapeHtml(line)}</p>
+        <p class="hint">The card stage is ${escapeHtml(filled((p.project||{}).stage) ? p.project.stage : 'not filled')}. The lines below are events the filenames support. They are not a briefing of what the team decided.</p>
+        <p class="hint">${events.length} events · ${issues.length} files still unread · ${decisions.length} revision${decisions.length === 1 ? '' : 's'} · ${Number(idx.file_count || 0).toLocaleString()} files in the archive</p>
+      </section>
+      <section class="article-sec"><h2>What changed</h2>${events.map(eventCard).join('') || '<p class="unresolved">No events resolved.</p>'}</section>
+      <section class="article-sec"><h2>Open on the file record</h2>${issues.map(issueCard).join('') || '<p class="unresolved">No unread issues in this set.</p>'}</section>
+      <section class="article-sec"><h2>Decisions</h2>${decisions.map(decisionCard).join('') || '<p class="unresolved">No decision is resolved beyond a revision letter on a drawing.</p>'}</section>
+      <section class="article-sec"><h2>Current working set</h2>
+        <table class="work"><tbody>${working.map(it => `<tr><th>${escapeHtml(it.role || it.area || '')}</th><td><button type="button" class="source-link" data-open-path="${escapeAttr(it.path || '')}">${escapeHtml(it.title || '')}</button></td><td>${escapeHtml(it.date || '—')}</td></tr>`).join('')}</tbody></table>
+      </section>
+      <p class="hint">${Number(idx.file_count || 0).toLocaleString()} indexed files stay in Hunt. This page keeps the objects above.</p>`;
+  } else if (storyView === 'timeline') {
+    body = `<section class="article-sec"><h2>Timeline</h2>${events.map(eventCard).join('')}</section>`;
+  } else if (storyView === 'issues') {
+    body = `<section class="article-sec"><h2>Issues</h2>${issues.map(issueCard).join('')}</section>`;
+  } else if (storyView === 'decisions') {
+    body = `<section class="article-sec"><h2>Decisions</h2>${decisions.map(decisionCard).join('')}</section>`;
+  } else {
+    body = `<section class="article-sec"><h2>Areas</h2>${areas.map(area => {
+      const ev = events.filter(item => item.area === area).map(eventCard).join('');
+      const iss = issues.filter(item => item.area === area).map(issueCard).join('');
+      const dec = decisions.filter(item => item.area === area).map(decisionCard).join('');
+      return `<h3 style="font-family:Lora,Georgia,serif;font-weight:400">${escapeHtml(area)}</h3>${dec}${iss}${ev}`;
+    }).join('')}</section>`;
+  }
+  $('story').innerHTML = body;
+  bindOpen($('story'));
+}
+
+function eventCard(item) {
+  return `<article class="obj"><h3>${escapeHtml(item.date || '—')} · ${escapeHtml(item.title || '')}</h3><p>${escapeHtml(item.area || '')}</p>${item.why ? `<p class="hint">${escapeHtml(item.why)}</p>` : ''}${evidenceList(item.evidence)}</article>`;
+}
+function issueCard(item) {
+  return `<article class="obj"><h3>${escapeHtml(item.title || '')}</h3><p>${escapeHtml(item.area || '')} · ${escapeHtml(item.status || '')}${item.date ? ' · ' + escapeHtml(item.date) : ''}</p>${evidenceList(item.evidence)}</article>`;
+}
+function decisionCard(item) {
+  return `<article class="obj"><h3>${escapeHtml(item.title || '')}</h3><p>${escapeHtml(item.status || '')}${item.date ? ' · ' + escapeHtml(item.date) : ''}${item.supersedes ? ' · supersedes ' + escapeHtml(item.supersedes) : ''}</p><p class="hint">${escapeHtml(item.why || '')}</p>${evidenceList(item.evidence)}</article>`;
+}
+
+function streamGroups(section) {
+  const groups = [];
+  const byStream = new Map();
+  ((section && section.items) || []).forEach(it => {
+    const name = it.stream || (section && section.title) || 'Files';
+    if (!byStream.has(name)) {
+      byStream.set(name, []);
+      groups.push(name);
+    }
+    byStream.get(name).push(it);
   });
-  $('facts').querySelectorAll('[data-cite-fact]').forEach(btn => {
-    btn.onclick = () => {
-      const cite = prompt('Citation NAS path for this fact:');
-      if (!cite) return;
-      saveFact(btn.dataset.citeFact, btn.dataset.label, btn.dataset.value, cite, 'verified');
+  return groups.map(name => ({ name, items: byStream.get(name), latest: byStream.get(name)[0] || {} }));
+}
+
+function streamLatest(section, name) {
+  return streamGroups(section).find(g => g.name === name);
+}
+
+function fileCell(it) {
+  if (!it || !it.title) return '—';
+  return `<button type="button" class="source-link" data-open-path="${escapeAttr(it.path || '')}">${escapeHtml(it.title)}</button>`;
+}
+
+function workingSet(sections) {
+  const blocks = [
+    ['Client', sections.client, null],
+    ['Drawings', sections.drawings, ['Construction', 'Contract', 'Tender']],
+    ['Consultants', sections.consultants, ['C&S Engineer', 'M&E Engineer', 'Landscape', 'Quantity Surveyor', 'ESD', 'Lighting', 'Acoustic']],
+    ['Meetings', sections.meetings, null],
+    ['Authorities', sections.authorities, null],
+    ['Contractors', sections.contractors, null],
+    ['Contract', sections.contract, null],
+  ];
+  return blocks.map(([title, section, only]) => {
+    let groups = streamGroups(section);
+    if (only) groups = groups.filter(g => only.some(n => g.name.toLowerCase() === n.toLowerCase()));
+    groups = groups.slice(0, 8);
+    if (!groups.length) return '';
+    const rows = groups.map(g => `<tr><th>${escapeHtml(g.name)}</th><td>${fileCell(g.latest)}</td><td>${escapeHtml(g.latest.snippet || '—')}</td><td>Latest in folder</td></tr>`).join('');
+    return `<table class="work"><caption>${escapeHtml(title)}</caption><tbody>${rows}</tbody></table>`;
+  }).join('');
+}
+
+function recentFiles(sections) {
+  const rows = [];
+  ['client', 'meetings', 'consultants', 'drawings', 'authorities', 'contractors'].forEach(key => {
+    const section = sections[key];
+    if (!section) return;
+    streamGroups(section).forEach(g => {
+      if (g.latest && g.latest.snippet) rows.push({ date: g.latest.snippet, shelf: (section.title || key), stream: g.name, item: g.latest });
+    });
+  });
+  rows.sort((a, b) => b.date.localeCompare(a.date));
+  if (!rows.length) return '<p class="unresolved">No dated files in the working folders.</p>';
+  return `<table class="work"><tbody>${rows.slice(0, 12).map(r => `<tr><th>${escapeHtml(r.date)}</th><td>${escapeHtml(r.shelf)} · ${escapeHtml(r.stream)}</td><td>${fileCell(r.item)}</td></tr>`).join('')}</tbody></table>`;
+}
+
+function disciplineList(section) {
+  const names = streamGroups(section).map(g => g.name).filter(n => n && n !== 'Consultants');
+  if (!names.length) return '';
+  return `<p>${names.map(escapeHtml).join(' · ')}</p>`;
+}
+
+function bindOpen(root) {
+  root.querySelectorAll('[data-open-path]').forEach(btn => {
+    btn.onclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      openSource(btn.dataset.openPath);
     };
   });
+  root.querySelectorAll('[data-map-show]').forEach(btn => {
+    btn.onclick = () => {
+      mapShow = mapShow === btn.dataset.mapShow ? '' : btn.dataset.mapShow;
+      renderStory(currentPage);
+    };
+  });
+  bindMap(root);
+}
+
+async function openSource(path) {
+  if (!path) return;
+  try {
+    const res = await fetch('/api/open-file', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({file_path: path}),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      toast(err.detail || 'Could not open the file');
+      return;
+    }
+    toast('Opening in the folder');
+  } catch (err) {
+    toast('Could not open the file');
+  }
 }
 
 async function pin(path, title, role) {
@@ -467,6 +852,7 @@ $('backBtn').onclick = (e) => {
   currentCode = null;
   $('pageView').classList.add('hidden');
   $('listView').classList.remove('hidden');
+  document.querySelector('.page').classList.remove('article');
   location.hash = '';
   loadList();
 };
@@ -489,41 +875,31 @@ $('overviewForm').onsubmit = async (e) => {
   await refreshPage();
 };
 
-$('factForm').onsubmit = async (e) => {
-  e.preventDefault();
-  const fd = new FormData(e.target);
-  await saveFact(fd.get('key'), fd.get('label'), fd.get('value'), fd.get('cite'), fd.get('status'));
-  e.target.reset();
-};
-
-$('askForm').onsubmit = async (e) => {
-  e.preventDefault();
-  if (!currentCode) { toast('Open a project first'); return; }
-  const q = new FormData(e.target).get('question');
-  const out = $('askOut');
-  out.classList.remove('hidden');
-  out.textContent = 'Thinking…';
-  try {
-    const data = await api('/api/atlas/page/' + encodeURIComponent(currentCode) + '/ask', {
-      method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ question: q })
-    });
-    out.textContent = data.answer || JSON.stringify(data, null, 2);
-  } catch (err) {
-    out.textContent = err.message;
-  }
-};
-
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 function escapeAttr(s) { return escapeHtml(s).replace(/\n/g, ' '); }
 
+$('askForm').onsubmit = async (e) => {
+  e.preventDefault();
+  const question = $('askQ').value.trim();
+  if (!question || !currentCode) return;
+  $('askAnswer').textContent = 'Looking at the pinned record…';
+  try {
+    const data = await api('/api/atlas/page/' + encodeURIComponent(currentCode) + '/ask', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ question })
+    });
+    $('askAnswer').textContent = data.answer || 'No answer.';
+  } catch (err) {
+    $('askAnswer').textContent = err.message || 'Ask failed.';
+  }
+};
+
 (async function init() {
   await loadList();
   const m = location.hash.match(/^#p\/(.+)$/);
   if (m) openPage(decodeURIComponent(m[1]));
-  else if (location.hash === '#ask') toast('Open a project, then use Ask at the bottom');
 })();
 </script>
 </body>

@@ -67,8 +67,11 @@ def _spawn_detached(args: list[str], title: str) -> None:
     repo = str(REPO_ROOT)
     if platform.system() == "Windows":
         cmd = " ".join(f'"{a}"' if " " in a else a for a in args)
+        # Pass a raw command line. list2cmdline would escape the title quotes,
+        # and an unquoted first token is the program name: `start TIGA-Admin`
+        # looks for an executable called TIGA-Admin instead of opening cmd.
         subprocess.Popen(
-            ["cmd", "/c", "start", title, "cmd", "/k", f"cd /d {repo} && {cmd}"],
+            f'cmd /c start "{title}" cmd /k "cd /d {repo} && {cmd}"',
             cwd=repo,
             creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0),
         )

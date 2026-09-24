@@ -358,7 +358,7 @@ class Config:
 
     def retrieval_candidate_pool(self, top_k: int) -> int:
         """Hybrid candidate count before rerank/trim."""
-        base = max(top_k * 3, 20)
+        base = max(min(top_k * 2, 16), 8)
         if self.reranker_enabled:
             return max(base, self.reranker_top_k)
         return base
@@ -422,19 +422,39 @@ def load_config(
 # Ollama availability check
 # ---------------------------------------------------------------------------
 
-def ollama_available(base_url: str | None = None) -> bool:
+_ollama_cache: dict[str, tuple[float, bool]] = {}
+
+
+def ollama_available(
+    base_url: str | None = None,
+    *,
+    timeout: float = 3,
+    cache_s: float = 0,
+) -> bool:
     """
     Ping Ollama's /api/tags endpoint.
     Returns False without raising if Ollama is unreachable.
+
+    cache_s keeps a recent answer so a busy model server cannot stall
+    the only Hunt worker. Indexing still calls this with cache_s=0.
     """
+    import time
     import urllib.request
 
     url = (base_url or "http://localhost:11434").rstrip("/") + "/api/tags"
+    if cache_s > 0:
+        cached = _ollama_cache.get(url)
+        if cached and (time.monotonic() - cached[0]) < cache_s:
+            return cached[1]
+    ok = False
     try:
-        with urllib.request.urlopen(url, timeout=3) as resp:
-            return resp.status == 200
+        with urllib.request.urlopen(url, timeout=timeout) as resp:
+            ok = resp.status == 200
     except Exception:
-        return False
+        ok = False
+    if cache_s > 0:
+        _ollama_cache[url] = (time.monotonic(), ok)
+    return ok
 
 
 # ---------------------------------------------------------------------------

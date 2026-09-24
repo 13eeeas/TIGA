@@ -349,17 +349,26 @@ def run_fts(
     stats: dict[str, int] = {"files_indexed": 0}
 
     embedded_files = conn.execute(
-        "SELECT file_id FROM files WHERE status = 'EMBEDDED'"
+        "SELECT file_id, project_id FROM files WHERE status = 'EMBEDDED'"
     ).fetchall()
+    touched_projects: set[str] = set()
 
     for idx, row in enumerate(embedded_files, start=1):
         file_id = row["file_id"]
+        if row["project_id"]:
+            touched_projects.add(str(row["project_id"]))
         set_file_status(conn, file_id, "INDEXED")
         log_event(conn, "INDEXED", file_id=file_id)
         stats["files_indexed"] += 1
         if idx == 1 or idx == len(embedded_files) or idx % 50 == 0:
             _emit(progress, phase="fts", processed=idx, total=len(embedded_files))
 
+    if touched_projects:
+        try:
+            from core.atlas_wiki import refresh_auto_drafts
+            stats["atlas_projects"] = refresh_auto_drafts(conn, touched_projects, cfg_obj)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Atlas draft refresh failed: %s", exc)
     logger.info("run_fts complete — files_indexed=%d", stats["files_indexed"])
     _emit(
         progress,
@@ -386,7 +395,14 @@ def run_index(
     """
     s1 = run_embed(conn, cfg_obj, progress=progress)
     s2 = run_fts(conn, cfg_obj, progress=progress)
-    return {**s1, **s2}
+    typology = {}
+    try:
+        from core.typology_infer import apply_index_profile
+        typology = apply_index_profile(conn, cfg_obj)
+    except Exception as exc:  # noqa: BLE001
+        import logging
+        logging.getLogger(__name__).warning("brief typology pass failed: %s", exc)
+    return {**s1, **s2, "typology_filled": len(typology.get("filled") or [])}
 
 
 def _run_path_parse(conn: sqlite3.Connection, cfg_obj: Config) -> dict[str, int]:
@@ -751,6 +767,15 @@ def run_full_pipeline(
     i_stats = run_index(conn, _cfg, progress=progress)
     if _stop():
         return {**d_stats, **e_stats, **i_stats}
+
+    from core.title_block import backfill_title_fields
+    tb_stats = backfill_title_fields(conn)
+    if tb_stats.get("revision") or tb_stats.get("file_date"):
+        try:
+            from core.path_parser import update_is_latest
+            update_is_latest(conn)
+        except Exception as e:
+            logger.warning("update_is_latest after title block failed: %s", e)
 
     # ── Phase 4: Image context indexing (renders → synthetic descriptions) ────
     logger.info("run_full_pipeline: phase 4 — image context indexing")

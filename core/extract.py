@@ -169,8 +169,12 @@ def _try_ocr_pdf_chunks(path: Path, cfg_obj: Config) -> list[tuple[str, str]]:
     if path.suffix.lower() != ".pdf":
         return []
     try:
-        from core.ocr import ocr_pdf_pages
-        text = ocr_pdf_pages(path).strip()
+        from core.ocr import ocr_pdf_title_block
+        result = ocr_pdf_title_block(path)
+        text = (result.text or "").strip()
+        threshold = float(getattr(cfg_obj, "ocr_confidence_threshold", 0.55))
+        if result.confidence < threshold:
+            text = ""
     except Exception as exc:
         logger.warning("OCR fallback failed for %s: %s", path.name, exc)
         return []

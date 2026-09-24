@@ -137,6 +137,78 @@ def ocr_pdf_pages_with_confidence(
         return OcrResult(text="", confidence=0.0, source="pdf")
 
 
+def ocr_pdf_title_block(
+    path: Path,
+    cfg_obj: Config | None = None,
+) -> OcrResult:
+    """OCR the bottom-right corner of PDF page 1. Skips the rest of the sheet."""
+    _cfg = cfg_obj or _module_cfg
+    if not _cfg.ocr_enabled:
+        raise RuntimeError("OCR is disabled in config.")
+
+    try:
+        import pytesseract  # type: ignore
+
+        if _cfg.tesseract_cmd and _cfg.tesseract_cmd != "tesseract":
+            pytesseract.pytesseract.tesseract_cmd = _cfg.tesseract_cmd
+
+        img = _render_title_block(path)
+        if img is None:
+            return OcrResult(text="", confidence=0.0, source="pdf_title_block")
+        text = (pytesseract.image_to_string(img) or "").strip()
+        conf = _mean_tesseract_confidence(pytesseract, img)
+        return OcrResult(text=text, confidence=conf, source="pdf_title_block")
+    except ImportError as e:
+        logger.error("OCR dependencies not installed: %s", e)
+        return OcrResult(text="", confidence=0.0, source="pdf_title_block")
+    except Exception as e:
+        logger.warning("Title-block OCR failed for %s: %s", path.name, e)
+        return OcrResult(text="", confidence=0.0, source="pdf_title_block")
+
+
+def _render_title_block(path: Path):
+    """Return a PIL image of the page-1 title-block corner, or None."""
+    try:
+        import fitz  # type: ignore
+        from PIL import Image  # type: ignore
+        import io
+
+        doc = fitz.open(str(path))
+        try:
+            if doc.page_count < 1:
+                return None
+            page = doc[0]
+            box = page.rect
+            clip = fitz.Rect(
+                box.x1 - box.width * 0.42,
+                box.y1 - box.height * 0.30,
+                box.x1,
+                box.y1,
+            )
+            pix = page.get_pixmap(matrix=fitz.Matrix(2, 2), clip=clip, alpha=False)
+            return Image.open(io.BytesIO(pix.tobytes("png")))
+        finally:
+            doc.close()
+    except ImportError:
+        pass
+    except Exception as e:
+        logger.warning("Title-block render failed for %s: %s", path.name, e)
+        return None
+
+    try:
+        from pdf2image import convert_from_path  # type: ignore
+
+        images = convert_from_path(str(path), dpi=150, first_page=1, last_page=1)
+        if not images:
+            return None
+        img = images[0]
+        w, h = img.size
+        return img.crop((int(w * 0.58), int(h * 0.70), w, h))
+    except Exception as e:
+        logger.warning("Title-block render failed for %s: %s", path.name, e)
+        return None
+
+
 def _append_ocr_review(cfg_obj: Config, entry: dict[str, Any]) -> None:
     log_dir = cfg_obj.work_dir / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
@@ -233,9 +305,7 @@ def run_ocr_pass(
         except Exception:
             img_cls = None
         # Prefer scans / schedule-like paths; still allow unknown when OCR on
-        if img_cls is None or img_cls.needs_ocr or img_cls.image_type in (
-            "scanned_document", "unknown",
-        ):
+        if img_cls is not None and img_cls.needs_ocr:
             candidates.append((row["file_id"], row["file_path"], "image"))
 
     remaining = max(0, max_files - len(candidates))
@@ -268,7 +338,7 @@ def run_ocr_pass(
         path = Path(file_path)
         try:
             if kind == "pdf":
-                result = ocr_pdf_pages_with_confidence(path, cfg_obj=_cfg)
+                result = ocr_pdf_title_block(path, cfg_obj=_cfg)
             else:
                 result = ocr_image_with_confidence(path, cfg_obj=_cfg)
 

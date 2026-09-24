@@ -99,6 +99,7 @@ class ResultView:
     final_score: float
     evidence_text: str = ""
     support_status: str | None = None  # supported | weak | unsupported
+    version_status: str = "unknown"  # current | superseded | unknown
 
     @classmethod
     def from_search_result(
@@ -111,6 +112,7 @@ class ResultView:
         fn = r.get("file_name", rel)
         snippet = r.get("snippet", "")
         ev = evidence_text or r.get("chunk_text") or snippet
+        from core.evidence import version_status_from_flags
         return cls(
             title=Path(fn).stem if fn else "",
             rel_path=rel,
@@ -123,6 +125,10 @@ class ResultView:
             final_score=float(r.get("final_score", 0.0)),
             evidence_text=ev,
             support_status=r.get("support_status"),
+            version_status=version_status_from_flags(
+                r.get("is_latest"),
+                r.get("is_superseded"),
+            ),
         )
 
 

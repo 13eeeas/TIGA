@@ -10,6 +10,7 @@ from core.retrieval_boost import (
     detect_project_codes,
     domain_expand_terms,
     extract_phrases,
+    name_match_tokens,
     path_filename_boost,
     project_code_boost,
     suppress_near_duplicates,
@@ -34,6 +35,48 @@ def test_build_fts_includes_phrase_and_expand() -> None:
     # Default and_phrase mode should AND content tokens, not OR-sprawl them
     assert " AND " in q
     assert q.count(" OR ") <= 6
+
+
+def test_design_brief_outranks_a_contract() -> None:
+    from core.retrieval_boost import apply_document_rank
+
+    rows = [
+        {"file_name": "REDAS Conditions of Main Contract.pdf", "file_path": "/a", "final_score": 2.0},
+        {"file_name": "283 main contract design brief_rev b.docx", "file_path": "/b", "final_score": 1.0},
+    ]
+    apply_document_rank(rows, "main contract design brief")
+    assert rows[0]["file_name"].startswith("283")
+
+
+def test_site_photo_sinks_when_a_report_is_asked() -> None:
+    from core.retrieval_boost import apply_document_rank
+
+    rows = [
+        {"file_name": "Site Progress Pic 10122024.jpg", "file_path": "/a", "final_score": 3.0},
+        {"file_name": "Site Progress Report.pdf", "file_path": "/b", "final_score": 1.0},
+    ]
+    apply_document_rank(rows, "site progress report")
+    assert "Report" in rows[0]["file_name"]
+    tokens = [t.lower() for t in name_match_tokens(
+        "Latest facade consultant meeting minutes about glazing"
+    )]
+    assert "meeting" in tokens
+    assert "minutes" in tokens
+
+
+def test_sentence_keeps_the_document_phrase() -> None:
+    q = build_fts_query("Latest facade consultant meeting minutes about glazing")
+    assert '"meeting minutes"' in q
+    assert "cladding" not in q.lower()
+    assert "Latest" not in q
+    lasvit = build_fts_query("Lasvit level 2 art glass brief revision A")
+    assert "Lasvit" in lasvit
+    assert " AND " in lasvit
+
+
+def test_quoted_phrase_is_kept() -> None:
+    q = build_fts_query('"design brief" hotel', use_phrases=True, use_domain_expand=False)
+    assert '"design brief"' in q
 
 
 def test_build_fts_or_legacy_mode() -> None:

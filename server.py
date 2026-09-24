@@ -552,6 +552,7 @@ class ResultItem(BaseModel):
     ext:         str
     final_score: float
     support_status: str | None = None  # supported | weak | unsupported
+    version_status: str = "unknown"  # current | superseded | unknown
 
 
 class ClaimVerdictItem(BaseModel):
@@ -674,7 +675,7 @@ class RemoveFileRequest(BaseModel):
 
 @app.get("/health")
 async def health() -> dict[str, Any]:
-    ollama_ok = ollama_available(cfg.ollama_base_url)
+    ollama_ok = ollama_available(cfg.ollama_base_url, timeout=0.4, cache_s=20)
     from core.llm_providers import resolve_api_key
     api_ready = bool(cfg.compose_api_enabled and resolve_api_key(cfg.compose_provider))
     hunt_ok = True
@@ -732,7 +733,7 @@ async def api_status(conn: sqlite3.Connection = Depends(get_db)) -> dict[str, An
                     by_dir[label][st] = by_dir[label].get(st, 0) + 1
 
     # Ollama model status
-    embed_ok = ollama_available(cfg.ollama_base_url)
+    embed_ok = ollama_available(cfg.ollama_base_url, timeout=0.4, cache_s=20)
     chat_ok  = embed_ok  # same server
 
     # Disk usage
@@ -931,6 +932,30 @@ async def api_query(
     t_start = time.perf_counter()
     session_id = req.session_id or str(uuid.uuid4())
 
+    typology_filter = (req.filters or {}).get("typology") or ""
+    project_filter = (req.filters or {}).get("project_id") or ""
+    if typology_filter.strip() and not project_filter.strip():
+        from core.query import _resolve_project_scope
+        matched = _resolve_project_scope({"typology": typology_filter.strip()}, conn) or []
+        if not matched:
+            elapsed = (time.perf_counter() - t_start) * 1000
+            note = (
+                f"No projects are tagged '{typology_filter.strip()}'. "
+                "Set typology on the project page, or pick a project."
+            )
+            return QueryResponse(
+                query=req.query,
+                session_id=session_id,
+                answer_summary=note,
+                follow_up_prompts=[],
+                confidence=0.0,
+                confidence_label=_confidence_label(0.0),
+                mode="semantic",
+                results=[],
+                fallback_suggestion=note,
+                latency_ms=round(elapsed, 1),
+            )
+
     # ── Route the query ───────────────────────────────────────────────────────
     router = get_router()
     router.load_project_codes(conn)
@@ -1077,6 +1102,12 @@ async def api_query(
     else:
         run_semantic_fallback()
 
+    # A chosen project or typology is the search. Don't let a metadata route
+    # wander into other jobs.
+    if (project_filter or typology_filter) and mode != "semantic":
+        mode = "semantic"
+        run_semantic_fallback()
+
     # Metadata routes are useful when they return evidence; otherwise continue
     # into content retrieval rather than showing an empty result panel.
     no_structured_evidence = (
@@ -1177,6 +1208,7 @@ async def api_query(
                 ext         = v.ext,
                 final_score = v.final_score,
                 support_status = v.support_status,
+                version_status = v.version_status,
             )
             for v in results_page
         ],
@@ -1291,6 +1323,45 @@ class AtlasOverviewRequest(BaseModel):
     client: str | None = None
     stage: str | None = None
     location: str | None = None
+
+
+_SCOPE_TYPOLOGIES = (
+    "civic",
+    "education",
+    "healthcare",
+    "hospitality",
+    "parks",
+    "residential",
+    "sports",
+    "workplace",
+)
+
+
+@app.get("/api/hunt/scope")
+async def api_hunt_scope(
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict[str, Any]:
+    """Projects and typologies Hunt can search inside."""
+    from core.atlas_wiki import tagged_typologies
+
+    rows = conn.execute(
+        "SELECT COALESCE(project_id, 'Unknown') AS project_id, COUNT(*) AS file_count "
+        "FROM files WHERE COALESCE(project_id, 'Unknown') != 'Unknown' "
+        "GROUP BY project_id ORDER BY file_count DESC"
+    ).fetchall()
+    tagged = tagged_typologies()
+    seen = {t.casefold() for t in tagged}
+    typologies = list(tagged)
+    for label in _SCOPE_TYPOLOGIES:
+        if label.casefold() not in seen:
+            typologies.append(label)
+    return {
+        "projects": [
+            {"project_id": r["project_id"], "file_count": r["file_count"]}
+            for r in rows
+        ],
+        "typologies": typologies,
+    }
 
 
 @app.get("/api/atlas/projects")

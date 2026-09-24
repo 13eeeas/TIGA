@@ -83,6 +83,8 @@ class SearchResult(TypedDict):
     vector_score: float
     final_score:  float
     citation:     str
+    is_latest:    int
+    is_superseded: int
 
 
 # ---------------------------------------------------------------------------
@@ -316,6 +318,7 @@ def _resolve_project_scope(
             clauses.append("location LIKE ?")
             params.append(f"%{location}%")
 
+    codes: list[str] = []
     sql = (
         "SELECT project_code FROM project_cards WHERE "
         + " AND ".join(clauses)
@@ -323,14 +326,27 @@ def _resolve_project_scope(
     try:
         rows = conn.execute(sql, params).fetchall()
         codes = [r["project_code"] for r in rows if r["project_code"]]
-        logger.debug(
-            "_resolve_project_scope: location=%r typology=%r → %d projects",
-            location, typology, len(codes),
-        )
-        return codes
     except Exception as e:
-        logger.warning("_resolve_project_scope failed (skipping scope): %s", e)
-        return None
+        logger.warning("_resolve_project_scope cards failed: %s", e)
+
+    try:
+        from core.atlas_wiki import project_codes_for_scope
+        codes.extend(project_codes_for_scope(typology=typology, location=location))
+    except Exception as e:
+        logger.warning("_resolve_project_scope overlays failed: %s", e)
+
+    # Preserve order, drop duplicates.
+    seen: set[str] = set()
+    unique = []
+    for code in codes:
+        if code not in seen:
+            seen.add(code)
+            unique.append(code)
+    logger.debug(
+        "_resolve_project_scope: location=%r typology=%r → %d projects",
+        location, typology, len(unique),
+    )
+    return unique
 
 
 # ---------------------------------------------------------------------------
@@ -547,6 +563,169 @@ def _apply_version_ranking(
     candidates.sort(key=lambda r: (-r["final_score"], r["file_path"]))
 
 
+def _name_hit_count(name: str, tokens: list[str]) -> int:
+    compact = re.sub(r"[^a-z0-9]", "", (name or "").lower())
+    folded = (name or "").lower()
+    hits = 0
+    for token in tokens:
+        word = token.lower()
+        if word in folded or word in compact:
+            hits += 1
+    return hits
+
+
+def _filename_blob() -> str:
+    """File name with separators turned into spaces, padded, for whole-token match."""
+    expr = "lower(file_name)"
+    for sep in ("_", "-", ".", "(", ")", "[", "]", ",", "&", "+"):
+        expr = f"replace({expr}, '{sep}', ' ')"
+    return f"(' ' || {expr} || ' ')"
+
+
+def _filename_scope(filters: dict[str, Any]) -> tuple[str | None, list[Any]]:
+    if filters.get("project_id"):
+        return "project_id = ?", [filters["project_id"]]
+    scope = list(filters.get("project_scope") or [])
+    if filters.get("project_scope") is not None and not scope:
+        return None, []
+    if scope:
+        return f"project_id IN ({','.join('?' * len(scope))})", scope
+    return "1=1", []
+
+
+def _rarest_name_tokens(
+    conn: sqlite3.Connection,
+    tokens: list[str],
+    scope_sql: str,
+    scope_params: list[Any],
+) -> list[tuple[str, int]]:
+    """Order name tokens by how many files in scope contain them."""
+    blob = _filename_blob()
+    sums: list[str] = []
+    params: list[Any] = []
+    for token in tokens:
+        sums.append(f"SUM(CASE WHEN {blob} LIKE ? THEN 1 ELSE 0 END)")
+        params.append(f"% {token.lower()} %")
+    row = conn.execute(
+        f"SELECT {', '.join(sums)} FROM files WHERE {scope_sql}",
+        [*params, *scope_params],
+    ).fetchone()
+    ranked = [(token, int(row[i] or 0)) for i, token in enumerate(tokens)]
+    ranked = [item for item in ranked if item[1] > 0]
+    ranked.sort(key=lambda item: (item[1], -len(item[0]), item[0].lower()))
+    return ranked
+
+
+def _filename_rows(
+    conn: sqlite3.Connection,
+    tokens: list[str],
+    scope_sql: str,
+    scope_params: list[Any],
+    *,
+    row_limit: int,
+) -> list[sqlite3.Row]:
+    blob = _filename_blob()
+    clauses = [scope_sql]
+    params: list[Any] = list(scope_params)
+    for token in tokens:
+        clauses.append(f"{blob} LIKE ?")
+        params.append(f"% {token.lower()} %")
+    params.append(row_limit)
+    return conn.execute(
+        "SELECT file_id, file_path, file_name, "
+        "COALESCE(project_id, 'Unknown') AS project_id, "
+        "COALESCE(typology, 'Unknown') AS typology, "
+        "COALESCE(is_latest, 0) AS is_latest, "
+        "COALESCE(is_superseded, 0) AS is_superseded "
+        f"FROM files WHERE {' AND '.join(clauses)} LIMIT ?",
+        params,
+    ).fetchall()
+
+
+def _filename_candidates(
+    query: str,
+    filters: dict[str, Any] | None,
+    conn: sqlite3.Connection,
+    *,
+    limit: int = 8,
+) -> list[dict[str, Any]]:
+    """Files whose names contain the specific words in the question.
+
+    A sentence no longer has to match every word. Two distinctive words,
+    or one rare name or drawing code, is enough. Drawings with no extracted
+    text are found this way.
+    """
+    from core.retrieval_boost import _COMMON_WORDS, _DOC_WORDS, content_tokens
+
+    raw = content_tokens(query)
+    specific = [
+        token for token in raw
+        if token.lower() not in _COMMON_WORDS and token.lower() not in _DOC_WORDS
+    ]
+    qualifiers = [
+        token for token in raw
+        if token.lower() in _COMMON_WORDS and token.lower() not in _DOC_WORDS
+    ]
+    tokens = (specific + qualifiers)[:4] or raw[:3]
+    if not tokens:
+        return []
+    filters = filters or {}
+    scope_sql, scope_params = _filename_scope(filters)
+    if scope_sql is None:
+        return []
+    ranked = _rarest_name_tokens(conn, tokens, scope_sql, scope_params)
+    if not ranked:
+        return []
+    # Every specific word, rarest first. If that intersection is empty, keep the rarest.
+    chosen = [token for token, _count in ranked[:3]]
+    rows = _filename_rows(conn, chosen, scope_sql, scope_params, row_limit=200)
+    if not rows and len(chosen) > 1:
+        rows = _filename_rows(conn, chosen[:1], scope_sql, scope_params, row_limit=80)
+    found: list[dict[str, Any]] = []
+    need = 1 if len(tokens) == 1 else 2
+    for row in rows:
+        hits = _name_hit_count(str(row["file_name"] or ""), tokens)
+        if hits < need:
+            continue
+        found.append({
+            "chunk_id": f"name:{row['file_id']}",
+            "file_id": row["file_id"],
+            "ref_value": "file",
+            "file_path": row["file_path"],
+            "file_name": row["file_name"],
+            "project_id": row["project_id"],
+            "typology": row["typology"],
+            "snippet": "Matched the file name.",
+            "chunk_text": row["file_name"] or "",
+            "is_latest": int(row["is_latest"] or 0),
+            "is_superseded": int(row["is_superseded"] or 0),
+            "bm25_score": 0.0,
+            "vector_score": 0.0,
+            "final_score": (4.0 + (0.2 * hits)) if hits == len(tokens) and hits >= 2 else (1.4 + (0.4 * hits)),
+        })
+    from core.retrieval_boost import content_tokens
+    known = {token.lower() for token in tokens}
+    wanted = [token.lower() for token in content_tokens(query) if token.lower() in known] or [token.lower() for token in tokens]
+
+    def _prefix(file_name: str) -> int:
+        seen = 0
+        for token in content_tokens(file_name):
+            if seen < len(wanted) and token.lower() == wanted[seen]:
+                seen += 1
+        return seen
+
+    for row in found:
+        row["final_score"] = float(row["final_score"]) + _prefix(str(row["file_name"]))
+
+    found.sort(key=lambda row: (
+        -_prefix(str(row["file_name"])),
+        -float(row["final_score"]),
+        len(str(row["file_name"])),
+        row["file_path"],
+    ))
+    return found[:limit]
+
+
 def _search_impl(
     query: str,
     top_k: int,
@@ -712,6 +891,25 @@ def _search_impl(
             max_per_file=int(getattr(_cfg, "max_chunks_per_file", 2)),
         )
 
+    # Files whose names match the query, including drawings with no extracted text.
+    from core.retrieval_boost import name_match_tokens
+    name_tokens = name_match_tokens(query)
+    need = 1 if len(name_tokens) <= 1 else 2
+    for candidate in candidates:
+        hits = _name_hit_count(str(candidate.get("file_name") or ""), name_tokens)
+        if name_tokens and hits == len(name_tokens) and hits >= 2:
+            candidate["final_score"] = max(candidate["final_score"], 4.0 + (0.2 * hits))
+        elif hits >= need:
+            candidate["final_score"] = max(candidate["final_score"], 1.4 + (0.4 * hits))
+    seen_files = {c["file_id"] for c in candidates}
+    for named in _filename_candidates(query, _active_filters, conn):
+        if named["file_id"] in seen_files:
+            continue
+        seen_files.add(named["file_id"])
+        candidates.append(named)
+    from core.retrieval_boost import apply_document_rank
+    apply_document_rank(candidates, query)
+
     # ── Step 3b: Cross-encoder reranking (optional) ────────────────────────────
     # When enabled, a cross-encoder reads (query, chunk) together and replaces
     # the hybrid score with a more accurate relevance score.  This is the single
@@ -749,9 +947,12 @@ def _search_impl(
         rel = _rel_path(cand["file_path"], roots)
         citation = _make_citation(cand["file_path"], rel, cand["ref_value"], roots)
 
-        if roots_available and not validate_citation(citation, db_path, root_paths):
-            logger.error("Invalid citation excluded from results: %s", citation)
-            continue
+        if roots_available and not validate_citation(
+            citation, db_path, root_paths, allow_indexed_fallback=True
+        ):
+            # The candidate was read from this index. A failed disk check was
+            # dropping the right sheet and leaving a worse sibling in the top 5.
+            logger.warning("Citation not on disk, keeping indexed file: %s", citation)
 
         results.append(SearchResult(
             chunk_id=     cand["chunk_id"],
@@ -767,6 +968,8 @@ def _search_impl(
             vector_score= round(cand["vector_score"],  4),
             final_score=  round(cand["final_score"],   4),
             citation=     citation,
+            is_latest=    int(cand.get("is_latest") or 0),
+            is_superseded=int(cand.get("is_superseded") or 0),
         ))
 
         if len(results) >= top_k:
