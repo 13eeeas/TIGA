@@ -73,6 +73,18 @@ This plan focuses on scaling discovery/index/query for large architecture archiv
 
 ---
 
+## 6) Retrieval intelligence (next, from the 23 Sep eval)
+
+Hunt is still a scoped filename and text finder. The 1,000-prompt run (23 Sep 2026) put the source file first on 38% of completed searches and in the top 3 on 49%. HICA was 28%, Keppel 37%, Istana 35%. NUS and NParks, far smaller, were 74% and 73%. Median latency was 1.9s. These five are the work that would make Hunt different from Egnyte search. Do not rebuild the index for them. Do not turn the reranker back on until a change beats this eval.
+
+1. **Latest working file.** `is_latest` is set on 7 of 154,074 files and `is_superseded` on none, so “latest” is only a query word. Rank the file an architect should open, and sink backups, detached models, consultant copies, archives, and tests. Use mtime only as a tie-break.
+2. **Production asset discovery.** The index already holds the binaries (about 920 Revit, 489 Rhino, 2,339 PSD, 8,824 DWG, 892 SketchUp, 114 InDesign). Most have no extracted text. Resolve “the Rhino used for the 15 Sep presentation” from folder, date, and the export next to it, not from the filename alone.
+3. **Version archaeology.** Answer which model produced a render, which file was current before a presentation, and what the previous version was before a brief change. Modified time is stored and unused.
+4. **Cross-file relationships.** Rhino → Twinmotion → PSD → JPG → deck, and Revit → DWG → markup → RFI. Nothing links them today except shared words.
+5. **Design intent that is not in the filename.** “Forest bathing”, “PV canopy”, “bus stop under the concourse”. Needs drawing or image context, not another keyword pass.
+
+Success for this section is a question an architect currently answers by asking someone or opening a stack of folders. The 1,000-prompt file is `tiga_work/reports/hunt-eval-1000.json`.
+
 ## Suggested success targets
 - Query user-facing latency target: **ideal 5s, max 10s** for normal archive queries.
 - Warm incremental discover on 200k-file project: < 3 minutes

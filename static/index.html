@@ -117,6 +117,8 @@ body{font-family:'Source Serif 4',Georgia,serif;background:var(--page-bg);color:
 
 /* ── HERO ── */
 .hero{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0 24px 100px;max-width:700px;width:100%;gap:16px;transition:padding-bottom .4s}
+.hero.has-results{flex:none;justify-content:flex-start;padding:8px 24px 8px}
+.hero.has-results .hero-title,.hero.has-results .hint-pills{display:none}
 .hero-title{font-family:'Lora',Georgia,serif;font-size:clamp(28px,4.5vw,42px);font-weight:400;text-align:center;letter-spacing:-.01em;line-height:1.3;color:var(--ink);animation:fadeUp .5s ease both;transition:color .35s}
 .title-accent{font-style:italic;color:var(--coral);font-weight:400}
 @keyframes fadeUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
@@ -145,11 +147,16 @@ body{font-family:'Source Serif 4',Georgia,serif;background:var(--page-bg);color:
 /* ── HINT PILLS ── */
 .hint-pills{display:flex;flex-wrap:wrap;gap:7px;justify-content:center;padding:4px 0;width:100%;max-width:580px;animation:fadeUp .5s .28s ease both;opacity:0}
 .hint-pill{background:transparent;border:1px dashed var(--ink-12);border-radius:100px;padding:5px 14px;font-family:'Source Serif 4',Georgia,serif;font-size:12px;font-weight:300;color:var(--ink-60);cursor:pointer;transition:all .2s}
+.scope-row{display:flex;gap:8px;align-items:center;margin-top:10px}
+.scope-row select{flex:1;min-width:0;appearance:none;background:transparent;border:1px solid var(--ink-12);border-radius:100px;padding:7px 14px;font-family:'Source Serif 4',Georgia,serif;font-size:13px;font-weight:300;color:var(--ink);outline:none}
+.scope-or{font-size:12px;color:var(--ink-60);flex-shrink:0}
+.scope-note{margin:8px 4px 0;font-size:12px;color:var(--ink-60);font-weight:300}
 .hint-pill:hover{border-style:solid;border-color:rgba(201,100,66,.45);color:var(--coral);background:var(--coral-glow)}
 
 /* ── RESULTS ── */
 .results-section{width:100%;max-width:700px;padding:0 24px 80px;display:none;flex-direction:column;gap:14px}
 .results-section.visible{display:flex}
+.result-stats{font-size:13px;font-weight:300;color:var(--ink-60);margin:0}
 .summary-card{background:var(--glass-bg);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border:1px solid var(--glass-border);border-bottom-color:var(--glass-border-lo);border-radius:16px;padding:18px 22px;box-shadow:var(--glass-shadow),inset 0 1.5px 0 var(--glass-inner);font-size:14.5px;line-height:1.72;font-weight:300;color:var(--ink);animation:fadeUp .35s ease both;transition:background .35s,color .35s}
 .summary-label{font-size:10.5px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:var(--coral);margin-bottom:8px}
 .claim-list{margin-top:12px;display:flex;flex-direction:column;gap:6px}
@@ -157,7 +164,8 @@ body{font-family:'Source Serif 4',Georgia,serif;background:var(--page-bg);color:
 .claim-badge,.support-badge{flex-shrink:0;font-size:10px;font-weight:500;letter-spacing:.04em;text-transform:uppercase;padding:2px 6px;border-radius:4px}
 .claim-badge.supported,.support-badge.supported{color:#2f6b4f;background:rgba(47,107,79,.12)}
 .claim-badge.weak,.support-badge.weak{color:#8a6a2f;background:rgba(138,106,47,.14)}
-.claim-badge.unsupported,.support-badge.unsupported{color:#8a3b2f;background:rgba(138,59,47,.12)}
+.support-badge.current{color:#2f6b4f;background:rgba(47,107,79,.12)}
+.support-badge.superseded{color:#8a3b2f;background:rgba(138,59,47,.12)}
 .verification-meta{margin-top:8px;font-size:11px;color:var(--ink-60)}
 .file-meta{font-size:11.5px;color:var(--ink-60);font-weight:300;flex-shrink:0;display:flex;align-items:center;gap:6px}
 .results-list{display:flex;flex-direction:column;gap:6px}
@@ -290,7 +298,7 @@ body{font-family:'Source Serif 4',Georgia,serif;background:var(--page-bg);color:
 <div class="container">
   <!-- ── HEADER ── -->
   <header class="header">
-    <a class="logo-mark" href="#">
+    <a class="logo-mark" href="/" id="logoHome">
       <div class="cat-wrap" id="catWrap">
         <div class="cat-ring"></div>
         <svg class="cat-svg" viewBox="0 0 34 34" fill="none">
@@ -314,8 +322,6 @@ body{font-family:'Source Serif 4',Georgia,serif;background:var(--page-bg);color:
       <nav class="top-nav" aria-label="Primary">
         <a class="top-nav-link active" href="/">Search</a>
         <a class="top-nav-link" href="/projects">Projects</a>
-        <a class="top-nav-link" href="/projects#ask">Ask</a>
-        <a class="top-nav-link" href="/storage">Storage</a>
       </nav>
       <!-- Theme toggle -->
       <button class="icon-btn" id="themeToggle" title="Toggle theme" aria-label="Toggle colour theme">
@@ -351,7 +357,7 @@ body{font-family:'Source Serif 4',Georgia,serif;background:var(--page-bg);color:
         </svg>
         <input class="search-input" id="searchInput" type="text"
           placeholder="What are you looking for?" autocomplete="off" spellcheck="false"/>
-        <button class="search-btn" onclick="doSearch()">
+        <button class="search-btn" type="button" onclick="doSearch()">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <line x1="5" y1="12" x2="19" y2="12"/>
             <polyline points="12 5 19 12 12 19"/>
@@ -362,13 +368,23 @@ body{font-family:'Source Serif 4',Georgia,serif;background:var(--page-bg);color:
       <div class="search-progress" id="searchProgress">
         <div class="search-progress-bar"></div>
       </div>
+      <div class="scope-row">
+        <select id="scopeProject" aria-label="Project">
+          <option value="">Project</option>
+        </select>
+        <span class="scope-or">or</span>
+        <select id="scopeTypology" aria-label="Typology">
+          <option value="">Typology</option>
+        </select>
+      </div>
+      <p class="scope-note" id="scopeNote">Optional. Leave both blank to search the whole index, or pick a project or a typology to narrow it.</p>
       <label class="ai-toggle" title="Uses local Ollama to synthesize an answer from the retrieved evidence; this is slower.">
         <input id="aiAnswerToggle" type="checkbox"/>
         <span>AI answer <em>(slower, uses Ollama)</em></span>
       </label>
     </div>
 
-    <!-- Hint pills — hidden after first search -->
+    <!-- Hint pills stay available after a search -->
     <div class="hint-pills" id="hintPills">
       <button class="hint-pill" onclick="useHint(this)">facade glazing details</button>
       <button class="hint-pill" onclick="useHint(this)">client meeting minutes</button>
@@ -381,7 +397,8 @@ body{font-family:'Source Serif 4',Georgia,serif;background:var(--page-bg);color:
 
   <!-- ── RESULTS ── -->
   <section class="results-section" id="resultsSection">
-    <div class="summary-card">
+    <p class="result-stats" id="resultStats"></p>
+    <div class="summary-card" id="summaryCard">
       <div class="summary-label">Summary</div>
       <div id="summaryText"></div>
       <div class="claim-list" id="claimList"></div>
@@ -481,6 +498,7 @@ body{font-family:'Source Serif 4',Georgia,serif;background:var(--page-bg);color:
   </div>
 
   <a class="drawer-admin-btn" id="adminLink" href="#" target="_blank">Open Admin Panel ↗</a>
+  <a class="top-nav-link" href="/storage" style="display:block;margin:12px 20px 20px">Storage</a>
 </div>
 
 <!-- ── TOAST ── -->
@@ -543,9 +561,20 @@ async function doSearch(offset) {
   offset = offset || 0;
   const q = document.getElementById('searchInput').value.trim();
   if (!q) return;
+  const projectScope = document.getElementById('scopeProject').value;
+  const typologyScope = document.getElementById('scopeTypology').value;
+  const note = document.getElementById('scopeNote');
+  if (note) {
+    note.textContent = projectScope
+      ? 'Searching inside ' + projectScope + '.'
+      : typologyScope
+        ? 'Searching projects tagged ' + typologyScope + '.'
+        : 'Searching the whole index.';
+  }
 
   _query  = q;
   _offset = offset;
+  if (offset === 0) document.getElementById('hero').classList.add('has-results');
 
   const cat    = document.getElementById('catWrap');
   const prog   = document.getElementById('searchProgress');
@@ -559,9 +588,6 @@ async function doSearch(offset) {
   if (offset === 0) {
     document.getElementById('resultsSection').classList.remove('visible');
     document.getElementById('feedbackBar').classList.remove('visible');
-    // Hide hints after first search
-    const hints = document.getElementById('hintPills');
-    if (hints) hints.style.display = 'none';
   } else {
     // Show loading dots near the Show More button
     smBtn.style.display  = 'none';
@@ -574,10 +600,15 @@ async function doSearch(offset) {
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify({
         query:      q,
-        top_k:      5,
+        top_k:      12,
         offset:     offset,
         session_id: sessionId,
         compose:    compose,
+        filters:    projectScope
+          ? { project_id: projectScope }
+          : typologyScope
+            ? { typology: typologyScope }
+            : {},
       }),
     });
 
@@ -602,7 +633,10 @@ function showResults(data, append) {
     _results = [];
     document.getElementById('resultsList').innerHTML = '';
     document.getElementById('followUps').innerHTML = '';
-    document.getElementById('summaryText').textContent = data.answer_summary || '—';
+    const summary = data.answer_summary || '';
+    const onlyCount = /^Found \d+/.test(summary);
+    document.getElementById('summaryText').textContent = onlyCount ? '' : (summary || '—');
+    document.getElementById('summaryCard').style.display = onlyCount ? 'none' : '';
 
     const claimList = document.getElementById('claimList');
     claimList.innerHTML = '';
@@ -636,6 +670,9 @@ function showResults(data, append) {
   })));
   const startIdx = _results.length;
   _results = _results.concat(newResults);
+  if (!append) {
+    document.getElementById('resultStats').textContent = formatResultStats(data, newResults.length);
+  }
 
   const list = document.getElementById('resultsList');
   newResults.forEach((r, i) => {
@@ -653,13 +690,16 @@ function showResults(data, append) {
     const support  = r.support_status
       ? `<span class="support-badge ${esc(r.support_status)}">${esc(r.support_status)}</span>`
       : '';
+    const version = (r.version_status === 'current' || r.version_status === 'superseded')
+      ? `<span class="support-badge ${esc(r.version_status)}">${esc(r.version_status)}</span>`
+      : '';
 
     // Directory results: no vote buttons, show folder snippet
     const actionsHtml = isDir ? `
       <div class="result-actions">
         <div class="file-meta" style="font-size:11px;color:var(--coral);white-space:nowrap">📁 folder</div>
       </div>` : `
-      <div class="file-meta">${support}<span>${score}%</span></div>
+        <div class="file-meta">${version}${support}<span>${score}%</span></div>
       <div class="result-actions">
         <button class="action-btn" title="Preview"
           onclick="openPreview(${idx})" aria-label="Preview">
@@ -703,11 +743,12 @@ function showResults(data, append) {
 
   document.getElementById('resultsSection').classList.add('visible');
   document.getElementById('feedbackBar').classList.add('visible');
-  document.getElementById('hero').style.paddingBottom = '20px';
+  document.getElementById('hero').classList.add('has-results');
+  document.getElementById('hero').style.paddingBottom = '16px';
 }
 
 function showMore() {
-  _offset += 5;
+  _offset += 12;
   doSearch(_offset);
 }
 
@@ -969,8 +1010,65 @@ function esc(s) {
   return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
+async function loadHuntScope() {
+  const projectSel = document.getElementById('scopeProject');
+  const typeSel = document.getElementById('scopeTypology');
+  if (!projectSel || !typeSel) return;
+  try {
+    const resp = await fetch('/api/hunt/scope');
+    if (!resp.ok) return;
+    const data = await resp.json();
+    for (const p of data.projects || []) {
+      const opt = document.createElement('option');
+      opt.value = p.project_id;
+      opt.textContent = p.project_id;
+      projectSel.appendChild(opt);
+    }
+    for (const label of data.typologies || []) {
+      const opt = document.createElement('option');
+      opt.value = label;
+      opt.textContent = label;
+      typeSel.appendChild(opt);
+    }
+  } catch (e) { /* scope lists stay empty; search still asks for a choice */ }
+}
+loadHuntScope();
+
+function formatResultStats(data, shown) {
+  const found = /Found (\d+)/.exec(data.answer_summary || '');
+  const count = found ? Number(found[1]) : shown;
+  const ms = Number(data.latency_ms);
+  const time = Number.isFinite(ms) ? ` (${(ms / 1000).toFixed(2)} seconds)` : '';
+  const label = count === 1 ? 'result' : 'results';
+  return `${Number(count).toLocaleString()} ${label}${time}`;
+}
+
+function goHome(event) {
+  if (event) event.preventDefault();
+  document.getElementById('searchInput').value = '';
+  document.getElementById('scopeProject').value = '';
+  document.getElementById('scopeTypology').value = '';
+  const note = document.getElementById('scopeNote');
+  if (note) note.textContent = 'Optional. Leave both blank to search the whole index, or pick a project or a typology to narrow it.';
+  document.getElementById('resultsList').innerHTML = '';
+  document.getElementById('resultStats').textContent = '';
+  document.getElementById('summaryText').textContent = '';
+  document.getElementById('resultsSection').classList.remove('visible');
+  document.getElementById('feedbackBar').classList.remove('visible');
+  document.getElementById('hintPills').style.display = '';
+  document.getElementById('hero').classList.remove('has-results');
+  document.getElementById('hero').style.paddingBottom = '';
+  _results = [];
+  _query = '';
+  _offset = 0;
+  if (location.pathname !== '/') location.href = '/';
+  else history.replaceState(null, '', '/');
+}
+
+document.getElementById('logoHome').addEventListener('click', goHome);
+
 document.getElementById('searchInput').addEventListener('keydown', e => {
-  if (e.key === 'Enter') doSearch(0);
+  if (e.key === 'Enter') { e.preventDefault(); doSearch(0); }
 });
 </script>
 </body>

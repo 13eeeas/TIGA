@@ -66,12 +66,77 @@ _STOP = frozenset({
     "with", "what", "which", "who", "when", "where", "why", "how",
     "find", "get", "show", "me", "my", "about", "tell", "give",
     "project", "architecture", "building",
+    "latest", "please", "need", "between", "versus", "vs", "not",
+    "covering", "called", "using", "showing", "show",
+    "can", "you", "your",
+    "issued", "sent", "compared", "across", "prefer", "among",
+    "current", "inside", "within", "during", "this", "that",
+    "pull", "want", "looking", "says", "saying",
+})
+
+# Words that name a document. When one is present, do not paraphrase
+# the rest of the query into nearby materials (facade → cladding).
+_DOC_WORDS = frozenset({
+    "minutes", "minute", "brief", "drawing", "drawings", "schedule",
+    "specification", "specifications", "spec", "tender", "report",
+    "submission", "booklet", "email",
+})
+
+_COMMON_WORDS = frozenset({
+    "brief", "drawing", "drawings", "minutes", "minute", "meeting",
+    "tender", "design", "report", "schedule", "level", "sheet",
+    "revision", "hotel", "project", "file", "document", "drawings",
 })
 
 
+def content_tokens(query: str) -> list[str]:
+    """Words worth searching, filler removed, drawing codes kept."""
+    tokens: list[str] = []
+    for raw in re.findall(r"[A-Za-z0-9]+", query or ""):
+        word = raw.lower()
+        if word in _STOP:
+            continue
+        if len(word) <= 2 and not any(ch.isdigit() for ch in word):
+            continue
+        tokens.append(raw)
+    return tokens
+
+
+def name_match_tokens(query: str) -> list[str]:
+    """Tokens a file name should contain.
+
+    When the question names a document, those words are required. A glazing
+    specification is not a meeting-minutes file.
+    """
+    phrases = extract_phrases(query or "", include_bigrams=False)
+    proper = distinctive_tokens(query, limit=3)
+    if not phrases:
+        return proper
+    words = phrases[0].split()
+    for token in proper:
+        if token.lower() not in phrases[0].lower() and token not in words:
+            words.append(token)
+            break
+    return words
+
+
+def distinctive_tokens(query: str, *, limit: int = 3) -> list[str]:
+    """The specific words in a sentence: names and codes before generic ones."""
+    tokens = content_tokens(query)
+    proper = [t for t in tokens if t.lower() not in _COMMON_WORDS]
+    ranked = sorted(proper or tokens, key=lambda t: (-len(t), t.lower()))
+    return ranked[:limit]
+
+
 def domain_expand_terms(query: str) -> list[str]:
-    """Return extra retrieval tokens from domain paraphrase lexicon."""
+    """Return extra retrieval tokens from domain paraphrase lexicon.
+
+    A query that already names a document (minutes, brief, drawing) is not
+    paraphrased. "Facade meeting minutes" must not become a cladding search.
+    """
     tokens = re.findall(r"[a-z0-9]+", query.lower())
+    if _DOC_WORDS.intersection(tokens):
+        return []
     out: list[str] = []
     seen = set(tokens)
     for t in tokens:
@@ -124,15 +189,17 @@ def build_fts_query(
       - at most a few domain/synonym expands as OR alternatives
 
     Legacy ``or_legacy``: previous OR-of-everything behaviour.
+    A phrase in quotes is kept as a phrase.
     """
-    cleaned = re.sub(r"[^\w\s]", " ", query)
+    quoted = re.findall(r'"([^"]{2,80})"', query or "")
+    bare = re.sub(r'"[^"]*"', " ", query or "")
+    cleaned = re.sub(r"[^\w\s]", " ", bare)
     base_tokens = [
         t for t in cleaned.split()
         if t.lower() not in _STOP and len(t) > 1
     ]
-    # Prefer longer / more specific tokens when capping AND terms
-    ranked = sorted(base_tokens, key=lambda t: (-len(t), t.lower()))
-    required = ranked[:6]
+    # A sentence is the few specific words, not every word ANDed together.
+    required = distinctive_tokens(bare, limit=3)
 
     extra: list[str] = []
     seen = {t.lower() for t in required}
@@ -161,27 +228,104 @@ def build_fts_query(
 
     # and_phrase (default)
     alts: list[str] = []
-    if required:
+    phrases = []
+    if use_phrases:
+        phrases = [
+            re.sub(r"[^\w\s]", " ", phrase).strip()
+            for phrase in list(quoted) + extract_phrases(query, include_bigrams=False)
+        ]
+        phrases = [phrase for phrase in phrases if phrase]
+    if phrases:
+        head = phrases[0]
+        extra_word = next(
+            (token for token in required if token.lower() not in head.lower()),
+            "",
+        )
+        if extra_word:
+            alts.append(f'("{head}" AND {extra_word})')
+        alts.extend(f'"{phrase}"' for phrase in phrases[:2])
+    elif required:
         if len(required) == 1:
             alts.append(required[0])
         else:
             alts.append("(" + " AND ".join(required) + ")")
 
-    if use_phrases:
-        for phrase in extract_phrases(query, include_bigrams=False):
-            safe = phrase.replace('"', "")
-            if safe:
-                alts.append(f'"{safe}"')
-
-    # Keep expands as optional recall lanes — capped so they don't OR-explode
-    for term in extra[:3]:
-        alts.append(term)
+    # A named document is not widened into synonyms.
+    if not phrases:
+        for term in extra[:3]:
+            alts.append(term)
 
     if not alts:
         return '""'
     if len(alts) == 1:
         return alts[0]
     return " OR ".join(alts)
+
+
+def apply_document_rank(candidates: list[dict[str, Any]], query: str) -> None:
+    """Prefer a file that is the document asked for, and sink lookalikes.
+
+    A design brief outranks a contract, a wellness deck, or a site photo that
+    only shares the word. Mutates final_score and re-sorts.
+    """
+    q = (query or "").lower()
+    kind = ""
+    if "drawing list" in q or "drawings list" in q:
+        kind = "drawing list"
+    elif "minute" in q:
+        kind = "minutes"
+    elif "schedule" in q:
+        kind = "schedule"
+    elif "specification" in q or re.search(r"\bspec\b", q):
+        kind = "specification"
+    elif "brief" in q:
+        kind = "brief"
+    elif "report" in q:
+        kind = "report"
+    if not kind or not candidates:
+        return
+
+    name_marks = {
+        "minutes": ("minute",),
+        "schedule": ("schedule",),
+        "specification": ("specification", " spec"),
+        "report": ("report",),
+        "brief": ("brief",),
+        "drawing list": ("drawing list", "dwg list", "drawings list"),
+    }[kind]
+    junk = (
+        "shortcut",
+        "infopedia",
+        "whatsapp",
+        "list views on sheet",
+        "site progress pic",
+        "progress pic",
+    )
+    brief_impostors = (
+        "redas",
+        "conditions of",
+        "wellness",
+        "programme",
+        "program",
+        "phasing",
+    )
+    for candidate in candidates:
+        name = f"{candidate.get('file_name') or ''} {candidate.get('file_path') or ''}".lower()
+        if any(mark in name for mark in name_marks):
+            candidate["final_score"] = max(float(candidate.get("final_score") or 0), 2.2)
+            if kind == "brief" and "design brief" in name:
+                candidate["final_score"] += 0.6
+        if any(mark in name for mark in junk) or "logo" in name:
+            candidate["final_score"] = float(candidate.get("final_score") or 0) * 0.2
+        if kind == "report" and any(mark in name for mark in (" pic", "photo", ".jpg", ".png")):
+            candidate["final_score"] = float(candidate.get("final_score") or 0) * 0.2
+        if kind == "drawing list" and "drawing" not in name:
+            candidate["final_score"] = float(candidate.get("final_score") or 0) * 0.3
+        if kind == "brief" and any(mark in name for mark in brief_impostors):
+            candidate["final_score"] = float(candidate.get("final_score") or 0) * 0.35
+        if kind == "drawing list" and "list views" in name:
+            candidate["final_score"] = float(candidate.get("final_score") or 0) * 0.2
+    candidates.sort(key=lambda row: (-float(row.get("final_score") or 0), row.get("file_path") or ""))
 
 
 def path_filename_boost(

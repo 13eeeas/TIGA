@@ -272,6 +272,7 @@ _FILE_EXTRA_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_files_canonical_category ON files(canonical_category)",
     "CREATE INDEX IF NOT EXISTS idx_files_folder_date        ON files(folder_date)",
     "CREATE INDEX IF NOT EXISTS idx_files_fingerprint      ON files(fingerprint_sha256)",
+    "CREATE INDEX IF NOT EXISTS idx_files_project_status   ON files(project_id, status)",
 ]
 
 
